@@ -560,7 +560,8 @@ async function startServer(): Promise<void> {
   try {
     await initializeDatabase();
 
-    app.listen(3001, '0.0.0.0', () => {
+    const port = Number(process.env.PORT) || 3001;
+    app.listen(port, '0.0.0.0', () => {
       console.log('MemoryBook backend fut: http://127.0.0.1:3001');
     });
   } catch (err) {
