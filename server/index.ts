@@ -90,7 +90,7 @@ async function processAndSaveContributionPhoto(
 
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder: 'memorybook/contribution-photos',
-    public_id: contribution--,
+    public_id: `contribution-${contributionId}-${Date.now()}`,
     resource_type: 'image',
     format: imageType === 'jpeg' ? 'jpg' : imageType,
   });
