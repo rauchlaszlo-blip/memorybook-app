@@ -559,7 +559,24 @@ async function initializeDatabase(): Promise<void> {
     )
   `);
 
-  console.log('Books es contributions adatmodell rendben.');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pages (
+      id TEXT PRIMARY KEY,
+      page_number INTEGER NOT NULL,
+      canvas_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      preview_image_url TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO pages (id, page_number)
+    VALUES ('page-1', 1), ('page-2', 2)
+    ON CONFLICT (id) DO NOTHING
+  `);
+
+  console.log('Books, contributions es pages adatmodell rendben.');
 }
 
 async function startServer(): Promise<void> {
