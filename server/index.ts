@@ -2,11 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import fs from 'fs/promises';
+import { v2 as cloudinary } from 'cloudinary';
 import path from 'path';
 import crypto from 'crypto';
 
 dotenv.config();
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const app = express();
 
@@ -17,30 +22,20 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-const PREVIEWS_STORAGE_DIR = path.join(process.cwd(), 'public', 'previews');
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
-
-const CONTRIBUTION_PHOTOS_DIR = path.join(
-  process.cwd(),
-  'public',
-  'contribution-photos'
-);
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
 
-async function deletePreviewSafely(previewUrl: string | null | undefined): Promise<void> {
-  if (!previewUrl || !previewUrl.startsWith('/previews/')) return;
-
-  try {
-    const fileName = path.basename(previewUrl);
-    await fs.unlink(path.join(PREVIEWS_STORAGE_DIR, fileName));
-  } catch (err: any) {
-    if (err?.code !== 'ENOENT') {
-      console.error('Preview tĂ¶rlĂ©si hiba:', err);
-    }
-  }
+async function deletePreviewSafely(
+  previewUrl: string | null | undefined
+): Promise<void> {
+  // A regi helyi preview fajlok torlese nem szukseges.
+  return;
 }
 
-async function processAndSavePreview(pageId: string, dataUrl: string): Promise<string> {
+async function processAndSavePreview(
+  pageId: string,
+  dataUrl: string
+): Promise<string> {
   const prefix = 'data:image/jpeg;base64,';
 
   if (!dataUrl.startsWith(prefix)) {
@@ -64,14 +59,13 @@ async function processAndSavePreview(pageId: string, dataUrl: string): Promise<s
     throw new Error('PREVIEW_TOO_LARGE');
   }
 
-  await fs.mkdir(PREVIEWS_STORAGE_DIR, { recursive: true });
+  const result = await cloudinary.uploader.upload(dataUrl, {
+    folder: 'memorybook/previews',
+    public_id: page--,
+    resource_type: 'image',
+  });
 
-  const fileName = `${pageId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
-  const fullPath = path.join(PREVIEWS_STORAGE_DIR, fileName);
-
-  await fs.writeFile(fullPath, imageBuffer);
-
-  return `/previews/${fileName}`;
+  return result.secure_url;
 }
 
 async function processAndSaveContributionPhoto(
@@ -94,23 +88,15 @@ async function processAndSaveContributionPhoto(
     throw new Error('CONTRIBUTION_PHOTO_TOO_LARGE');
   }
 
-  const extension = imageType === 'jpeg' ? 'jpg' : imageType;
+  const result = await cloudinary.uploader.upload(dataUrl, {
+    folder: 'memorybook/contribution-photos',
+    public_id: contribution--,
+    resource_type: 'image',
+    format: imageType === 'jpeg' ? 'jpg' : imageType,
+  });
 
-  await fs.mkdir(CONTRIBUTION_PHOTOS_DIR, { recursive: true });
-
-  const fileName =
-    `${contributionId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${extension}`;
-
-  const fullPath = path.join(CONTRIBUTION_PHOTOS_DIR, fileName);
-
-  await fs.writeFile(fullPath, imageBuffer);
-
-  return `/contribution-photos/${fileName}`;
+  return result.secure_url;
 }
-
-app.use('/previews', express.static(PREVIEWS_STORAGE_DIR));
-app.use('/contribution-photos', express.static(CONTRIBUTION_PHOTOS_DIR));
-
 app.get('/api/health', async (_req, res) => {
   try {
     const result = await pool.query('SELECT NOW() AS now');
@@ -120,7 +106,7 @@ app.get('/api/health', async (_req, res) => {
       databaseTime: result.rows[0].now,
     });
   } catch (err) {
-    console.error('AdatbĂˇzis-kapcsolati hiba:', err);
+    console.error('AdatbÄ‚Ë‡zis-kapcsolati hiba:', err);
 
     res.status(500).json({
       ok: false,
@@ -306,7 +292,7 @@ app.get('/api/pages', async (_req, res) => {
       pages: result.rows,
     });
   } catch (err) {
-    console.error('Oldallista betöltési hiba:', err);
+    console.error('Oldallista betĂ¶ltĂ©si hiba:', err);
     res.status(500).json({ error: 'PAGE_LIST_LOAD_FAILED' });
   }
 });
@@ -373,7 +359,7 @@ app.put('/api/pages/reorder', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error('Oldalsorrend mentési hiba:', err);
+    console.error('Oldalsorrend mentĂ©si hiba:', err);
     res.status(500).json({ error: 'PAGE_REORDER_FAILED' });
   } finally {
     client.release();
@@ -403,7 +389,7 @@ app.get('/api/pages/:id', async (req, res) => {
 
     res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.error('OldalbetĂ¶ltĂ©si hiba:', err);
+    console.error('OldalbetÄ‚Â¶ltÄ‚Â©si hiba:', err);
     res.status(500).json({ error: 'PAGE_LOAD_FAILED' });
   }
 });
@@ -485,7 +471,7 @@ app.put('/api/pages/:id', async (req, res) => {
 
     if (newPreviewUrl && row.previousPreviewUrl && row.previousPreviewUrl !== newPreviewUrl) {
       deletePreviewSafely(row.previousPreviewUrl).catch((err) => {
-        console.error('RĂ©gi preview tĂ¶rlĂ©si hiba:', err);
+        console.error('RÄ‚Â©gi preview tÄ‚Â¶rlÄ‚Â©si hiba:', err);
       });
     }
 
@@ -498,7 +484,7 @@ app.put('/api/pages/:id', async (req, res) => {
   } catch (err: any) {
     await deletePreviewSafely(newPreviewUrl);
 
-    console.error('MentĂ©si hiba:', err);
+    console.error('MentÄ‚Â©si hiba:', err);
 
     if (
       err?.message === 'INVALID_PREVIEW_FORMAT' ||
@@ -533,7 +519,7 @@ async function initializeDatabase(): Promise<void> {
     `INSERT INTO books (id, title)
      VALUES ($1, $2)
      ON CONFLICT (id) DO NOTHING`,
-    ['book-12b', '12.B – Our Last Year']
+    ['book-12b', '12.B â€“ Our Last Year']
   );
 
   await pool.query(`
@@ -588,7 +574,7 @@ async function startServer(): Promise<void> {
       console.log('MemoryBook backend fut: http://127.0.0.1:3001');
     });
   } catch (err) {
-    console.error('Backend indítási hiba:', err);
+    console.error('Backend indĂ­tĂˇsi hiba:', err);
     process.exit(1);
   }
 }
