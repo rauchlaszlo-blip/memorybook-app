@@ -61,7 +61,7 @@ async function processAndSavePreview(
 
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder: 'memorybook/previews',
-    public_id: page--,
+    public_id: `page-${pageId}-${Date.now()}`,
     resource_type: 'image',
   });
 
