@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 
-const API_BASE = 'http://' + window.location.hostname + ':3001';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://' + window.location.hostname + ':3001' : '';
 const MAX_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
 
 type InviteData = {
