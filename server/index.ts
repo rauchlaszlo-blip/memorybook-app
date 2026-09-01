@@ -61,8 +61,10 @@ async function processAndSavePreview(
 
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder: 'memorybook/previews',
-    public_id: `page-${pageId}-${Date.now()}`,
+    public_id: `page-${pageId}`,
     resource_type: 'image',
+    overwrite: true,
+    invalidate: true,
   });
 
   return result.secure_url;
@@ -106,7 +108,7 @@ app.get('/api/health', async (_req, res) => {
       databaseTime: result.rows[0].now,
     });
   } catch (err) {
-    console.error('AdatbÄ‚Ë‡zis-kapcsolati hiba:', err);
+    console.error('AdatbĂ„â€šĂ‹â€ˇzis-kapcsolati hiba:', err);
 
     res.status(500).json({
       ok: false,
@@ -292,7 +294,7 @@ app.get('/api/pages', async (_req, res) => {
       pages: result.rows,
     });
   } catch (err) {
-    console.error('Oldallista betĂ¶ltĂ©si hiba:', err);
+    console.error('Oldallista betÄ‚Â¶ltÄ‚Â©si hiba:', err);
     res.status(500).json({ error: 'PAGE_LIST_LOAD_FAILED' });
   }
 });
@@ -359,7 +361,7 @@ app.put('/api/pages/reorder', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error('Oldalsorrend mentĂ©si hiba:', err);
+    console.error('Oldalsorrend mentÄ‚Â©si hiba:', err);
     res.status(500).json({ error: 'PAGE_REORDER_FAILED' });
   } finally {
     client.release();
@@ -389,7 +391,7 @@ app.get('/api/pages/:id', async (req, res) => {
 
     res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.error('OldalbetÄ‚Â¶ltÄ‚Â©si hiba:', err);
+    console.error('OldalbetĂ„â€šĂ‚Â¶ltĂ„â€šĂ‚Â©si hiba:', err);
     res.status(500).json({ error: 'PAGE_LOAD_FAILED' });
   }
 });
@@ -471,7 +473,7 @@ app.put('/api/pages/:id', async (req, res) => {
 
     if (newPreviewUrl && row.previousPreviewUrl && row.previousPreviewUrl !== newPreviewUrl) {
       deletePreviewSafely(row.previousPreviewUrl).catch((err) => {
-        console.error('RÄ‚Â©gi preview tÄ‚Â¶rlÄ‚Â©si hiba:', err);
+        console.error('RĂ„â€šĂ‚Â©gi preview tĂ„â€šĂ‚Â¶rlĂ„â€šĂ‚Â©si hiba:', err);
       });
     }
 
@@ -484,7 +486,7 @@ app.put('/api/pages/:id', async (req, res) => {
   } catch (err: any) {
     await deletePreviewSafely(newPreviewUrl);
 
-    console.error('MentÄ‚Â©si hiba:', err);
+    console.error('MentĂ„â€šĂ‚Â©si hiba:', err);
 
     if (
       err?.message === 'INVALID_PREVIEW_FORMAT' ||
@@ -519,7 +521,7 @@ async function initializeDatabase(): Promise<void> {
     `INSERT INTO books (id, title)
      VALUES ($1, $2)
      ON CONFLICT (id) DO NOTHING`,
-    ['book-12b', '12.B â€“ Our Last Year']
+    ['book-12b', '12.B Ă˘â‚¬â€ś Our Last Year']
   );
 
   await pool.query(`
@@ -574,7 +576,7 @@ async function startServer(): Promise<void> {
       console.log('MemoryBook backend fut: http://127.0.0.1:3001');
     });
   } catch (err) {
-    console.error('Backend indĂ­tĂˇsi hiba:', err);
+    console.error('Backend indÄ‚Â­tÄ‚Ë‡si hiba:', err);
     process.exit(1);
   }
 }
