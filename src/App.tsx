@@ -345,7 +345,7 @@ function App() {
                 {
                   id: 'class-trip',
                   title: 'Class trip',
-                  keywords: ['class trip', 'trip', 'bus'],
+               keywords: ['class trip', 'trip', 'bus', 'osztálykirándulás', 'kirándulás'],  
                 },
                 {
                   id: 'sports-day',
@@ -375,7 +375,7 @@ function App() {
                 {
                   id: 'graduation',
                   title: 'Graduation',
-                  keywords: ['graduation', 'graduation rehearsal'],
+                  keywords: ['graduation', 'graduation rehearsal', 'ballagás', 'ballagási'],
                 },
                 {
                   id: 'first-day',
@@ -390,7 +390,7 @@ function App() {
                 {
                   id: 'prom',
                   title: 'Prom / school ball',
-                  keywords: ['prom', 'school ball', 'dance'],
+                 keywords: ['prom', 'school ball', 'dance', 'szalagavató'],
                 },
                 {
                   id: 'final-exam',
