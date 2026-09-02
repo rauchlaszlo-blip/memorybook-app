@@ -1,75 +1,179 @@
-# React + TypeScript + Vite
+# MemoryBook
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MemoryBook is a collaborative digital memory book where people contribute memories and photos, while AI can understand the book, analyze what is missing, organize contributions, and help build the final book through WebMCP.
 
-Currently, two official plugins are available:
+The project demonstrates a human-controlled workflow in which an AI agent works with a real web application through semantic WebMCP tools instead of manipulating raw UI state.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Live Demo
 
-## React Compiler
+https://memorybook-app.onrender.com
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Demo book: **12.B – Our Last Year**
 
-## Expanding the ESLint configuration
+## Why WebMCP?
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+A memory book contains more than pages and text boxes. It contains people, memories, events, photos, themes, and an evolving book structure.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+MemoryBook exposes these concepts directly to AI agents through WebMCP.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+The agent does not need access to raw Fabric.js canvas JSON. Instead, it receives semantic tools for understanding and modifying the book.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+This enables an AI agent to inspect contributions, understand the state of the book, identify missing events, propose layouts, build approved pages, and reorganize the book.
 
-```
+The result remains editable by the human in the normal MemoryBook editor.
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## WebMCP Tools
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+MemoryBook exposes six WebMCP tools.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### get_memorybook_status
+Returns a simple read-only status of the currently open MemoryBook demo.
 
-```
+### get_book_context
+Returns semantic context about the MemoryBook book, its pages, and contributed memories without exposing raw Fabric canvas JSON.
+
+### list_contributions
+Returns submitted MemoryBook contributions in semantic form, including contributor names, memory text, and available photos.
+
+### get_event_coverage
+Analyzes submitted contributions against important school-year events and reports which events are covered and which are still missing.
+
+### build_thematic_spread
+Builds a deterministic MemoryBook page from approved submitted memories.
+
+This is a write operation and requires explicit human approval before the page is created and saved.
+
+### reorder_pages
+Changes the order of all MemoryBook pages.
+
+This is also a write operation and requires explicit human approval before execution.
+
+## Human-in-the-Loop Design
+
+MemoryBook deliberately separates AI planning from persistent write operations.
+
+Read-only tools can inspect the book directly. Write tools such as build_thematic_spread and reorder_pages require explicit human approval.
+
+The AI can therefore propose useful changes while the user retains control over what is actually written into the book.
+
+## Example WebMCP Workflow
+
+A contributor submits a memory and optionally a photo through the public invitation page.
+
+An AI agent can then:
+
+1. inspect the contributions with list_contributions;
+2. understand the whole book with get_book_context;
+3. identify missing events with get_event_coverage;
+4. propose a thematic layout;
+5. request human approval;
+6. create the approved page with build_thematic_spread;
+7. reorganize the book with reorder_pages when requested.
+
+The saved result immediately becomes part of the normal editable MemoryBook.
+
+## Current Demo
+
+The public demo contains the book:
+
+**12.B – Our Last Year**
+
+The deployed application includes:
+
+- visual page editing
+- text and image content
+- drawing and erasing
+- undo and redo
+- autosave and manual save
+- versioned page persistence
+- page previews
+- invitation-based memory submission
+- photo contributions
+- organizer contribution view
+- read-only book view
+- page ordering
+- WebMCP integration
+
+## Architecture
+
+Frontend:
+- React
+- TypeScript
+- Vite
+- Fabric.js
+
+Backend:
+- Node.js
+- Express
+- PostgreSQL
+
+Image storage:
+- Cloudinary
+
+Deployment:
+- Render
+
+AI/browser integration:
+- WebMCP
+
+## Local Development
+
+Requirements:
+- Node.js
+- PostgreSQL
+- Cloudinary account
+
+Install dependencies:
+
+    npm install
+
+Create a local .env file with:
+
+    DATABASE_URL=your_postgresql_connection_string
+    CLOUDINARY_CLOUD_NAME=your_cloud_name
+    CLOUDINARY_API_KEY=your_api_key
+    CLOUDINARY_API_SECRET=your_api_secret
+
+Never commit the .env file or real credentials.
+
+Start the backend:
+
+    npx tsx server/index.ts
+
+In another terminal, start the Vite frontend:
+
+    npm run dev
+
+Create a production build:
+
+    npm run build
+
+## Production
+
+The production deployment builds with:
+
+    npm install && npm run build
+
+and starts the server with:
+
+    npx tsx server/index.ts
+
+The Express server serves the built Vite frontend and the MemoryBook API from the same deployment.
+
+## Data and Persistence
+
+Book and page data are stored in PostgreSQL.
+
+Page previews and contribution photos are stored in Cloudinary so uploaded images survive application restarts and ephemeral deployment filesystems.
+
+Page saves are versioned to protect against stale writes.
+
+## WebMCP Challenge Demo Flow
+
+Contribution -> AI reads MemoryBook -> AI analyzes context -> AI proposes a page -> human approves -> WebMCP builds and saves the page -> result appears in the editable MemoryBook.
+
+This demonstrates WebMCP as an application-level interface between an AI agent and a real collaborative creative product.
+
+## Repository
+
+This repository contains the MemoryBook competition prototype and its WebMCP implementation.
