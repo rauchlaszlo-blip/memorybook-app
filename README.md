@@ -1,5 +1,21 @@
 # MemoryBook
+## Judge Quick Start
 
+Live app: https://memorybook-app.onrender.com
+
+MemoryBook has been tested end-to-end with WebMCP in the ChatGPT in-app browser.
+
+Suggested WebMCP test prompts:
+
+- "What WebMCP tools does this MemoryBook expose?"
+- "List the contributions in this MemoryBook."
+- "Analyze which important school-year events are missing from the contributions."
+- "Show me the current book context."
+- "Propose a thematic MemoryBook spread using the submitted memories."
+
+For a write test, ask the agent to build the proposed thematic spread. MemoryBook requires explicit human approval before the WebMCP write operation executes.
+
+After approval, refresh the normal MemoryBook editor to see the saved result. The generated page remains fully editable by the human.
 MemoryBook is a collaborative digital memory book where people contribute memories and photos, while AI can understand the book, analyze what is missing, organize contributions, and help build the final book through WebMCP.
 
 The project demonstrates a human-controlled workflow in which an AI agent works with a real web application through semantic WebMCP tools instead of manipulating raw UI state.
@@ -177,3 +193,21 @@ This demonstrates WebMCP as an application-level interface between an AI agent a
 ## Repository
 
 This repository contains the MemoryBook competition prototype and its WebMCP implementation.
+
+## Challenge Development Scope
+
+MemoryBook existed before the WebMCP Challenge as a working collaborative memory-book prototype. The pre-existing application already included the visual editor, page persistence, contribution submission, organizer view, and read-only book view.
+
+During the WebMCP Challenge, the project was meaningfully extended with the WebMCP integration and agent-facing semantic workflow.
+
+Challenge-period work includes:
+
+- six semantic WebMCP tools
+- AI-readable book and contribution context
+- semantic event-coverage analysis
+- human-in-the-loop thematic spread creation
+- WebMCP page reordering
+- explicit approval before persistent AI write operations
+- production WebMCP integration with the deployed MemoryBook application
+
+The challenge extension turns MemoryBook from a web application operated only through its UI into an application that AI agents can understand and safely collaborate with through semantic WebMCP tools.
