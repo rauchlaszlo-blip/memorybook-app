@@ -20,7 +20,13 @@ export function LanguageSwitcher() {
         setAppLanguage(nextLanguage);
         setLanguage(nextLanguage);
       }}
-      aria-label={language === 'hu' ? 'Alkalmazás nyelve' : 'Application language'}
+      aria-label={
+        language === 'hu'
+          ? 'Alkalmazás nyelve'
+          : language === 'de'
+            ? 'Anwendungssprache'
+            : 'Application language'
+      }
       style={styles.select}
     >
       {SUPPORTED_APP_LANGUAGES.map((item) => (

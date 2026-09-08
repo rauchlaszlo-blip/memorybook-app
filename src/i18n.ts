@@ -1,4 +1,4 @@
-export type AppLanguage = 'hu' | 'en';
+export type AppLanguage = 'hu' | 'en' | 'de';
 
 export const APP_LANGUAGE_STORAGE_KEY = 'memorybook.appLanguage';
 export const APP_LANGUAGE_CHANGE_EVENT = 'memorybook:app-language-change';
@@ -9,12 +9,15 @@ export const SUPPORTED_APP_LANGUAGES: ReadonlyArray<{
 }> = [
   { code: 'hu', label: 'Magyar' },
   { code: 'en', label: 'English' },
+  { code: 'de', label: 'Deutsch' },
 ];
 
 export function normalizeAppLanguage(value: string | null | undefined): AppLanguage | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase().replace('_', '-').split('-')[0];
-  return normalized === 'hu' || normalized === 'en' ? normalized : null;
+  return normalized === 'hu' || normalized === 'en' || normalized === 'de'
+    ? normalized
+    : null;
 }
 
 export function detectBrowserAppLanguage(): AppLanguage {

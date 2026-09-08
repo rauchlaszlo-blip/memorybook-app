@@ -26,13 +26,21 @@ type SendPlatform = 'share' | 'email';
 type InviteLanguageChoice = 'inherit' | AppLanguage;
 
 function languageLabel(language: AppLanguage) {
+  if (language === 'de') return 'Deutsch';
   return language === 'en' ? 'English' : 'Magyar';
 }
 
 function buildGreeting(language: AppLanguage, recipientName: string) {
   const name = recipientName.trim();
+  if (language === 'de') return name ? `Hallo, ${name}!` : 'Hallo!';
   if (language === 'en') return name ? `Hi, ${name}!` : 'Hi!';
   return name ? `Szia, ${name}!` : 'Szia!';
+}
+
+function buildInviteTitle(language: AppLanguage, bookTitle: string) {
+  if (language === 'de') return `MemoryBook-Einladung – ${bookTitle}`;
+  if (language === 'en') return `MemoryBook invitation – ${bookTitle}`;
+  return `MemoryBook meghívás – ${bookTitle}`;
 }
 
 function buildMessage(
@@ -42,6 +50,22 @@ function buildMessage(
   language: AppLanguage,
   recipientName = ''
 ) {
+  if (language === 'de') {
+    return [
+      buildGreeting(language, recipientName),
+      '',
+      `Ich habe ein MemoryBook mit dem Titel „${bookTitle}“ erstellt. Ich würde mich freuen, wenn du eine eigene Seite dafür gestaltest.`,
+      '',
+      'Deine Seite findest du hier:',
+      pageUrl,
+      '',
+      'Dieser Link gehört nur zu deiner Seite. Wenn du fertig bist, reiche sie unten auf der Seite ein.',
+      'Die Einladung ist 14 Tage gültig.',
+      '',
+      `👉 Eigenes MemoryBook erstellen: ${ctaUrl}`,
+    ].join('\n');
+  }
+
   if (language === 'en') {
     return [
       buildGreeting(language, recipientName),
@@ -150,10 +174,7 @@ export function InviteSendDialog({
 
     if (platform === 'email') {
       try {
-        const subject =
-          effectiveInviteLanguage === 'en'
-            ? `MemoryBook invitation – ${bookTitle}`
-            : `MemoryBook meghívás – ${bookTitle}`;
+        const subject = buildInviteTitle(effectiveInviteLanguage, bookTitle);
         const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
         await onSent(metadata);
         window.location.href = mailto;
@@ -174,10 +195,7 @@ export function InviteSendDialog({
 
     try {
       await navigator.share({
-        title:
-          effectiveInviteLanguage === 'en'
-            ? `MemoryBook invitation – ${bookTitle}`
-            : `MemoryBook meghívás – ${bookTitle}`,
+        title: buildInviteTitle(effectiveInviteLanguage, bookTitle),
         text: message,
       });
       await onSent(metadata);
@@ -249,6 +267,7 @@ export function InviteSendDialog({
             <option value="inherit">Könyv nyelve ({languageLabel(bookLanguage)})</option>
             <option value="hu">Magyar</option>
             <option value="en">English</option>
+            <option value="de">Deutsch</option>
           </select>
         </label>
 
