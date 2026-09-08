@@ -547,19 +547,72 @@ app.use((_req, res) => {
 
 async function initializeDatabase(): Promise<void> {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS books (
+    CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      email TEXT UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   await pool.query(
-    `INSERT INTO books (id, title)
+    `INSERT INTO users (id, display_name)
      VALUES ($1, $2)
      ON CONFLICT (id) DO NOTHING`,
-    ['book-12b', '12.B Ă˘â‚¬â€ś Our Last Year']
+    ['user-demo-owner', 'MemoryBook Demo Owner']
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS books (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      title TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    ALTER TABLE books
+    ADD COLUMN IF NOT EXISTS owner_user_id TEXT
+  `);
+
+  await pool.query(
+    `UPDATE books
+     SET owner_user_id = $1
+     WHERE owner_user_id IS NULL`,
+    ['user-demo-owner']
+  );
+
+  const booksOwnerForeignKey = await pool.query(`
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'books'::regclass
+      AND contype = 'f'
+      AND conname = 'books_owner_user_id_fkey'
+  `);
+
+  if (booksOwnerForeignKey.rowCount === 0) {
+    await pool.query(`
+      ALTER TABLE books
+      ADD CONSTRAINT books_owner_user_id_fkey
+      FOREIGN KEY (owner_user_id)
+      REFERENCES users(id)
+      ON DELETE RESTRICT
+    `);
+  }
+
+  await pool.query(`
+    ALTER TABLE books
+    ALTER COLUMN owner_user_id SET NOT NULL
+  `);
+
+  await pool.query(
+    `INSERT INTO books (id, owner_user_id, title)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO NOTHING`,
+    ['book-12b', 'user-demo-owner', '12.B Ă˘â‚¬â€ś Our Last Year']
   );
 
   await pool.query(`
@@ -638,7 +691,7 @@ async function initializeDatabase(): Promise<void> {
     ON CONFLICT (id) DO NOTHING
   `);
 
-  console.log('Books, contributions es pages adatmodell rendben.');
+  console.log('Users, books, contributions es pages adatmodell rendben.');
 }
 
 async function startServer(): Promise<void> {
