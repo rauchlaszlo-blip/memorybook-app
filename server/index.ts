@@ -571,25 +571,23 @@ async function initializeDatabase(): Promise<void> {
     ['book-12b']
   );
 
-  await pool.query(`
-    DO $
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = 'pages'::regclass
-          AND contype = 'f'
-          AND conname = 'pages_book_id_fkey'
-      ) THEN
-        ALTER TABLE pages
-        ADD CONSTRAINT pages_book_id_fkey
-        FOREIGN KEY (book_id)
-        REFERENCES books(id)
-        ON DELETE CASCADE;
-      END IF;
-    END
-    $
+  const pagesBookForeignKey = await pool.query(`
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'pages'::regclass
+      AND contype = 'f'
+      AND conname = 'pages_book_id_fkey'
   `);
+
+  if (pagesBookForeignKey.rowCount === 0) {
+    await pool.query(`
+      ALTER TABLE pages
+      ADD CONSTRAINT pages_book_id_fkey
+      FOREIGN KEY (book_id)
+      REFERENCES books(id)
+      ON DELETE CASCADE
+    `);
+  }
 
   await pool.query(`
     ALTER TABLE pages
