@@ -7,6 +7,8 @@ import React, {
   useState,
 } from 'react';
 import * as fabric from 'fabric';
+import type { AppLanguage } from './i18n';
+import { getInviteEditorMessages } from './inviteEditorI18n';
 
 export interface PageData {
   id: string;
@@ -30,6 +32,7 @@ interface MemoryBookEditorProps {
     expectedVersion: number
   ) => Promise<{ newVersion: number }>;
   onConflict?: (pageId: string) => void;
+  language?: AppLanguage;
 }
 
 type PendingSave = {
@@ -57,10 +60,11 @@ const MAX_IMAGE_INITIAL_DIM = 400;
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu' }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
+  const copy = getInviteEditorMessages(language).editor;
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
@@ -603,7 +607,7 @@ export const MemoryBookEditor = forwardRef<
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    const text = new fabric.IText('Írd ide a gondolataidat...', {
+    const text = new fabric.IText(copy.textPlaceholder, {
       left: CANVAS_WIDTH / 2 - 140,
       top: 150,
       fontFamily: 'sans-serif',
@@ -810,7 +814,7 @@ export const MemoryBookEditor = forwardRef<
         }}
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <button onClick={handleAddText}>+ Szöveg</button>
+          <button onClick={handleAddText}>{copy.addText}</button>
 
           <label
             style={{
@@ -821,7 +825,7 @@ export const MemoryBookEditor = forwardRef<
               background: '#fff',
             }}
           >
-            + Fotó
+            {copy.addPhoto}
             <input
               type="file"
               accept="image/*"
@@ -836,7 +840,7 @@ export const MemoryBookEditor = forwardRef<
               setIsErasing(false);
             }}
           >
-            {isDrawing ? 'Rajz leállítása' : 'Szabadkézi rajz'}
+            {isDrawing ? copy.stopDrawing : copy.startDrawing}
           </button>
 
           <button
@@ -845,7 +849,7 @@ export const MemoryBookEditor = forwardRef<
               setIsDrawing(false);
             }}
           >
-            {isErasing ? 'Radír leállítása' : 'Radír'}
+            {isErasing ? copy.stopEraser : copy.eraser}
           </button>
 
           {(isDrawing || isErasing) && (
@@ -853,12 +857,14 @@ export const MemoryBookEditor = forwardRef<
               {!isErasing && (
                 <input
                   type="color"
+                  aria-label={copy.brushColor}
                   value={brushColor}
                   onChange={(e) => setBrushColor(e.target.value)}
                 />
               )}
               <input
                 type="range"
+                aria-label={copy.brushWidth}
                 min="1"
                 max="25"
                 value={brushWidth}
@@ -869,29 +875,29 @@ export const MemoryBookEditor = forwardRef<
 
           {hasSelection && (
             <>
-              <button onClick={handleBringForward}>↑ Előre</button>
-              <button onClick={handleSendBackwards}>↓ Hátra</button>
-              <button onClick={handleDeleteSelected}>Törlés</button>
+              <button onClick={handleBringForward}>{copy.bringForward}</button>
+              <button onClick={handleSendBackwards}>{copy.sendBackward}</button>
+              <button onClick={handleDeleteSelected}>{copy.delete}</button>
             </>
           )}
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <button onClick={handleUndo} disabled={!canUndo}>
+          <button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>
             ↩
           </button>
-          <button onClick={handleRedo} disabled={!canRedo}>
+          <button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>
             ↪
           </button>
 
           <strong translate="no">
             {saveStatus === 'saved'
-              ? '✓ Mentve'
+              ? copy.saved
               : saveStatus === 'saving'
-                ? 'Mentés...'
+                ? copy.saving
                 : saveStatus === 'conflict'
-                  ? '⚠ Ütközés'
-                  : 'Nem mentett'}
+                  ? copy.conflict
+                  : copy.unsaved}
           </strong>
 
           <button
@@ -904,7 +910,7 @@ export const MemoryBookEditor = forwardRef<
               saveStatus === 'conflict'
             }
           >
-            Mentés most
+            {copy.saveNow}
           </button>
         </div>
       </div>
