@@ -7,7 +7,14 @@ type InviteSendDialogProps = {
   ctaUrl: string;
   isResend?: boolean;
   expiresAt?: string | null;
-  onSent: () => Promise<void>;
+  savedRecipientName?: string | null;
+  savedRecipientEmail?: string | null;
+  savedDeliveryMethod?: 'share' | 'email' | null;
+  onSent: (metadata: {
+    recipientName: string;
+    recipientEmail: string;
+    deliveryMethod: 'share' | 'email';
+  }) => Promise<void>;
   onClose: () => void;
 };
 
@@ -36,12 +43,19 @@ export function InviteSendDialog({
   ctaUrl,
   isResend = false,
   expiresAt = null,
+  savedRecipientName = null,
+  savedRecipientEmail = null,
+  savedDeliveryMethod = null,
   onSent,
   onClose,
 }: InviteSendDialogProps) {
-  const [platform, setPlatform] = useState<SendPlatform>('share');
-  const [recipientName, setRecipientName] = useState('');
-  const [email, setEmail] = useState('');
+  const hasSavedIdentity = Boolean(savedRecipientName || savedRecipientEmail);
+  const identityLocked = isResend && hasSavedIdentity;
+  const [platform, setPlatform] = useState<SendPlatform>(
+    savedDeliveryMethod === 'email' ? 'email' : 'share'
+  );
+  const [recipientName, setRecipientName] = useState(savedRecipientName || '');
+  const [email, setEmail] = useState(savedRecipientEmail || '');
   const [message, setMessage] = useState(() => buildMessage(bookTitle, pageUrl, ctaUrl));
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -61,11 +75,26 @@ export function InviteSendDialog({
   const send = async () => {
     setSendError(null);
 
+    if (platform === 'share' && !recipientName.trim()) {
+      setSendError('Megosztásnál add meg a címzett nevét, hogy az emlék később is azonosítható legyen.');
+      return;
+    }
+    if (platform === 'email' && !email.trim()) {
+      setSendError('E-mail küldésnél add meg a címzett e-mail címét.');
+      return;
+    }
+
+    const metadata = {
+      recipientName: recipientName.trim(),
+      recipientEmail: email.trim(),
+      deliveryMethod: platform,
+    } as const;
+
     if (platform === 'email') {
       try {
         const subject = `MemoryBook meghívás – ${bookTitle}`;
         const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-        await onSent();
+        await onSent(metadata);
         window.location.href = mailto;
         onClose();
       } catch (err) {
@@ -87,7 +116,7 @@ export function InviteSendDialog({
         title: `MemoryBook meghívás – ${bookTitle}`,
         text: message,
       });
-      await onSent();
+      await onSent(metadata);
       onClose();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -126,7 +155,8 @@ export function InviteSendDialog({
         <div style={styles.platformGrid}>
           <button
             type="button"
-            onClick={() => setPlatform('share')}
+            onClick={() => !identityLocked && setPlatform('share')}
+            disabled={identityLocked}
             style={platform === 'share' ? styles.platformActive : styles.platformButton}
           >
             Megosztás…
@@ -134,7 +164,8 @@ export function InviteSendDialog({
           </button>
           <button
             type="button"
-            onClick={() => setPlatform('email')}
+            onClick={() => !identityLocked && setPlatform('email')}
+            disabled={identityLocked}
             style={platform === 'email' ? styles.platformActive : styles.platformButton}
           >
             E-mail
@@ -144,25 +175,27 @@ export function InviteSendDialog({
 
         <div style={styles.stepLabel}>2. Személyre szabás</div>
         <label style={styles.label}>
-          Címzett neve (opcionális)
+          Címzett neve {platform === 'share' ? '(kötelező)' : '(opcionális)'}
           <input
             value={recipientName}
             onChange={(event) => updateRecipientName(event.target.value)}
-            placeholder="pl. Anna"
+            placeholder="pl. Rubinszky Gertrúd"
             style={styles.input}
-            maxLength={80}
+            maxLength={120}
+            readOnly={identityLocked}
           />
         </label>
 
         {platform === 'email' && (
           <label style={styles.label}>
-            E-mail cím (opcionális)
+            E-mail cím (kötelező)
             <input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="nev@example.com"
               style={styles.input}
+              readOnly={identityLocked}
             />
           </label>
         )}
@@ -177,6 +210,11 @@ export function InviteSendDialog({
           />
         </label>
 
+        {identityLocked && (
+          <div style={styles.identityNote}>
+            A címzett az aktív 14 napos időablak alatt ehhez az oldalhoz rögzült. Lejárat után az oldal új címzettnek adható.
+          </div>
+        )}
         <div style={styles.note}>
           A „Nekem is kell emlékkönyv” rész a meghívóban marad, így a címzett saját MemoryBookot is indíthat.
         </div>
@@ -285,6 +323,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   resendWarning: { marginBottom: 10, padding: 12, borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 13, lineHeight: 1.45, fontWeight: 700 },
   expiryNote: { marginBottom: 12, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 12, lineHeight: 1.45 },
+  identityNote: { marginTop: 10, padding: 10, borderRadius: 8, background: '#ecfeff', color: '#155e75', fontSize: 12, lineHeight: 1.45, fontWeight: 700 },
   note: { marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#64748b', fontSize: 12, lineHeight: 1.45 },
   error: { marginTop: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   actions: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: 10, marginTop: 16 },

@@ -478,12 +478,16 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          invite_token AS "inviteToken",
          invite_created_at AS "inviteCreatedAt",
          invite_sent_at AS "inviteSentAt",
+         invite_recipient_name AS "inviteRecipientName",
+         invite_recipient_email AS "inviteRecipientEmail",
+         invite_delivery_method AS "inviteDeliveryMethod",
          CASE
            WHEN invite_created_at IS NULL THEN NULL
            ELSE invite_created_at + INTERVAL '14 days'
          END AS "inviteExpiresAt",
          owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
+         owner_note AS "ownerNote",
          author_share_approved AS "authorShareApproved",
          owner_share_approved AS "ownerShareApproved",
          public_share_token AS "publicShareToken",
@@ -586,6 +590,34 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
     return;
   }
 
+  const recipientName =
+    typeof req.body?.recipientName === 'string' ? req.body.recipientName.trim() : '';
+  const recipientEmail =
+    typeof req.body?.recipientEmail === 'string' ? req.body.recipientEmail.trim() : '';
+  const deliveryMethod =
+    req.body?.deliveryMethod === 'email'
+      ? 'email'
+      : req.body?.deliveryMethod === 'share'
+        ? 'share'
+        : null;
+
+  if (!deliveryMethod) {
+    res.status(400).json({ error: 'INVALID_INVITE_DELIVERY_METHOD' });
+    return;
+  }
+  if (recipientName.length > 120 || recipientEmail.length > 240) {
+    res.status(400).json({ error: 'INVALID_INVITE_RECIPIENT' });
+    return;
+  }
+  if (deliveryMethod === 'share' && !recipientName) {
+    res.status(400).json({ error: 'INVITE_RECIPIENT_NAME_REQUIRED' });
+    return;
+  }
+  if (deliveryMethod === 'email' && !recipientEmail) {
+    res.status(400).json({ error: 'INVITE_RECIPIENT_EMAIL_REQUIRED' });
+    return;
+  }
+
   try {
     const session = await getSession(req);
     if (!session) {
@@ -596,6 +628,9 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
     const result = await pool.query(
       `UPDATE pages p
        SET invite_sent_at = COALESCE(p.invite_sent_at, CURRENT_TIMESTAMP),
+           invite_recipient_name = COALESCE(p.invite_recipient_name, NULLIF($4, '')),
+           invite_recipient_email = COALESCE(p.invite_recipient_email, NULLIF($5, '')),
+           invite_delivery_method = COALESCE(p.invite_delivery_method, $6),
            updated_at = CURRENT_TIMESTAMP
        FROM books b
        WHERE p.id = $1
@@ -607,8 +642,18 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
        RETURNING
          p.invite_sent_at AS "inviteSentAt",
          p.invite_created_at AS "inviteCreatedAt",
-         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt"`,
-      [req.params.pageId, req.params.bookId, session.user.id]
+         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",
+         p.invite_recipient_name AS "inviteRecipientName",
+         p.invite_recipient_email AS "inviteRecipientEmail",
+         p.invite_delivery_method AS "inviteDeliveryMethod"`,
+      [
+        req.params.pageId,
+        req.params.bookId,
+        session.user.id,
+        recipientName,
+        recipientEmail,
+        deliveryMethod,
+      ]
     );
 
     if (result.rowCount === 0) {
@@ -616,15 +661,110 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
       return;
     }
 
-    res.status(200).json({
-      success: true,
-      inviteSentAt: result.rows[0].inviteSentAt,
-      inviteCreatedAt: result.rows[0].inviteCreatedAt,
-      inviteExpiresAt: result.rows[0].inviteExpiresAt,
-    });
+    res.status(200).json({ success: true, ...result.rows[0] });
   } catch (err) {
     console.error('Page invite sent-state error:', err);
     res.status(500).json({ error: 'PAGE_INVITE_SENT_STATE_FAILED' });
+  }
+});
+
+app.post('/api/my/books/:bookId/pages/:pageId/invite/reassign', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const pageResult = await client.query(
+      `SELECT
+         p.id,
+         p.invite_status AS "inviteStatus",
+         p.invite_created_at AS "inviteCreatedAt"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3
+       FOR UPDATE OF p`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (pageResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+      return;
+    }
+
+    if (pageResult.rows[0].inviteStatus === 'submitted') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_ALREADY_SUBMITTED' });
+      return;
+    }
+
+    if (!isPageInviteExpired(pageResult.rows[0].inviteCreatedAt)) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_INVITE_NOT_EXPIRED' });
+      return;
+    }
+
+    const token = `page-invite-${crypto.randomUUID()}`;
+    const result = await client.query(
+      `UPDATE pages
+       SET canvas_json = '{}'::jsonb,
+           preview_image_url = NULL,
+           version = version + 1,
+           invite_token = $1,
+           invite_status = 'invited',
+           invite_created_at = CURRENT_TIMESTAMP,
+           invite_sent_at = NULL,
+           invite_recipient_name = NULL,
+           invite_recipient_email = NULL,
+           invite_delivery_method = NULL,
+           submitted_at = NULL,
+           owner_note = NULL,
+           owner_visibility = 'active',
+           author_share_approved = FALSE,
+           owner_share_approved = FALSE,
+           public_share_token = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND book_id = $3
+       RETURNING
+         invite_created_at AS "inviteCreatedAt",
+         invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt"`,
+      [token, req.params.pageId, req.params.bookId]
+    );
+
+    await client.query('COMMIT');
+    deletePagePreviewAsset(req.params.pageId).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      pageId: req.params.pageId,
+      inviteToken: token,
+      invitePath: `/p/${token}`,
+      inviteCreatedAt: result.rows[0].inviteCreatedAt,
+      inviteSentAt: null,
+      inviteExpiresAt: result.rows[0].inviteExpiresAt,
+      inviteRecipientName: null,
+      inviteRecipientEmail: null,
+      inviteDeliveryMethod: null,
+      inviteValidDays: PAGE_INVITE_VALID_DAYS,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Expired page invite reassignment error:', err);
+    res.status(500).json({ error: 'PAGE_INVITE_REASSIGN_FAILED' });
+  } finally {
+    client.release();
   }
 });
 
@@ -857,7 +997,12 @@ app.delete('/api/my/books/:bookId/pages/:pageId', async (req, res) => {
            invite_token = NULL,
            invite_status = 'empty',
            invite_created_at = NULL,
+           invite_sent_at = NULL,
+           invite_recipient_name = NULL,
+           invite_recipient_email = NULL,
+           invite_delivery_method = NULL,
            submitted_at = NULL,
+           owner_note = NULL,
            owner_visibility = 'active',
            author_share_approved = FALSE,
            owner_share_approved = FALSE,
@@ -1724,6 +1869,12 @@ app.get('/api/pages/:id', async (req, res) => {
          p.preview_image_url AS "previewImageUrl",
          p.version,
          p.owner_visibility AS "ownerVisibility",
+         p.invite_sent_at AS "inviteSentAt",
+         p.invite_recipient_name AS "inviteRecipientName",
+         p.invite_recipient_email AS "inviteRecipientEmail",
+         p.invite_delivery_method AS "inviteDeliveryMethod",
+         p.submitted_at AS "submittedAt",
+         p.owner_note AS "ownerNote",
          p.updated_at AS "updatedAt",
          p.book_id AS "bookId",
          b.owner_user_id AS "ownerUserId"
@@ -1759,6 +1910,56 @@ app.get('/api/pages/:id', async (req, res) => {
   } catch (err) {
     console.error('Page load error:', err);
     res.status(500).json({ error: 'PAGE_LOAD_FAILED' });
+  }
+});
+
+
+app.patch('/api/my/books/:bookId/pages/:pageId/memory-note', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  if (typeof req.body?.ownerNote !== 'string') {
+    res.status(400).json({ error: 'INVALID_OWNER_NOTE' });
+    return;
+  }
+
+  const ownerNote = req.body.ownerNote.trim();
+  if (ownerNote.length > 2000) {
+    res.status(400).json({ error: 'OWNER_NOTE_TOO_LONG' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE pages p
+       SET owner_note = NULLIF($1, ''),
+           updated_at = CURRENT_TIMESTAMP
+       FROM books b
+       WHERE p.id = $2
+         AND p.book_id = $3
+         AND b.id = p.book_id
+         AND b.owner_user_id = $4
+       RETURNING p.owner_note AS "ownerNote"`,
+      [ownerNote, req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json({ success: true, ownerNote: result.rows[0].ownerNote });
+  } catch (err) {
+    console.error('Owner memory note update error:', err);
+    res.status(500).json({ error: 'OWNER_NOTE_UPDATE_FAILED' });
   }
 });
 
@@ -1984,6 +2185,10 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'empty'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_sent_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_recipient_name TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_recipient_email TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_delivery_method TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_note TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);

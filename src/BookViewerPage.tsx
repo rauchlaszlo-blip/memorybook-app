@@ -11,6 +11,12 @@ type PageData = {
   pageNumber: number;
   previewImageUrl?: string | null;
   version: number;
+  inviteSentAt?: string | null;
+  inviteRecipientName?: string | null;
+  inviteRecipientEmail?: string | null;
+  inviteDeliveryMethod?: string | null;
+  submittedAt?: string | null;
+  ownerNote?: string | null;
 };
 
 type BookPageSummary = {
@@ -32,6 +38,9 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [page, setPage] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ownerNote, setOwnerNote] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
 
   const currentPageId = pageIds[currentIndex];
 
@@ -117,6 +126,8 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         const data = await response.json();
         setPage(data);
+        setOwnerNote(data.ownerNote || '');
+        setNoteSaved(false);
       } catch (err) {
         console.error(err);
         setError('Az oldalt nem sikerült betölteni.');
@@ -128,6 +139,34 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
     loadPage();
   }, [currentPageId]);
+
+
+  const saveOwnerNote = async () => {
+    if (!page) return;
+    try {
+      setNoteSaving(true);
+      setNoteSaved(false);
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}/memory-note`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ownerNote }),
+        }
+      );
+      if (!response.ok) throw new Error('OWNER_NOTE_SAVE_FAILED');
+      const data = await response.json();
+      setPage((current) => current ? { ...current, ownerNote: data.ownerNote || null } : current);
+      setOwnerNote(data.ownerNote || '');
+      setNoteSaved(true);
+    } catch (err) {
+      console.error(err);
+      setError('A saját megjegyzést nem sikerült elmenteni.');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   return (
     <main style={styles.page}>
@@ -179,7 +218,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         {error && <div style={styles.error}>{error}</div>}
 
-        <div style={styles.viewer}>
+        <div style={styles.viewer} data-memory-content="true">
           {loading ? (
             <div style={styles.message}>Oldal betöltése...</div>
           ) : pageIds.length === 0 ? (
@@ -199,9 +238,65 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             </div>
           )}
         </div>
+
+        {!loading && page && (
+          <section style={styles.identityPanel} data-memory-metadata="true">
+            <div style={styles.identityEyebrow}>Az emlék adatai</div>
+            <h2 style={styles.identityTitle}>
+              {page.inviteRecipientName || page.inviteRecipientEmail || 'Nincs azonosítva'}
+            </h2>
+            <div style={styles.identityGrid}>
+              {page.inviteRecipientName && page.inviteRecipientEmail && (
+                <div><span style={styles.identityLabel}>E-mail</span>{page.inviteRecipientEmail}</div>
+              )}
+              <div>
+                <span style={styles.identityLabel}>Küldési mód</span>
+                {page.inviteDeliveryMethod === 'email'
+                  ? 'E-mail'
+                  : page.inviteDeliveryMethod === 'share'
+                    ? 'Megosztás'
+                    : 'Nincs rögzítve'}
+              </div>
+              <div>
+                <span style={styles.identityLabel}>Meghívás dátuma</span>
+                {formatDate(page.inviteSentAt)}
+              </div>
+              <div>
+                <span style={styles.identityLabel}>Beküldés dátuma</span>
+                {formatDate(page.submittedAt)}
+              </div>
+            </div>
+
+            <label style={styles.noteLabel}>
+              Saját megjegyzés
+              <textarea
+                value={ownerNote}
+                onChange={(event) => { setOwnerNote(event.target.value); setNoteSaved(false); }}
+                maxLength={2000}
+                rows={4}
+                placeholder="Pl. hol találkoztunk, milyen eseményhez kapcsolódik az emlék…"
+                style={styles.noteInput}
+              />
+            </label>
+            <button type="button" onClick={saveOwnerNote} disabled={noteSaving} style={styles.noteButton}>
+              {noteSaving ? 'Mentés…' : noteSaved ? 'Megjegyzés elmentve' : 'Megjegyzés mentése'}
+            </button>
+            <div style={styles.printHint}>
+              Ez az adatblokk az online könyvhöz tartozik. Későbbi nyomtatásnál csak a fenti emlékoldal kerül a könyvbe.
+            </div>
+          </section>
+        )}
       </section>
     </main>
   );
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return 'Nincs rögzítve';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -330,4 +425,22 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#991b1b',
     borderRadius: 8,
   },
+  identityPanel: {
+    width: '100%',
+    maxWidth: 750,
+    margin: '16px auto 0',
+    padding: 16,
+    boxSizing: 'border-box',
+    borderRadius: 14,
+    background: '#ffffff',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.08)',
+  },
+  identityEyebrow: { color: '#64748b', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 },
+  identityTitle: { margin: '6px 0 14px', color: '#0f172a', fontSize: 21, overflowWrap: 'anywhere' },
+  identityGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 12, color: '#334155', fontSize: 14, lineHeight: 1.45 },
+  identityLabel: { display: 'block', marginBottom: 3, color: '#64748b', fontSize: 11, fontWeight: 800, textTransform: 'uppercase' },
+  noteLabel: { display: 'block', marginTop: 16, color: '#334155', fontSize: 13, fontWeight: 800 },
+  noteInput: { width: '100%', marginTop: 6, padding: 12, boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 16, lineHeight: 1.45, resize: 'vertical' },
+  noteButton: { width: '100%', minHeight: 46, marginTop: 10, padding: '10px 14px', border: 0, borderRadius: 9, background: '#0f172a', color: '#ffffff', fontSize: 14, fontWeight: 800 },
+  printHint: { marginTop: 10, color: '#64748b', fontSize: 12, lineHeight: 1.45 },
 };
