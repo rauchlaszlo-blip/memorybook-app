@@ -1,0 +1,96 @@
+name: Invite Send Flow Smoke V2
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/invite-send-flow-smoke-v2.yml
+
+jobs:
+  invite-send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test invitation send UI
+        shell: bash
+        run: |
+          npm install @playwright/test@1.55.0 --no-save >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          mkdir -p tests
+          cat > tests/invite-send-flow-v2.spec.js <<'EOF'
+          import { test, expect } from '@playwright/test';
+
+          test('owner sends personalized invitation through native share flow', async ({ browser }) => {
+            const base = 'https://memorybook-app.onrender.com';
+            const stamp = Date.now();
+            const email = `invite-send-v2-${stamp}@example.com`;
+            const password = `Test-${stamp}-Is9!`;
+            const title = `Invite Send V2 ${stamp}`;
+
+            const context = await browser.newContext({
+              viewport: { width: 390, height: 844 },
+              isMobile: true,
+              hasTouch: true,
+            });
+            await context.addInitScript(() => {
+              Object.defineProperty(navigator, 'share', {
+                configurable: true,
+                value: async (data) => {
+                  window.__memorybookSharedData = data;
+                },
+              });
+            });
+            const page = await context.newPage();
+            const api = context.request;
+
+            const signUp = await api.post(`${base}/api/auth/sign-up/email`, {
+              headers: { Origin: base },
+              data: { name: 'Invite Send Test V2', email, password },
+            });
+            expect([200, 201]).toContain(signUp.status());
+
+            const createBook = await api.post(`${base}/api/my/books`, { data: { title } });
+            expect(createBook.status()).toBe(201);
+            const bookId = (await createBook.json()).book.id;
+
+            await page.goto(`${base}/my-books/${bookId}`, { waitUntil: 'networkidle' });
+            const firstCard = page.locator('article').first();
+            await firstCard.getByRole('button', { name: 'Meghívás' }).click();
+
+            const dialog = page.getByRole('dialog', { name: 'Meghívás küldése' });
+            await expect(dialog).toBeVisible();
+            await expect(dialog.getByRole('button', { name: /^Megosztás/ })).toBeVisible();
+            await expect(dialog.getByRole('button', { name: /^E-mail/ })).toBeVisible();
+
+            await dialog.getByLabel('Címzett neve (opcionális)').fill('Anna');
+            const textarea = dialog.getByLabel('Meghívó üzenet');
+            const message = await textarea.inputValue();
+            expect(message).toContain('Szia, Anna!');
+            expect(message).toContain(`${base}/p/`);
+            expect(message).toContain('Nekem is kell emlékkönyv');
+            expect(message).toContain(`${base}/nekem-is-kell`);
+
+            await textarea.fill(message + '\n\nTalálkozunk!');
+            await dialog.getByRole('button', { name: 'Címzett és app kiválasztása' }).click();
+            await expect(dialog).toBeHidden();
+
+            const shared = await page.evaluate(() => window.__memorybookSharedData);
+            expect(shared.text).toContain('Szia, Anna!');
+            expect(shared.text).toContain('Találkozunk!');
+            expect(shared.text).toContain(`${base}/p/`);
+            expect(shared.text).toContain(`${base}/nekem-is-kell`);
+
+            await expect(firstCard.getByRole('button', { name: 'Meghívás küldése' })).toBeVisible();
+            await expect(firstCard).not.toContainText(`${base}/p/`);
+
+            console.log('PASS: invite dialog opens from owner page');
+            console.log('PASS: invitation text can be personalized');
+            console.log('PASS: personal page URL and MemoryBook CTA are preserved');
+            console.log('PASS: edited invitation is passed to native share');
+            console.log('PASS: owner page no longer exposes raw invitation link for copying');
+
+            await context.close();
+          });
+          EOF
+          npx playwright test tests/invite-send-flow-v2.spec.js --workers=1
