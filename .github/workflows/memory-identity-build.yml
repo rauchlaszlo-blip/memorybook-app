@@ -15,8 +15,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply memory identity patch
-        run: python3 scripts/patch-memory-identity.py
+      - name: Apply memory identity and expiry patches
+        run: python3 scripts/run-memory-identity-build.py
       - name: Install
         run: npm install
       - name: Build
@@ -29,6 +29,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No app changes to commit"
           else
-            git commit -m "Add persistent memory identity metadata"
+            git commit -m "Add persistent memory identity metadata and expired invite reassignment"
             git push
           fi
