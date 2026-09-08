@@ -35,6 +35,7 @@ app.use(express.json({ limit: '5mb' }));
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
 const DEFAULT_BOOK_PAGE_COUNT = 30;
+const PAGE_INVITE_VALID_DAYS = 14;
 const DEMO_BOOK_ID = 'book-12b';
 
 async function getSession(req: any) {
@@ -43,6 +44,13 @@ async function getSession(req: any) {
   return auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
+}
+
+function isPageInviteExpired(inviteCreatedAt: string | Date | null | undefined): boolean {
+  if (!inviteCreatedAt) return false;
+  const createdAt = new Date(inviteCreatedAt).getTime();
+  if (!Number.isFinite(createdAt)) return false;
+  return Date.now() >= createdAt + PAGE_INVITE_VALID_DAYS * 24 * 60 * 60 * 1000;
 }
 
 async function deletePreviewSafely(
@@ -468,6 +476,12 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          version,
          invite_status AS "inviteStatus",
          invite_token AS "inviteToken",
+         invite_created_at AS "inviteCreatedAt",
+         invite_sent_at AS "inviteSentAt",
+         CASE
+           WHEN invite_created_at IS NULL THEN NULL
+           ELSE invite_created_at + INTERVAL '14 days'
+         END AS "inviteExpiresAt",
          owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
          author_share_approved AS "authorShareApproved",
@@ -531,7 +545,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite', async (req, res) => {
     const token =
       pageResult.rows[0].inviteToken || `page-invite-${crypto.randomUUID()}`;
 
-    await pool.query(
+    const inviteUpdate = await pool.query(
       `UPDATE pages
        SET invite_token = $1,
            invite_status = CASE
@@ -540,7 +554,11 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite', async (req, res) => {
            END,
            invite_created_at = COALESCE(invite_created_at, CURRENT_TIMESTAMP),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
+       WHERE id = $2
+       RETURNING
+         invite_created_at AS "inviteCreatedAt",
+         invite_sent_at AS "inviteSentAt",
+         invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt"`,
       [token, req.params.pageId]
     );
 
@@ -550,10 +568,63 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite', async (req, res) => {
       pageNumber: pageResult.rows[0].pageNumber,
       inviteToken: token,
       invitePath: `/p/${token}`,
+      inviteCreatedAt: inviteUpdate.rows[0].inviteCreatedAt,
+      inviteSentAt: inviteUpdate.rows[0].inviteSentAt,
+      inviteExpiresAt: inviteUpdate.rows[0].inviteExpiresAt,
+      inviteValidDays: PAGE_INVITE_VALID_DAYS,
     });
   } catch (err) {
     console.error('Page invite create error:', err);
     res.status(500).json({ error: 'PAGE_INVITE_CREATE_FAILED' });
+  }
+});
+
+
+app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE pages p
+       SET invite_sent_at = COALESCE(p.invite_sent_at, CURRENT_TIMESTAMP),
+           updated_at = CURRENT_TIMESTAMP
+       FROM books b
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.id = p.book_id
+         AND b.owner_user_id = $3
+         AND p.invite_token IS NOT NULL
+         AND p.invite_status IN ('invited', 'draft')
+       RETURNING
+         p.invite_sent_at AS "inviteSentAt",
+         p.invite_created_at AS "inviteCreatedAt",
+         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt"`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      inviteSentAt: result.rows[0].inviteSentAt,
+      inviteCreatedAt: result.rows[0].inviteCreatedAt,
+      inviteExpiresAt: result.rows[0].inviteExpiresAt,
+    });
+  } catch (err) {
+    console.error('Page invite sent-state error:', err);
+    res.status(500).json({ error: 'PAGE_INVITE_SENT_STATE_FAILED' });
   }
 });
 
@@ -833,6 +904,8 @@ app.get('/api/page-invites/:token', async (req, res) => {
          p.preview_image_url AS "previewImageUrl",
          p.version,
          p.invite_status AS "inviteStatus",
+         p.invite_created_at AS "inviteCreatedAt",
+         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",
          p.submitted_at AS "submittedAt"
        FROM pages p
        JOIN books b ON b.id = p.book_id
@@ -850,7 +923,12 @@ app.get('/api/page-invites/:token', async (req, res) => {
       return;
     }
 
-    res.status(200).json(result.rows[0]);
+    if (isPageInviteExpired(result.rows[0].inviteCreatedAt)) {
+      res.status(410).json({ error: 'PAGE_INVITE_EXPIRED' });
+      return;
+    }
+
+    res.status(200).json({ ...result.rows[0], inviteValidDays: PAGE_INVITE_VALID_DAYS });
   } catch (err) {
     console.error('Page invite load error:', err);
     res.status(500).json({ error: 'PAGE_INVITE_LOAD_FAILED' });
@@ -876,7 +954,10 @@ app.put('/api/page-invites/:token', async (req, res) => {
     await client.query('BEGIN');
 
     const inviteResult = await client.query(
-      `SELECT id, invite_status AS "inviteStatus"
+      `SELECT
+         id,
+         invite_status AS "inviteStatus",
+         invite_created_at AS "inviteCreatedAt"
        FROM pages
        WHERE invite_token = $1
        FOR UPDATE`,
@@ -892,6 +973,12 @@ app.put('/api/page-invites/:token', async (req, res) => {
     if (inviteResult.rows[0].inviteStatus === 'submitted') {
       await client.query('ROLLBACK');
       res.status(410).json({ error: 'PAGE_ALREADY_SUBMITTED' });
+      return;
+    }
+
+    if (isPageInviteExpired(inviteResult.rows[0].inviteCreatedAt)) {
+      await client.query('ROLLBACK');
+      res.status(410).json({ error: 'PAGE_INVITE_EXPIRED' });
       return;
     }
 
@@ -962,6 +1049,7 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
          id,
          page_number AS "pageNumber",
          invite_status AS "inviteStatus",
+         invite_created_at AS "inviteCreatedAt",
          submitted_at AS "submittedAt"
        FROM pages
        WHERE invite_token = $1
@@ -978,6 +1066,12 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
     if (pageResult.rows[0].inviteStatus === 'submitted') {
       await client.query('ROLLBACK');
       res.status(409).json({ error: 'PAGE_ALREADY_SUBMITTED' });
+      return;
+    }
+
+    if (isPageInviteExpired(pageResult.rows[0].inviteCreatedAt)) {
+      await client.query('ROLLBACK');
+      res.status(410).json({ error: 'PAGE_INVITE_EXPIRED' });
       return;
     }
 
@@ -1889,6 +1983,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_token TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'empty'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_sent_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
