@@ -74,6 +74,16 @@ test('kept event contributions can be organized independently on mobile', async 
     expect(keepResponse.status()).toBe(200);
   }
 
+  const keptBeforeReorder = (
+    await (
+      await api.get(`${base}/api/books/${eventBookA.id}/contributions`)
+    ).json()
+  ).contributions
+    .filter((item) => item.ownerStatus === 'kept')
+    .sort((a, b) => a.ownerOrder - b.ownerOrder);
+  expect(keptBeforeReorder).toHaveLength(3);
+  const targetText = keptBeforeReorder[keptBeforeReorder.length - 1].memoryText;
+
   await ownerPage.goto(
     `${base}/organizer/${eventBookA.id}/contributions`,
     { waitUntil: 'networkidle' }
@@ -105,15 +115,15 @@ test('kept event contributions can be organized independently on mobile', async 
   expect((await groupSavePromise).ok()).toBeTruthy();
 
   for (let move = 0; move < 2; move += 1) {
-    const thirdCard = ownerPage
-      .locator('article')
-      .filter({ hasText: 'Harmadik megtartott bejegyzés.' });
+    const targetCard = ownerPage.locator('article').filter({ hasText: targetText });
+    const upButton = targetCard.getByRole('button', { name: 'Bejegyzés feljebb' });
+    await expect(upButton).toBeEnabled();
     const reorderPromise = ownerPage.waitForResponse(
       (response) =>
         response.url().includes('/contributions/reorder') &&
         response.request().method() === 'PUT'
     );
-    await thirdCard.getByRole('button', { name: 'Bejegyzés feljebb' }).click();
+    await upButton.click();
     expect((await reorderPromise).ok()).toBeTruthy();
   }
 
@@ -122,7 +132,7 @@ test('kept event contributions can be organized independently on mobile', async 
 
   const cardsAfterReload = ownerPage.locator('article');
   await expect(cardsAfterReload).toHaveCount(3);
-  await expect(cardsAfterReload.nth(0)).toContainText('Harmadik megtartott bejegyzés.');
+  await expect(cardsAfterReload.nth(0)).toContainText(targetText);
 
   const firstOriginalAfterReload = ownerPage
     .locator('article')
@@ -140,7 +150,7 @@ test('kept event contributions can be organized independently on mobile', async 
     .filter((item) => item.ownerStatus === 'kept')
     .sort((a, b) => a.ownerOrder - b.ownerOrder);
   expect(ordered).toHaveLength(3);
-  expect(ordered[0].memoryText).toBe('Harmadik megtartott bejegyzés.');
+  expect(ordered[0].memoryText).toBe(targetText);
   expect(
     persisted.find((item) => item.memoryText === 'Első megtartott bejegyzés.')
       .ownerGroup
