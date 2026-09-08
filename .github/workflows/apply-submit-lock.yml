@@ -1,0 +1,128 @@
+name: Apply submit lock patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-submit-lock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: apply submit lock patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch submit locking
+        shell: python
+        run: |
+          from pathlib import Path
+
+          server_path = Path('server/index.ts')
+          s = server_path.read_text(encoding='utf-8')
+
+          old = """async function savePageVersioned(\n  pageId: string,\n  canvasData: Record<string, any>,\n  previewDataUrl: string | null | undefined,\n  expectedVersion: number,\n  inviteStatus?: string\n) {"""
+          new = """async function savePageVersioned(\n  pageId: string,\n  canvasData: Record<string, any>,\n  previewDataUrl: string | null | undefined,\n  expectedVersion: number,\n  inviteStatus?: string,\n  requireEditable = false\n) {"""
+          assert old in s, 'savePageVersioned signature not found'
+          s = s.replace(old, new, 1)
+
+          old = """       SELECT id, preview_image_url\n       FROM pages\n       WHERE id = $3 AND version = $4"""
+          new = """       SELECT id, preview_image_url\n       FROM pages\n       WHERE id = $3\n         AND version = $4\n         AND ($6::boolean = FALSE OR invite_status <> 'submitted')"""
+          assert old in s, 'old_state query not found'
+          s = s.replace(old, new, 1)
+
+          old = """       FROM old_state os\n       WHERE p.id = os.id\n       RETURNING"""
+          new = """       FROM old_state os\n       WHERE p.id = os.id\n         AND ($6::boolean = FALSE OR p.invite_status <> 'submitted')\n       RETURNING"""
+          assert old in s, 'update guard not found'
+          s = s.replace(old, new, 1)
+
+          old = """    [canvasData, newPreviewUrl, pageId, expectedVersion, inviteStatus ?? null]\n  );"""
+          new = """    [\n      canvasData,\n      newPreviewUrl,\n      pageId,\n      expectedVersion,\n      inviteStatus ?? null,\n      requireEditable,\n    ]\n  );"""
+          assert old in s, 'savePageVersioned args not found'
+          s = s.replace(old, new, 1)
+
+          old = """    const check = await pool.query(\n      'SELECT version FROM pages WHERE id = $1',\n      [pageId]\n    );"""
+          new = """    const check = await pool.query(\n      `SELECT version, invite_status AS \"inviteStatus\"\n       FROM pages\n       WHERE id = $1`,\n      [pageId]\n    );"""
+          assert old in s, 'conflict check not found'
+          s = s.replace(old, new, 1)
+
+          old = """    if (check.rowCount === 0) {\n      const error: any = new Error('PAGE_NOT_FOUND');\n      error.status = 404;\n      throw error;\n    }\n\n    const error: any = new Error('PAGE_CONFLICT');"""
+          new = """    if (check.rowCount === 0) {\n      const error: any = new Error('PAGE_NOT_FOUND');\n      error.status = 404;\n      throw error;\n    }\n\n    if (requireEditable && check.rows[0].inviteStatus === 'submitted') {\n      const error: any = new Error('PAGE_ALREADY_SUBMITTED');\n      error.status = 410;\n      throw error;\n    }\n\n    const error: any = new Error('PAGE_CONFLICT');"""
+          assert old in s, 'submitted conflict insertion point not found'
+          s = s.replace(old, new, 1)
+
+          old = """      expectedVersion,\n      'draft'\n    );"""
+          new = """      expectedVersion,\n      'draft',\n      true\n    );"""
+          assert old in s, 'invite save call not found'
+          s = s.replace(old, new, 1)
+
+          old = """    if (err?.status === 409) {\n      res.status(409).json({\n        error: 'PAGE_CONFLICT',\n        latestRemoteVersion: err.latestRemoteVersion,\n      });\n      return;\n    }\n\n    if (\n      err?.message === 'INVALID_PREVIEW_FORMAT'"""
+          new = """    if (err?.status === 409) {\n      res.status(409).json({\n        error: 'PAGE_CONFLICT',\n        latestRemoteVersion: err.latestRemoteVersion,\n      });\n      return;\n    }\n\n    if (err?.status === 410 || err?.message === 'PAGE_ALREADY_SUBMITTED') {\n      res.status(410).json({ error: 'PAGE_ALREADY_SUBMITTED' });\n      return;\n    }\n\n    if (\n      err?.message === 'INVALID_PREVIEW_FORMAT'"""
+          # Replace only the first matching block after invite save route by targeting its vicinity.
+          invite_route_pos = s.index("app.put('/api/page-invites/:token'")
+          tail = s[invite_route_pos:]
+          assert old in tail, 'invite error handler insertion point not found'
+          tail = tail.replace(old, new, 1)
+          s = s[:invite_route_pos] + tail
+
+          marker = """app.get('/api/health', async (_req, res) => {"""
+          submit_route = """app.post('/api/page-invites/:token/submit', async (req, res) => {\n  try {\n    const result = await pool.query(\n      `UPDATE pages\n       SET invite_status = 'submitted',\n           submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP),\n           updated_at = CURRENT_TIMESTAMP\n       WHERE invite_token = $1\n         AND invite_status IN ('invited', 'draft')\n       RETURNING\n         id,\n         page_number AS \"pageNumber\",\n         submitted_at AS \"submittedAt\"`,\n      [req.params.token]\n    );\n\n    if (result.rowCount === 0) {\n      const check = await pool.query(\n        `SELECT invite_status AS \"inviteStatus\"\n         FROM pages\n         WHERE invite_token = $1`,\n        [req.params.token]\n      );\n\n      if (check.rowCount === 0) {\n        res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });\n        return;\n      }\n\n      if (check.rows[0].inviteStatus === 'submitted') {\n        res.status(409).json({ error: 'PAGE_ALREADY_SUBMITTED' });\n        return;\n      }\n\n      res.status(409).json({ error: 'PAGE_NOT_READY_FOR_SUBMIT' });\n      return;\n    }\n\n    res.status(200).json({\n      success: true,\n      pageId: result.rows[0].id,\n      pageNumber: result.rows[0].pageNumber,\n      submittedAt: result.rows[0].submittedAt,\n    });\n  } catch (err) {\n    console.error('Invite page submit error:', err);\n    res.status(500).json({ error: 'PAGE_SUBMIT_FAILED' });\n  }\n});\n\n"""
+          assert marker in s, 'health marker not found'
+          s = s.replace(marker, submit_route + marker, 1)
+
+          old = """         invite_status AS \"inviteStatus\",\n         invite_token AS \"inviteToken\",\n         updated_at AS \"updatedAt\""""
+          new = """         invite_status AS \"inviteStatus\",\n         invite_token AS \"inviteToken\",\n         submitted_at AS \"submittedAt\",\n         updated_at AS \"updatedAt\""""
+          assert old in s, 'owner page select not found'
+          s = s.replace(old, new, 1)
+
+          old = """      invite_status TEXT NOT NULL DEFAULT 'empty',\n      invite_created_at TIMESTAMPTZ,\n      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"""
+          new = """      invite_status TEXT NOT NULL DEFAULT 'empty',\n      invite_created_at TIMESTAMPTZ,\n      submitted_at TIMESTAMPTZ,\n      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"""
+          assert old in s, 'pages table columns not found'
+          s = s.replace(old, new, 1)
+
+          old = """  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);"""
+          new = """  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);\n  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);"""
+          assert old in s, 'submitted_at migration point not found'
+          s = s.replace(old, new, 1)
+
+          server_path.write_text(s, encoding='utf-8')
+
+          page_path = Path('src/PageInviteEditorPage.tsx')
+          page = page_path.read_text(encoding='utf-8')
+
+          page = page.replace(
+            "import { useCallback, useEffect, useState } from 'react';\nimport { MemoryBookEditor, type PageData } from './MemoryBookEditor';",
+            "import { useCallback, useEffect, useRef, useState } from 'react';\nimport {\n  MemoryBookEditor,\n  type MemoryBookEditorRef,\n  type PageData,\n} from './MemoryBookEditor';"
+          )
+
+          old = """export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {\n  const [page, setPage] = useState<InvitePageData | null>(null);\n  const [loading, setLoading] = useState(true);\n  const [error, setError] = useState<string | null>(null);"""
+          new = """export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {\n  const editorRef = useRef<MemoryBookEditorRef>(null);\n  const [page, setPage] = useState<InvitePageData | null>(null);\n  const [loading, setLoading] = useState(true);\n  const [error, setError] = useState<string | null>(null);\n  const [submitting, setSubmitting] = useState(false);\n  const [submitted, setSubmitted] = useState(false);"""
+          assert old in page, 'frontend state block not found'
+          page = page.replace(old, new, 1)
+
+          marker = """  if (loading) {\n    return <div style={styles.message}>Meghívó betöltése...</div>;\n  }"""
+          handler = """  const submitPage = async () => {\n    if (submitting) return;\n\n    const confirmed = window.confirm(\n      'Beküldés után ezt az oldalt már nem tudod módosítani. Biztosan beküldöd?'\n    );\n\n    if (!confirmed) return;\n\n    try {\n      setSubmitting(true);\n      setError(null);\n\n      await editorRef.current?.flush();\n\n      const response = await fetch(\n        `${API_BASE}/api/page-invites/${encodeURIComponent(token)}/submit`,\n        { method: 'POST' }\n      );\n\n      const data = await response.json().catch(() => ({}));\n\n      if (!response.ok) {\n        if (data?.error === 'PAGE_ALREADY_SUBMITTED') {\n          setSubmitted(true);\n          return;\n        }\n        throw new Error(data?.error || 'PAGE_SUBMIT_FAILED');\n      }\n\n      setSubmitted(true);\n    } catch (err) {\n      console.error(err);\n      setError(\n        err instanceof Error && err.message === 'PAGE_CONFLICT'\n          ? 'Az oldal közben megváltozott. Frissítsd az oldalt, majd próbáld újra.'\n          : 'A beküldés nem sikerült. A szerkesztés még nincs lezárva.'\n      );\n    } finally {\n      setSubmitting(false);\n    }\n  };\n\n  if (submitted) {\n    return (\n      <main style={styles.page}>\n        <section style={styles.header}>\n          <div style={styles.brand}>MemoryBook</div>\n          <h1 style={styles.title}>{page?.bookTitle || 'MemoryBook'}</h1>\n          <div style={styles.successBox}>\n            Az oldalad elküldve. Köszönjük!\n          </div>\n          <p style={styles.note}>\n            A beküldött oldal már nem módosítható ezen a meghívón keresztül.\n          </p>\n        </section>\n      </main>\n    );\n  }\n\n"""
+          assert marker in page, 'frontend loading marker not found'
+          page = page.replace(marker, handler + marker, 1)
+
+          old = """        <p style={styles.note}>\n          Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.\n        </p>\n      </section>\n\n      <MemoryBookEditor page={page} onSavePage={savePage} />"""
+          new = """        <p style={styles.note}>\n          Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.\n        </p>\n        <div style={styles.submitArea}>\n          <button\n            type=\"button\"\n            onClick={submitPage}\n            disabled={submitting}\n            style={styles.submitButton}\n          >\n            {submitting ? 'Beküldés...' : 'Oldal beküldése'}\n          </button>\n          <div style={styles.submitWarning}>\n            Beküldés után az oldal végleg lezárul számodra.\n          </div>\n        </div>\n        {error && <div style={styles.error}>{error}</div>}\n      </section>\n\n      <MemoryBookEditor ref={editorRef} page={page} onSavePage={savePage} />"""
+          assert old in page, 'frontend editor block not found'
+          page = page.replace(old, new, 1)
+
+          old = """  message: {\n    padding: 40,\n    textAlign: 'center',\n    fontFamily: 'Arial, sans-serif',\n  },\n};"""
+          new = """  submitArea: {\n    marginTop: 16,\n    display: 'flex',\n    flexWrap: 'wrap',\n    alignItems: 'center',\n    gap: 10,\n  },\n  submitButton: {\n    padding: '11px 16px',\n    border: 0,\n    borderRadius: 9,\n    background: '#0f172a',\n    color: '#ffffff',\n    fontSize: 15,\n    fontWeight: 800,\n    cursor: 'pointer',\n  },\n  submitWarning: {\n    color: '#92400e',\n    fontSize: 13,\n    fontWeight: 700,\n  },\n  error: {\n    marginTop: 12,\n    padding: 12,\n    borderRadius: 8,\n    background: '#fef2f2',\n    color: '#991b1b',\n  },\n  successBox: {\n    marginTop: 16,\n    padding: 14,\n    borderRadius: 10,\n    background: '#ecfdf5',\n    color: '#065f46',\n    fontWeight: 800,\n  },\n  message: {\n    padding: 40,\n    textAlign: 'center',\n    fontFamily: 'Arial, sans-serif',\n  },\n};"""
+          assert old in page, 'frontend styles block not found'
+          page = page.replace(old, new, 1)
+
+          page_path.write_text(page, encoding='utf-8')
+
+      - name: Commit patch
+        run: |
+          git config user.name "ChatGPT MemoryBook"
+          git config user.email "actions@users.noreply.github.com"
+          git add server/index.ts src/PageInviteEditorPage.tsx
+          git commit -m "Add final page submission lock"
+          git push
