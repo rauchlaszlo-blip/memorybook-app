@@ -5,14 +5,40 @@ on:
     branches:
       - notification-deeplink-2026-09-08
 
+permissions:
+  contents: write
+
 jobs:
   notification-ui-browser-test:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: notification-deeplink-2026-09-08
+
+      - name: Keep notification bell at the right edge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/MyBooksPage.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '''          <div style={styles.headerActions}>
+  <NotificationMenu />
+  <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+</div>'''
+          new = '''          <div style={styles.headerActions}>
+            <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+            <NotificationMenu />
+          </div>'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('Header action marker not found')
+          path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -192,6 +218,16 @@ jobs:
             process.exit(1);
           });
           NODE
+
+      - name: Commit checked source changes and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/notification-ui-browser-test.yml
+          git rm -f .github/workflows/notification-mobile-panel-fix.yml
+          git add src/MyBooksPage.tsx src/OwnerBookPage.tsx
+          git commit -m "Complete notification mobile deeplink flow"
+          git push origin HEAD:notification-deeplink-2026-09-08
 
       - name: Show preview log on failure
         if: failure()
