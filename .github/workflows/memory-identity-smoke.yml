@@ -1,0 +1,18 @@
+name: Memory Identity Smoke
+
+on:
+  push:
+    branches:
+      - memory-identity-smoke-2026-09-08
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Playwright
+        run: |
+          npm install @playwright/test@1.55.0 --no-save >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+      - name: Run memory identity test
+        run: npx playwright test tests/memory-identity-metadata.spec.js --workers=1
