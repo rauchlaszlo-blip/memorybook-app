@@ -57,7 +57,7 @@ test('standard page invite becomes resend-only after send and carries a 14-day w
   expect((await inviteCreatePromise).ok()).toBeTruthy();
 
   await expect(page.getByRole('heading', { name: 'Meghívás küldése' })).toBeVisible();
-  await expect(page.getByText(/A meghívó 14 napig használható/)).toBeVisible();
+  await expect(page.getByText(/^A meghívó 14 napig használható, lejár:/)).toBeVisible();
 
   // Opening and then cancelling the dialog must NOT count as sent.
   const beforeSend = await (
