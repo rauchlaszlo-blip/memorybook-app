@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { MemoryBookEditor, type PageData } from './MemoryBookEditor';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  MemoryBookEditor,
+  type MemoryBookEditorRef,
+  type PageData,
+} from './MemoryBookEditor';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -18,9 +22,12 @@ type PageInviteEditorPageProps = {
 };
 
 export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
+  const editorRef = useRef<MemoryBookEditorRef>(null);
   const [page, setPage] = useState<InvitePageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -103,6 +110,64 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
     [token]
   );
 
+  const submitPage = async () => {
+    if (submitting) return;
+
+    const confirmed = window.confirm(
+      'Beküldés után ezt az oldalt már nem tudod módosítani. Biztosan beküldöd?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      await editorRef.current?.flush();
+
+      const response = await fetch(
+        `${API_BASE}/api/page-invites/${encodeURIComponent(token)}/submit`,
+        { method: 'POST' }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (data?.error === 'PAGE_ALREADY_SUBMITTED') {
+          setSubmitted(true);
+          return;
+        }
+        throw new Error(data?.error || 'PAGE_SUBMIT_FAILED');
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error && err.message === 'PAGE_CONFLICT'
+          ? 'Az oldal közben megváltozott. Frissítsd az oldalt, majd próbáld újra.'
+          : 'A beküldés nem sikerült. A szerkesztés még nincs lezárva.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <main style={styles.page}>
+        <section style={styles.header}>
+          <div style={styles.brand}>MemoryBook</div>
+          <h1 style={styles.title}>{page?.bookTitle || 'MemoryBook'}</h1>
+          <div style={styles.successBox}>Az oldalad elküldve. Köszönjük!</div>
+          <p style={styles.note}>
+            A beküldött oldal már nem módosítható ezen a meghívón keresztül.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   if (loading) {
     return <div style={styles.message}>Meghívó betöltése...</div>;
   }
@@ -116,15 +181,27 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
       <section style={styles.header}>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{page.bookTitle}</h1>
-        <div style={styles.subtitle}>
-          A te oldalad: {page.pageNumber}. oldal
-        </div>
+        <div style={styles.subtitle}>A te oldalad: {page.pageNumber}. oldal</div>
         <p style={styles.note}>
           Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.
         </p>
+        <div style={styles.submitArea}>
+          <button
+            type="button"
+            onClick={submitPage}
+            disabled={submitting}
+            style={styles.submitButton}
+          >
+            {submitting ? 'Beküldés...' : 'Oldal beküldése'}
+          </button>
+          <div style={styles.submitWarning}>
+            Beküldés után az oldal végleg lezárul számodra.
+          </div>
+        </div>
+        {error && <div style={styles.error}>{error}</div>}
       </section>
 
-      <MemoryBookEditor page={page} onSavePage={savePage} />
+      <MemoryBookEditor ref={editorRef} page={page} onSavePage={savePage} />
     </main>
   );
 }
@@ -164,6 +241,43 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '10px 0 0',
     color: '#64748b',
     lineHeight: 1.5,
+  },
+  submitArea: {
+    marginTop: 16,
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  submitButton: {
+    padding: '11px 16px',
+    border: 0,
+    borderRadius: 9,
+    background: '#0f172a',
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  submitWarning: {
+    color: '#92400e',
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  error: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    background: '#fef2f2',
+    color: '#991b1b',
+  },
+  successBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 10,
+    background: '#ecfdf5',
+    color: '#065f46',
+    fontWeight: 800,
   },
   message: {
     padding: 40,
