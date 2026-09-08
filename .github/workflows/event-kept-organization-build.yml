@@ -1,0 +1,32 @@
+name: Event Kept Organization Build
+on:
+  push:
+    branches:
+      - event-kept-organization-2026-09-08
+    paths:
+      - scripts/patch-event-kept-organization.py
+      - .github/workflows/event-kept-organization-build.yml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply backend patch
+        run: python scripts/patch-event-kept-organization.py
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Commit application changes
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add server/index.ts src/OrganizerContributionsPage.tsx
+          if git diff --cached --quiet; then
+            echo "No application changes to commit"
+          else
+            git commit -m "Organize kept event contributions"
+            git push
+          fi
