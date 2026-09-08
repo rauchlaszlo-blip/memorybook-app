@@ -1,0 +1,70 @@
+name: Owner Mobile Patch
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/owner-mobile-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Improve owner book mobile layout
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/OwnerBookPage.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              ("    padding: '24px 18px 48px',", "    padding: '16px 12px 36px',"),
+              ("    marginBottom: 24,", "    marginBottom: 18,"),
+              ("    display: 'inline-block',\n    marginBottom: 16,", "    display: 'inline-flex',\n    alignItems: 'center',\n    minHeight: 44,\n    marginBottom: 10,"),
+              ("    fontSize: 32,", "    fontSize: 'clamp(24px, 8vw, 32px)',\n    lineHeight: 1.15,\n    overflowWrap: 'anywhere',"),
+              ("    lineHeight: 1.5,\n  },\n  panel:", "    lineHeight: 1.5,\n    fontSize: 14,\n  },\n  panel:"),
+              ("    gridTemplateColumns: 'repeat(auto-fit, minmax(235px, 1fr))',", "    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',"),
+              ("    padding: 18,\n    borderRadius: 14,", "    padding: 16,\n    borderRadius: 14,"),
+              ("    justifyContent: 'space-between',\n    gap: 8,", "    justifyContent: 'space-between',\n    flexWrap: 'wrap',\n    gap: 8,"),
+              ("    fontSize: 18,\n  },\n  status:", "    fontSize: 18,\n    minWidth: 0,\n  },\n  status:"),
+              ("    fontWeight: 700,\n  },\n  inviteBox:", "    fontWeight: 700,\n    flexShrink: 0,\n  },\n  inviteBox:"),
+              ("    overflow: 'hidden',\n    marginBottom: 10,", "    overflow: 'hidden',\n    marginBottom: 10,"),
+              ("    textOverflow: 'ellipsis',\n    whiteSpace: 'nowrap',", "    overflowWrap: 'anywhere',\n    wordBreak: 'break-word',\n    whiteSpace: 'normal',\n    lineHeight: 1.4,"),
+              ("    width: '100%',\n    padding: '10px 12px',\n    border: 0,", "    width: '100%',\n    minHeight: 46,\n    padding: '10px 12px',\n    border: 0,"),
+              ("    fontWeight: 800,\n    cursor: 'pointer',\n  },\n  secondaryButton:", "    fontSize: 14,\n    fontWeight: 800,\n    cursor: 'pointer',\n    touchAction: 'manipulation',\n  },\n  secondaryButton:"),
+              ("    width: '100%',\n    padding: '10px 12px',\n    border: '1px solid #cbd5e1',", "    width: '100%',\n    minHeight: 46,\n    padding: '10px 12px',\n    border: '1px solid #cbd5e1',"),
+              ("    background: '#ffffff',\n    color: '#334155',\n    fontWeight: 800,\n    cursor: 'pointer',\n  },\n  dangerButton:", "    background: '#ffffff',\n    color: '#334155',\n    fontSize: 14,\n    fontWeight: 800,\n    cursor: 'pointer',\n    touchAction: 'manipulation',\n  },\n  dangerButton:"),
+              ("    width: '100%',\n    padding: '10px 12px',\n    border: '1px solid #fecaca',", "    width: '100%',\n    minHeight: 46,\n    padding: '10px 12px',\n    border: '1px solid #fecaca',"),
+              ("    background: '#fff7f7',\n    color: '#b91c1c',\n    fontWeight: 800,\n    cursor: 'pointer',", "    background: '#fff7f7',\n    color: '#b91c1c',\n    fontSize: 14,\n    fontWeight: 800,\n    cursor: 'pointer',\n    touchAction: 'manipulation',"),
+          ]
+
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Pattern not found: {old[:70]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Build
+        run: npm install && npm run build
+
+      - name: Commit owner mobile improvements
+        shell: bash
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add src/OwnerBookPage.tsx
+          git commit -m "Improve owner book mobile usability"
+          git push origin HEAD:main
