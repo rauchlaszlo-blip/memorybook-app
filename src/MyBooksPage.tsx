@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { NotificationMenu } from './NotificationMenu';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -139,7 +140,10 @@ export function MyBooksPage() {
             <h1 style={styles.title}>Saját könyveim</h1>
             {user && <div style={styles.userLine}>{user.name || user.email || 'Bejelentkezett felhasználó'}</div>}
           </div>
-          <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+          <div style={styles.headerActions}>
+  <NotificationMenu />
+  <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+</div>
         </header>
 
         {!loading && !error && (
@@ -235,7 +239,8 @@ export function MyBooksPage() {
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f1f5f9', padding: '24px 18px 48px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
   container: { width: '100%', maxWidth: 980, margin: '0 auto' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' },
+  headerActions: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   brand: { fontSize: 13, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#64748b' },
   title: { margin: '6px 0 4px', fontSize: 32, color: '#0f172a' },
   userLine: { color: '#64748b', fontSize: 14, overflowWrap: 'anywhere' },
