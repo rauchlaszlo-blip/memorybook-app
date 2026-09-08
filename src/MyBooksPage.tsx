@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { NotificationMenu } from './NotificationMenu';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { getAppLanguage, type AppLanguage } from './i18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -16,6 +17,7 @@ type BookSummary = {
   pageCount: number;
   contributionCount: number;
   bookType?: 'standard' | 'event' | string;
+  language?: AppLanguage;
   createdAt: string;
 };
 type Entitlement = {
@@ -99,7 +101,11 @@ export function MyBooksPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, entitlementId: selectedEntitlementId }),
+        body: JSON.stringify({
+          title,
+          entitlementId: selectedEntitlementId,
+          language: getAppLanguage(),
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'BOOK_CREATE_FAILED');

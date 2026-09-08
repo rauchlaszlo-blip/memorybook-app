@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { InviteSendDialog } from './InviteSendDialog.tsx';
 import { EventBookSettings } from './EventBookSettings.tsx';
+import { SUPPORTED_APP_LANGUAGES, type AppLanguage } from './i18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -37,6 +38,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [eventInviteToken, setEventInviteToken] = useState<string | null>(null);
   const [bookType, setBookType] = useState<'standard' | 'event'>('standard');
+  const [bookLanguage, setBookLanguage] = useState<AppLanguage>('hu');
+  const [languageSaving, setLanguageSaving] = useState(false);
   const [pages, setPages] = useState<OwnerPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         setBookTitle(data.book?.title || 'MemoryBook');
         setEventInviteToken(data.book?.eventInviteToken || null);
         setBookType(data.book?.bookType === 'event' ? 'event' : 'standard');
+        setBookLanguage(data.book?.language === 'en' ? 'en' : 'hu');
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
         console.error(err);
@@ -391,6 +395,39 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
   };
 
+  const updateBookLanguage = async (language: AppLanguage) => {
+    try {
+      setLanguageSaving(true);
+      setError(null);
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/language`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language }),
+        }
+      );
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.book?.language) {
+        throw new Error(data?.error || 'BOOK_LANGUAGE_UPDATE_FAILED');
+      }
+
+      setBookLanguage(data.book.language === 'en' ? 'en' : 'hu');
+    } catch (err) {
+      console.error(err);
+      setError('A könyv nyelvét nem sikerült módosítani.');
+    } finally {
+      setLanguageSaving(false);
+    }
+  };
+
   return (
     <main style={styles.page}>
       <section style={styles.container}>
@@ -399,6 +436,20 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             <a href="/my-books" style={styles.backLink}>← Saját könyveim</a>
             <div style={styles.brand}>MemoryBook</div>
             <h1 style={styles.title}>{bookTitle}</h1>
+            <label style={styles.bookLanguageLabel}>
+              Könyv nyelve
+              <select
+                value={bookLanguage}
+                onChange={(event) => void updateBookLanguage(event.target.value as AppLanguage)}
+                disabled={languageSaving}
+                style={styles.bookLanguageSelect}
+                aria-label="Könyv nyelve"
+              >
+                {SUPPORTED_APP_LANGUAGES.map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              </select>
+            </label>
             <p style={styles.subtitle}>
               {bookType === 'event'
                 ? 'A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.'
@@ -668,6 +719,25 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 'clamp(24px, 8vw, 32px)',
     lineHeight: 1.15,
     overflowWrap: 'anywhere',
+  },
+  bookLanguageLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#475569',
+  },
+  bookLanguageSelect: {
+    minHeight: 40,
+    padding: '7px 9px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    background: '#ffffff',
+    color: '#334155',
+    fontWeight: 700,
   },
   subtitle: {
     maxWidth: 760,
