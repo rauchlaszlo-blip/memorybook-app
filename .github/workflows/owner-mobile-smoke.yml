@@ -1,0 +1,124 @@
+name: Owner Mobile Smoke
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/owner-mobile-smoke.yml
+
+jobs:
+  owner-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test owner mobile management flow
+        shell: bash
+        run: |
+          npm install @playwright/test@1.55.0 --no-save >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          cat > tests/owner-mobile-smoke.spec.js <<'EOF'
+          import { test, expect } from '@playwright/test';
+
+          test('owner page is usable on mobile', async ({ browser }) => {
+            const base = 'https://memorybook-app.onrender.com';
+            const stamp = Date.now();
+            const email = `owner-mobile-${stamp}@example.com`;
+            const password = `Test-${stamp}-Ow9!`;
+            const title = `Owner Mobile ${stamp}`;
+
+            const context = await browser.newContext({
+              viewport: { width: 390, height: 844 },
+              isMobile: true,
+              hasTouch: true,
+            });
+            const page = await context.newPage();
+            const api = context.request;
+
+            const signUp = await api.post(`${base}/api/auth/sign-up/email`, {
+              headers: { Origin: base },
+              data: { name: 'Owner Mobile Test', email, password },
+            });
+            expect([200, 201]).toContain(signUp.status());
+
+            const createBook = await api.post(`${base}/api/my/books`, {
+              data: { title },
+            });
+            expect(createBook.status()).toBe(201);
+            const bookId = (await createBook.json()).book.id;
+
+            await page.goto(`${base}/my-books/${bookId}`, { waitUntil: 'networkidle' });
+            await expect(page.getByRole('heading', { name: title })).toBeVisible();
+
+            const noOverflow = async () => {
+              const size = await page.evaluate(() => ({
+                scrollWidth: document.documentElement.scrollWidth,
+                innerWidth: window.innerWidth,
+              }));
+              expect(size.scrollWidth).toBeLessThanOrEqual(size.innerWidth);
+            };
+            await noOverflow();
+
+            const backBox = await page.getByRole('link', { name: 'Saját könyveim' }).boundingBox();
+            expect(backBox).not.toBeNull();
+            expect(backBox.height).toBeGreaterThanOrEqual(44);
+
+            const firstCard = page.locator('article').first();
+            await expect(firstCard).toBeVisible();
+            const inviteButton = firstCard.getByRole('button', { name: 'Meghívó létrehozása' });
+            const inviteButtonBox = await inviteButton.boundingBox();
+            expect(inviteButtonBox).not.toBeNull();
+            expect(inviteButtonBox.height).toBeGreaterThanOrEqual(46);
+
+            await inviteButton.click();
+            await expect(firstCard.getByRole('button', { name: 'Meghívó link másolása' })).toBeVisible();
+            await noOverflow();
+
+            const ownerPagesResponse = await api.get(`${base}/api/my/books/${bookId}/pages`);
+            expect(ownerPagesResponse.ok()).toBeTruthy();
+            const ownerPages = (await ownerPagesResponse.json()).pages;
+            const firstPage = ownerPages[0];
+            expect(firstPage.inviteToken).toBeTruthy();
+
+            const inviteDataResponse = await api.get(`${base}/api/page-invites/${firstPage.inviteToken}`);
+            expect(inviteDataResponse.ok()).toBeTruthy();
+            const inviteData = await inviteDataResponse.json();
+
+            const saveResponse = await api.put(`${base}/api/page-invites/${firstPage.inviteToken}`, {
+              data: {
+                expectedVersion: inviteData.version,
+                canvasData: { version: '7.4.0', objects: [] },
+              },
+            });
+            expect(saveResponse.ok()).toBeTruthy();
+
+            const submitResponse = await api.post(`${base}/api/page-invites/${firstPage.inviteToken}/submit`, {
+              data: { authorShareApproved: true },
+            });
+            expect(submitResponse.ok()).toBeTruthy();
+
+            await page.reload({ waitUntil: 'networkidle' });
+            await expect(firstCard.getByText('Beküldve')).toBeVisible();
+            await noOverflow();
+
+            for (const label of [
+              'Nyilvános megosztás jóváhagyása',
+              'Elrejtés / archiválás',
+              'Végleges törlés',
+            ]) {
+              const box = await firstCard.getByRole('button', { name: label }).boundingBox();
+              expect(box).not.toBeNull();
+              expect(box.height).toBeGreaterThanOrEqual(46);
+            }
+
+            console.log('PASS: owner page has no horizontal overflow at 390x844');
+            console.log('PASS: owner back link is >= 44px');
+            console.log('PASS: invite action is touch friendly and works');
+            console.log('PASS: submitted-page management buttons are >= 46px');
+            console.log('PASS: owner mobile management flow renders correctly');
+
+            await context.close();
+          });
+          EOF
+          npx playwright test tests/owner-mobile-smoke.spec.js --workers=1
