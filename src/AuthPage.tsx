@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { authClient } from './authClient';
 
@@ -24,12 +24,24 @@ export function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleReady, setGoogleReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(
     oauthError === 'google' ? 'A Google-belépés nem sikerült. Próbáld újra.' : null
   );
 
+  useEffect(() => {
+    fetch(`${API_BASE}/api/auth-capabilities`)
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data) => setGoogleReady(Boolean(data?.google)))
+      .catch(() => setGoogleReady(false));
+  }, []);
+
   const signInWithGoogle = async () => {
     setError(null);
+    if (!googleReady) {
+      setError('A Google-belépés technikailag elő van készítve, de az OAuth kliens még nincs aktiválva.');
+      return;
+    }
     setLoading(true);
 
     const errorCallbackURL = `/login?oauthError=google&returnTo=${encodeURIComponent(returnTo)}`;
@@ -138,12 +150,24 @@ export function AuthPage() {
           type="button"
           onClick={signInWithGoogle}
           style={styles.googleButton}
-          disabled={loading}
+          disabled={loading || googleReady !== true}
           aria-label="Folytatás Google-fiókkal"
         >
           <span style={styles.googleMark} aria-hidden="true">G</span>
-          {loading ? 'Kapcsolódás...' : 'Folytatás Google-fiókkal'}
+          {loading
+            ? 'Kapcsolódás...'
+            : googleReady === false
+              ? 'Google-belépés beállítás alatt'
+              : googleReady === null
+                ? 'Google-belépés ellenőrzése...'
+                : 'Folytatás Google-fiókkal'}
         </button>
+
+        {googleReady === false && (
+          <div style={styles.setupNotice}>
+            A Google OAuth kliens létrehozása után ez a gomb automatikusan aktiválódik.
+          </div>
+        )}
 
         {error && <div style={styles.error}>{error}</div>}
 
@@ -305,6 +329,15 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #cbd5e1',
     fontWeight: 900,
     fontSize: 15,
+  },
+  setupNotice: {
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 8,
+    background: '#f8fafc',
+    color: '#64748b',
+    fontSize: 13,
+    lineHeight: 1.45,
   },
   error: {
     marginTop: 14,
