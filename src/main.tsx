@@ -13,6 +13,9 @@ import { InviteCtaPage } from './InviteCtaPage.tsx'
 import { EventGuestbookQrPage } from './EventGuestbookQrPage.tsx'
 import { PurchasePage } from './PurchasePage.tsx'
 import { GiftRedeemPage } from './GiftRedeemPage.tsx'
+import { initializeAppLanguage } from './i18n'
+
+initializeAppLanguage()
 
 const path = window.location.pathname
 const ownerBookMatch = path.match(/^\/my-books\/([^/]+)$/)
