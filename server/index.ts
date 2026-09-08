@@ -237,6 +237,12 @@ async function savePageVersioned(
   return row;
 }
 
+app.get('/api/auth-capabilities', (_req, res) => {
+  res.status(200).json({
+    google: Boolean(process.env.GOOGLE_CLIENT_ID) && Boolean(process.env.GOOGLE_CLIENT_SECRET),
+  });
+});
+
 app.get('/api/me', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
