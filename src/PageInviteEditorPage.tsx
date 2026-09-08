@@ -4,6 +4,8 @@ import {
   type MemoryBookEditorRef,
   type PageData,
 } from './MemoryBookEditor';
+import { detectBrowserAppLanguage, type AppLanguage } from './i18n';
+import { getInviteEditorMessages } from './inviteEditorI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -15,6 +17,7 @@ type InvitePageData = PageData & {
   bookId: string;
   bookTitle: string;
   inviteStatus: string;
+  language: AppLanguage;
 };
 
 type PageInviteEditorPageProps = {
@@ -23,12 +26,17 @@ type PageInviteEditorPageProps = {
 
 export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const editorRef = useRef<MemoryBookEditorRef>(null);
+  const [fallbackLanguage] = useState<AppLanguage>(() => detectBrowserAppLanguage());
   const [page, setPage] = useState<InvitePageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [authorShareApproved, setAuthorShareApproved] = useState(false);
+
+  const language: AppLanguage =
+    page?.language === 'en' ? 'en' : page?.language === 'hu' ? 'hu' : fallbackLanguage;
+  const copy = getInviteEditorMessages(language).page;
 
   useEffect(() => {
     const load = async () => {
@@ -49,13 +57,17 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
           throw new Error('PAGE_INVITE_LOAD_FAILED');
         }
 
-        setPage(data);
+        setPage({
+          ...data,
+          language: data?.language === 'hu' ? 'hu' : 'en',
+        });
       } catch (err) {
         console.error(err);
+        const fallbackCopy = getInviteEditorMessages(fallbackLanguage).page;
         setError(
           err instanceof Error && err.message === 'PAGE_ALREADY_SUBMITTED'
-            ? 'Ez az oldal már be lett küldve, ezért nem szerkeszthető.'
-            : 'Ez a meghívó nem érhető el.'
+            ? fallbackCopy.alreadySubmitted
+            : fallbackCopy.unavailable
         );
       } finally {
         setLoading(false);
@@ -63,7 +75,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
     };
 
     load();
-  }, [token]);
+  }, [token, fallbackLanguage]);
 
   const savePage = useCallback(
     async (
@@ -114,10 +126,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const submitPage = async () => {
     if (submitting) return;
 
-    const confirmed = window.confirm(
-      'Beküldés után ezt az oldalt már nem tudod módosítani. Biztosan beküldöd?'
-    );
-
+    const confirmed = window.confirm(copy.confirmSubmit);
     if (!confirmed) return;
 
     try {
@@ -152,8 +161,8 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
       console.error(err);
       setError(
         err instanceof Error && err.message === 'PAGE_CONFLICT'
-          ? 'Az oldal közben megváltozott. Frissítsd az oldalt, majd próbáld újra.'
-          : 'A beküldés nem sikerült. A szerkesztés még nincs lezárva.'
+          ? copy.conflict
+          : copy.submitFailed
       );
     } finally {
       setSubmitting(false);
@@ -162,18 +171,14 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
 
   if (submitted) {
     return (
-      <main style={styles.page}>
+      <main style={styles.page} lang={language}>
         <section style={styles.header}>
           <div style={styles.brand}>MemoryBook</div>
           <h1 style={styles.title}>{page?.bookTitle || 'MemoryBook'}</h1>
-          <div style={styles.successBox}>Az oldalad elküldve. Köszönjük!</div>
+          <div style={styles.successBox}>{copy.success}</div>
+          <p style={styles.note}>{copy.submittedLocked}</p>
           <p style={styles.note}>
-            A beküldött oldal már nem módosítható ezen a meghívón keresztül.
-          </p>
-          <p style={styles.note}>
-            {authorShareApproved
-              ? 'Hozzájárultál a nyilvános megosztáshoz. Az oldal csak akkor válik nyilvánossá, ha a könyv tulajdonosa is jóváhagyja.'
-              : 'Nem adtál engedélyt nyilvános megosztásra.'}
+            {authorShareApproved ? copy.shareApproved : copy.shareDenied}
           </p>
         </section>
       </main>
@@ -181,34 +186,35 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   }
 
   if (loading) {
-    return <div style={styles.message}>Meghívó betöltése...</div>;
+    const loadingCopy = getInviteEditorMessages(fallbackLanguage).page;
+    return <div style={styles.message} lang={fallbackLanguage}>{loadingCopy.loading}</div>;
   }
 
   if (error || !page) {
-    return <div style={styles.message}>{error || 'Meghívó nem található.'}</div>;
+    const fallbackCopy = getInviteEditorMessages(fallbackLanguage).page;
+    return (
+      <div style={styles.message} lang={fallbackLanguage}>
+        {error || fallbackCopy.notFound}
+      </div>
+    );
   }
 
   return (
-    <main style={styles.page}>
+    <main style={styles.page} lang={language}>
       <section style={styles.header}>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{page.bookTitle}</h1>
-        <div style={styles.subtitle}>A te oldalad: {page.pageNumber}. oldal</div>
-        <p style={styles.note}>
-          Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.
-        </p>
+        <div style={styles.subtitle}>{copy.pageLabel(page.pageNumber)}</div>
+        <p style={styles.note}>{copy.instructions}</p>
         <label style={styles.shareConsent}>
           <input
             type="checkbox"
-            aria-label="Nyilvános megosztás engedélyezése"
+            aria-label={copy.shareConsentAria}
             checked={authorShareApproved}
             style={{ width: 20, height: 20, flex: '0 0 auto' }}
             onChange={(event) => setAuthorShareApproved(event.target.checked)}
           />
-          <span>
-            Hozzájárulok ahhoz, hogy ezt az oldalt nyilvánosan is meg lehessen osztani.
-            A nyilvános megosztáshoz a könyv tulajdonosának külön jóváhagyása is szükséges.
-          </span>
+          <span>{copy.shareConsent}</span>
         </label>
         <div style={styles.submitArea}>
           <button
@@ -217,16 +223,19 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
             disabled={submitting}
             style={styles.submitButton}
           >
-            {submitting ? 'Beküldés...' : 'Oldal beküldése'}
+            {submitting ? copy.submitting : copy.submit}
           </button>
-          <div style={styles.submitWarning}>
-            Beküldés után az oldal végleg lezárul számodra.
-          </div>
+          <div style={styles.submitWarning}>{copy.submitWarning}</div>
         </div>
         {error && <div style={styles.error}>{error}</div>}
       </section>
 
-      <MemoryBookEditor ref={editorRef} page={page} onSavePage={savePage} />
+      <MemoryBookEditor
+        ref={editorRef}
+        page={page}
+        onSavePage={savePage}
+        language={language}
+      />
     </main>
   );
 }
