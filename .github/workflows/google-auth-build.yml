@@ -1,0 +1,16 @@
+name: Google Auth Build
+
+on:
+  push:
+    branches:
+      - google-auth-primary-2026-09-08
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
