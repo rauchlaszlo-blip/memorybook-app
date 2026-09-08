@@ -33,6 +33,7 @@ app.use(express.json({ limit: '5mb' }));
 
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
+const DEFAULT_BOOK_PAGE_COUNT = 30;
 
 async function deletePreviewSafely(
   previewUrl: string | null | undefined
@@ -170,6 +171,85 @@ app.get('/api/my/books', async (req, res) => {
   } catch (err) {
     console.error('Sajat konyvek betoltesi hiba:', err);
     res.status(500).json({ error: 'OWNER_BOOK_LIST_LOAD_FAILED' });
+  }
+});
+
+app.post('/api/my/books', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+
+  if (!title || title.length > 120) {
+    res.status(400).json({ error: 'INVALID_BOOK_TITLE' });
+    return;
+  }
+
+  let session;
+
+  try {
+    session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+  } catch (err) {
+    console.error('Session betoltesi hiba konyv letrehozasnal:', err);
+    res.status(500).json({ error: 'SESSION_LOAD_FAILED' });
+    return;
+  }
+
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const client = await pool.connect();
+  const bookId = `book-${crypto.randomUUID()}`;
+  const inviteToken = `invite-${crypto.randomUUID()}`;
+
+  try {
+    await client.query('BEGIN');
+
+    const bookResult = await client.query(
+      `INSERT INTO books (
+         id,
+         owner_user_id,
+         title,
+         invite_token
+       )
+       VALUES ($1, $2, $3, $4)
+       RETURNING
+         id,
+         title,
+         created_at AS "createdAt"`,
+      [bookId, session.user.id, title, inviteToken]
+    );
+
+    for (let pageNumber = 1; pageNumber <= DEFAULT_BOOK_PAGE_COUNT; pageNumber += 1) {
+      await client.query(
+        `INSERT INTO pages (id, book_id, page_number)
+         VALUES ($1, $2, $3)`,
+        [`page-${crypto.randomUUID()}`, bookId, pageNumber]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      success: true,
+      book: {
+        ...bookResult.rows[0],
+        pageCount: DEFAULT_BOOK_PAGE_COUNT,
+        contributionCount: 0,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Konyv letrehozasi hiba:', err);
+    res.status(500).json({ error: 'BOOK_CREATE_FAILED' });
+  } finally {
+    client.release();
   }
 });
 
@@ -792,6 +872,11 @@ async function initializeDatabase(): Promise<void> {
   `);
 
   await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS pages_book_page_number_unique
+    ON pages (book_id, page_number)
+  `);
+
+  await pool.query(`
     INSERT INTO pages (id, book_id, page_number)
     VALUES ('page-1', 'book-12b', 1), ('page-2', 'book-12b', 2)
     ON CONFLICT (id) DO NOTHING
@@ -820,7 +905,6 @@ async function startServer(): Promise<void> {
 }
 
 startServer();
-
 
 
 
