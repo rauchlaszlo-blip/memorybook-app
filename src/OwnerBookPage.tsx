@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { InviteSendDialog } from './InviteSendDialog.tsx';
+import { EventBookSettings } from './EventBookSettings.tsx';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -296,6 +297,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
         </section>
       )}
+
+        {bookType === 'event' && <EventBookSettings bookId={bookId} />}
 
         {loading && <div style={styles.panel}>Betöltés...</div>}
         {error && <div style={styles.error}>{error}</div>}
