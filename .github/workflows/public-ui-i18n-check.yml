@@ -1,0 +1,69 @@
+name: Public UI i18n check
+
+on:
+  push:
+    branches:
+      - public-ui-i18n-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: public-ui-i18n-2026-09-08
+
+      - name: Apply public UI translations
+        run: python scripts/apply-public-ui-i18n.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Production build
+        run: npm run build
+
+      - name: Start Vite preview
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/memorybook-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/login >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-preview.log
+          exit 1
+
+      - name: German public mobile UI test
+        run: node scripts/test-public-ui-i18n.mjs
+
+      - name: Commit checked source changes and remove temporary files
+        run: |
+          git checkout -- package.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git rm -f .github/workflows/public-ui-i18n-check.yml scripts/apply-public-ui-i18n.py scripts/test-public-ui-i18n.mjs
+          git commit -m "Localize public and purchase flows in Hungarian English and German"
+          git push origin public-ui-i18n-2026-09-08
+
+      - name: Show preview log on failure
+        if: failure()
+        run: cat /tmp/memorybook-preview.log 2>/dev/null || true
