@@ -1,0 +1,48 @@
+name: Event Guestbook QR Patch V4
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/event-guestbook-qr-patch-v4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mobile-guest-editor-smoke-2026-09-08
+          fetch-depth: 0
+      - name: Preserve and fix patch script
+        run: |
+          cp scripts/patch-event-guestbook-qr.py /tmp/patch-event-guestbook-qr.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/patch-event-guestbook-qr.py')
+          s = p.read_text(encoding='utf-8')
+          old = 'marker = "      <section style={styles.panel}>"'
+          new = 'marker = "        {loading && <div style={styles.panel}>Betöltés...</div>}"'
+          if old not in s:
+              raise SystemExit('script marker definition not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Switch to main
+        run: git checkout main
+      - name: Apply QR patch
+        run: python3 /tmp/patch-event-guestbook-qr.py
+      - name: Install QR dependency
+        run: npm install qrcode@1.5.4 @types/qrcode@1.5.5 --save
+      - name: Build
+        run: npm run build
+      - name: Commit
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add server/index.ts src/JoinPage.tsx src/EventGuestbookQrPage.tsx src/main.tsx src/OwnerBookPage.tsx package.json package-lock.json
+          git commit -m "Add event guestbook QR flow"
+          git push origin main
