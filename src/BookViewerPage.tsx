@@ -41,8 +41,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setCurrentIndex(0);
 
         const response = await fetch(
-          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/pages`
+          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/pages`,
+          { credentials: 'include' }
         );
+
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error('BOOK_PAGES_LOAD_FAILED');
@@ -80,8 +86,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setError(null);
 
         const response = await fetch(
-          `${API_BASE}/api/pages/${encodeURIComponent(currentPageId)}`
+          `${API_BASE}/api/pages/${encodeURIComponent(currentPageId)}`,
+          { credentials: 'include' }
         );
+
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error('PAGE_LOAD_FAILED');
