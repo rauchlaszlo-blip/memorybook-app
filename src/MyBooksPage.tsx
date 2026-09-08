@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -25,6 +26,9 @@ export function MyBooksPage() {
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newBookTitle, setNewBookTitle] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -74,6 +78,58 @@ export function MyBooksPage() {
     load();
   }, []);
 
+  const createBook = async (event: FormEvent) => {
+    event.preventDefault();
+    setCreateError(null);
+
+    const title = newBookTitle.trim();
+
+    if (!title) {
+      setCreateError('Adj nevet az emlékkönyvnek.');
+      return;
+    }
+
+    if (title.length > 120) {
+      setCreateError('A könyv neve legfeljebb 120 karakter lehet.');
+      return;
+    }
+
+    try {
+      setCreating(true);
+
+      const response = await fetch(`${API_BASE}/api/my/books`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'BOOK_CREATE_FAILED');
+      }
+
+      if (data.book) {
+        setBooks((current) => [data.book, ...current]);
+      }
+
+      setNewBookTitle('');
+    } catch (err) {
+      console.error(err);
+      setCreateError('Nem sikerült létrehozni az emlékkönyvet.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const signOut = async () => {
     try {
       await fetch(`${API_BASE}/api/auth/sign-out`, {
@@ -105,6 +161,39 @@ export function MyBooksPage() {
           </button>
         </header>
 
+        {!loading && !error && (
+          <section style={styles.createCard}>
+            <div>
+              <h2 style={styles.createTitle}>Új emlékkönyv</h2>
+              <p style={styles.createText}>
+                Az új könyv 30 üres oldallal indul. Később további oldalak
+                vásárolhatók hozzá.
+              </p>
+            </div>
+
+            <form onSubmit={createBook} style={styles.createForm}>
+              <input
+                type="text"
+                value={newBookTitle}
+                onChange={(event) => setNewBookTitle(event.target.value)}
+                placeholder="Például: Anna 40. születésnapja"
+                maxLength={120}
+                disabled={creating}
+                style={styles.input}
+              />
+              <button
+                type="submit"
+                disabled={creating}
+                style={styles.createButton}
+              >
+                {creating ? 'Létrehozás...' : 'Emlékkönyv létrehozása'}
+              </button>
+            </form>
+
+            {createError && <div style={styles.createError}>{createError}</div>}
+          </section>
+        )}
+
         {loading && <div style={styles.panel}>Betöltés...</div>}
         {error && <div style={styles.error}>{error}</div>}
 
@@ -112,8 +201,8 @@ export function MyBooksPage() {
           <div style={styles.emptyState}>
             <h2 style={styles.emptyTitle}>Még nincs emlékkönyved</h2>
             <p style={styles.emptyText}>
-              A tulajdonosi fiókod működik. A következő lépésben innen lehet
-              majd új emlékkönyvet létrehozni.
+              Adj nevet az első könyvednek a fenti mezőben. A létrehozás után
+              azonnal megjelenik itt.
             </p>
           </div>
         )}
@@ -193,6 +282,55 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#334155',
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  createCard: {
+    marginBottom: 22,
+    padding: 20,
+    background: '#ffffff',
+    borderRadius: 16,
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+  },
+  createTitle: {
+    margin: '0 0 5px',
+    color: '#0f172a',
+    fontSize: 21,
+  },
+  createText: {
+    margin: '0 0 16px',
+    color: '#64748b',
+    lineHeight: 1.5,
+  },
+  createForm: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  input: {
+    flex: '1 1 280px',
+    minWidth: 0,
+    padding: '12px 13px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 9,
+    fontSize: 16,
+    boxSizing: 'border-box',
+  },
+  createButton: {
+    border: 0,
+    borderRadius: 9,
+    padding: '12px 16px',
+    background: '#0f172a',
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  createError: {
+    marginTop: 12,
+    padding: 11,
+    borderRadius: 8,
+    background: '#fef2f2',
+    color: '#991b1b',
+    fontSize: 14,
   },
   panel: {
     padding: 24,
