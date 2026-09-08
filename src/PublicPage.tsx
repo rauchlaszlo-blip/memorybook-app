@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -19,6 +21,9 @@ type PublicPageProps = {
 };
 
 export function PublicPage({ token }: PublicPageProps) {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const [page, setPage] = useState<PublicPageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +46,7 @@ export function PublicPage({ token }: PublicPageProps) {
         setPage(data);
       } catch (err) {
         console.error(err);
-        setError('Ez az oldal nem nyilvános vagy már nem érhető el.');
+        setError(t('Ez az oldal nem nyilvános vagy már nem érhető el.'));
       } finally {
         setLoading(false);
       }
@@ -51,30 +56,31 @@ export function PublicPage({ token }: PublicPageProps) {
   }, [token]);
 
   if (loading) {
-    return <div style={styles.message}>Oldal betöltése...</div>;
+    return <div style={styles.message}>{t('Oldal betöltése...')}</div>;
   }
 
   if (error || !page) {
-    return <div style={styles.message}>{error || 'Az oldal nem található.'}</div>;
+    return <div style={styles.message}>{error || t('Az oldal nem található.')}</div>;
   }
 
   return (
     <main style={styles.page}>
       <section style={styles.header}>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{page.bookTitle}</h1>
-        <div style={styles.subtitle}>Nyilvánosan megosztott oldal · {page.pageNumber}. oldal</div>
+        <div style={styles.subtitle}>{f('Nyilvánosan megosztott oldal · {page}. oldal', { page: page.pageNumber })}</div>
       </section>
 
       <section style={styles.viewer}>
         {page.previewImageUrl ? (
           <img
             src={page.previewImageUrl}
-            alt={`MemoryBook ${page.pageNumber}. oldal`}
+            alt={f('MemoryBook {page}. oldal', { page: page.pageNumber })}
             style={styles.image}
           />
         ) : (
-          <div style={styles.message}>Ehhez az oldalhoz nincs előnézeti kép.</div>
+          <div style={styles.message}>{t('Ehhez az oldalhoz nincs előnézeti kép.')}</div>
         )}
       </section>
     </main>
@@ -96,6 +102,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#ffffff',
     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
   },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   brand: {
     color: '#64748b',
     fontSize: 13,

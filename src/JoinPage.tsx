@@ -1,4 +1,6 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -32,6 +34,9 @@ function getOrCreateDeviceId(): string {
 }
 
 export function JoinPage({ token }: JoinPageProps) {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const [invite, setInvite] = useState<InviteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +56,7 @@ export function JoinPage({ token }: JoinPageProps) {
         setInvite(await response.json());
       } catch (err) {
         console.error(err);
-        setError('Ez a vendégkönyv-meghívó nem érhető el.');
+        setError(t('Ez a vendégkönyv-meghívó nem érhető el.'));
       } finally {
         setLoading(false);
       }
@@ -68,12 +73,12 @@ export function JoinPage({ token }: JoinPageProps) {
     }
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      setError('JPG, PNG vagy WEBP képet válassz.');
+      setError(t('JPG, PNG vagy WEBP képet válassz.'));
       event.target.value = '';
       return;
     }
     if (file.size > MAX_PHOTO_SIZE_BYTES) {
-      setError('A kép legfeljebb 3 MB lehet.');
+      setError(t('A kép legfeljebb 3 MB lehet.'));
       event.target.value = '';
       return;
     }
@@ -88,7 +93,7 @@ export function JoinPage({ token }: JoinPageProps) {
     reader.onerror = () => {
       setPhotoDataUrl(null);
       setPhotoName('');
-      setError('A képet nem sikerült beolvasni.');
+      setError(t('A képet nem sikerült beolvasni.'));
     };
     reader.readAsDataURL(file);
   };
@@ -128,13 +133,13 @@ export function JoinPage({ token }: JoinPageProps) {
     } catch (err) {
       console.error(err);
       if (err instanceof Error && err.message === 'DEVICE_LIMIT_REACHED') {
-        setError('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.');
+        setError(t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.'));
       } else if (err instanceof Error && err.message === 'PHOTO_TOO_LARGE') {
-        setError('A kép legfeljebb 3 MB lehet.');
+        setError(t('A kép legfeljebb 3 MB lehet.'));
       } else if (err instanceof Error && err.message === 'INVALID_PHOTO') {
-        setError('JPG, PNG vagy WEBP képet válassz.');
+        setError(t('JPG, PNG vagy WEBP képet válassz.'));
       } else {
-        setError('Az üzenetet nem sikerült elküldeni. Próbáld újra.');
+        setError(t('Az üzenetet nem sikerült elküldeni. Próbáld újra.'));
       }
     } finally {
       setSubmitting(false);
@@ -149,9 +154,9 @@ export function JoinPage({ token }: JoinPageProps) {
     setError(null);
   };
 
-  if (loading) return <div style={styles.message}>Vendégkönyv betöltése...</div>;
+  if (loading) return <div style={styles.message}>{t('Vendégkönyv betöltése...')}</div>;
   if (error && !invite) return <div style={styles.message}>{error}</div>;
-  if (!invite) return <div style={styles.message}>A vendégkönyv nem található.</div>;
+  if (!invite) return <div style={styles.message}>{t('A vendégkönyv nem található.')}</div>;
 
   const deviceLimit = Math.max(1, Number(invite.deviceLimit) || 1);
 
@@ -159,18 +164,19 @@ export function JoinPage({ token }: JoinPageProps) {
     return (
       <main style={styles.page}>
         <section style={styles.card}>
-          <div style={styles.eyebrow}>MemoryBook vendégkönyv</div>
+          <div style={styles.languageRow}><LanguageSwitcher /></div>
+          <div style={styles.eyebrow}>{t('MemoryBook vendégkönyv')}</div>
           <h1 style={styles.title}>{invite.title}</h1>
-          <h2 style={styles.thankYou}>Köszönjük, {name.trim()}!</h2>
-          <p style={styles.intro}>Az üzeneted bekerült a rendezvény vendégkönyvébe.</p>
+          <h2 style={styles.thankYou}>{f('Köszönjük, {name}!', { name: name.trim() })}</h2>
+          <p style={styles.intro}>{t('Az üzeneted bekerült a rendezvény vendégkönyvébe.')}</p>
           {remaining !== null && remaining > 0 && (
             <>
-              <div style={styles.remaining}>Erről az eszközről még {remaining} bejegyzést küldhetsz.</div>
-              <button type="button" onClick={startAnother} style={styles.button}>Újabb bejegyzés</button>
+              <div style={styles.remaining}>{f('Erről az eszközről még {count} bejegyzést küldhetsz.', { count: remaining })}</div>
+              <button type="button" onClick={startAnother} style={styles.button}>{t('Újabb bejegyzés')}</button>
             </>
           )}
           {remaining === 0 && (
-            <div style={styles.remaining}>Erről az eszközről elérted a rendezvényhez engedélyezett bejegyzésszámot.</div>
+            <div style={styles.remaining}>{t('Erről az eszközről elérted a rendezvényhez engedélyezett bejegyzésszámot.')}</div>
           )}
         </section>
       </main>
@@ -180,28 +186,29 @@ export function JoinPage({ token }: JoinPageProps) {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
-        <div style={styles.eyebrow}>MemoryBook vendégkönyv</div>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
+        <div style={styles.eyebrow}>{t('MemoryBook vendégkönyv')}</div>
         <h1 style={styles.title}>{invite.title}</h1>
-        <p style={styles.intro}>Írj egy üzenetet vagy emléket a rendezvény vendégkönyvébe.</p>
+        <p style={styles.intro}>{t('Írj egy üzenetet vagy emléket a rendezvény vendégkönyvébe.')}</p>
         <div style={styles.limitInfo}>
-          Erről az eszközről legfeljebb <strong>{deviceLimit}</strong> bejegyzés küldhető ebbe a vendégkönyvbe.
+          {f('Erről az eszközről legfeljebb {count} bejegyzés küldhető ebbe a vendégkönyvbe.', { count: deviceLimit })}
         </div>
         <form onSubmit={handleSubmit}>
           <label style={styles.label}>
-            Neved
+            {t('Neved')}
             <input value={name} onChange={(e) => setName(e.target.value)} style={styles.input} maxLength={100} autoComplete="name" required />
           </label>
           <label style={styles.label}>
-            Üzeneted
+            {t('Üzeneted')}
             <textarea value={memory} onChange={(e) => setMemory(e.target.value)} style={styles.textarea} maxLength={3000} required />
           </label>
           <label style={styles.label}>
-            Fotó (opcionális)
+            {t('Fotó (opcionális)')}
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} style={styles.fileInput} />
           </label>
-          {photoName && <div style={styles.photoInfo}>Kiválasztott kép: {photoName}</div>}
+          {photoName && <div style={styles.photoInfo}>{f('Kiválasztott kép: {name}', { name: photoName })}</div>}
           {error && <div style={styles.error}>{error}</div>}
-          <button type="submit" disabled={submitting} style={styles.button}>{submitting ? 'Küldés...' : 'Bejegyzés elküldése'}</button>
+          <button type="submit" disabled={submitting} style={styles.button}>{submitting ? t('Küldés...') : t('Bejegyzés elküldése')}</button>
         </form>
       </section>
     </main>
@@ -210,6 +217,7 @@ export function JoinPage({ token }: JoinPageProps) {
 
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f1f5f9', padding: '20px 12px 40px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   card: { width: '100%', maxWidth: 620, margin: '0 auto', background: '#ffffff', padding: 'clamp(20px, 6vw, 32px)', boxSizing: 'border-box', borderRadius: 16, boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)' },
   eyebrow: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2, color: '#64748b' },
   title: { margin: '8px 0', color: '#0f172a', fontSize: 'clamp(26px, 8vw, 38px)', lineHeight: 1.12, overflowWrap: 'anywhere' },

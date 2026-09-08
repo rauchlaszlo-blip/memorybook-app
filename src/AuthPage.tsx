@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { authClient } from './authClient';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicText, usePublicUiLanguage } from './publicUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -11,6 +13,8 @@ const API_BASE =
 type Mode = 'login' | 'register';
 
 export function AuthPage() {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
   const params = new URLSearchParams(window.location.search);
   const requestedReturnTo = params.get('returnTo');
   const returnTo =
@@ -26,7 +30,7 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(
-    oauthError === 'google' ? 'A Google-belépés nem sikerült. Próbáld újra.' : null
+    oauthError === 'google' ? t('A Google-belépés nem sikerült. Próbáld újra.') : null
   );
 
   useEffect(() => {
@@ -39,7 +43,7 @@ export function AuthPage() {
   const signInWithGoogle = async () => {
     setError(null);
     if (!googleReady) {
-      setError('A Google-belépés technikailag elő van készítve, de az OAuth kliens még nincs aktiválva.');
+      setError(t('A Google-belépés technikailag elő van készítve, de az OAuth kliens még nincs aktiválva.'));
       return;
     }
     setLoading(true);
@@ -61,8 +65,8 @@ export function AuthPage() {
       console.error(err);
       setError(
         err?.message === 'GOOGLE_SIGN_IN_FAILED'
-          ? 'A Google-belépés nem sikerült.'
-          : err?.message || 'A Google-belépés nem sikerült.'
+          ? t('A Google-belépés nem sikerült.')
+          : err?.message || t('A Google-belépés nem sikerült.')
       );
       setLoading(false);
     }
@@ -73,17 +77,17 @@ export function AuthPage() {
     setError(null);
 
     if (mode === 'register' && name.trim().length < 2) {
-      setError('Add meg a neved.');
+      setError(t('Add meg a neved.'));
       return;
     }
 
     if (!email.trim()) {
-      setError('Add meg az e-mail-címed.');
+      setError(t('Add meg az e-mail-címed.'));
       return;
     }
 
     if (password.length < 8) {
-      setError('A tesztjelszó legalább 8 karakter legyen.');
+      setError(t('A tesztjelszó legalább 8 karakter legyen.'));
       return;
     }
 
@@ -122,15 +126,15 @@ export function AuthPage() {
           data?.message ||
           data?.error?.message ||
           (mode === 'register'
-            ? 'A tesztregisztráció nem sikerült.'
-            : 'A tesztbelépés nem sikerült.');
+            ? t('A tesztregisztráció nem sikerült.')
+            : t('A tesztbelépés nem sikerült.'));
         throw new Error(message);
       }
 
       window.location.href = returnTo;
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || 'Hiba történt.');
+      setError(err?.message || t('Hiba történt.'));
     } finally {
       setLoading(false);
     }
@@ -139,44 +143,41 @@ export function AuthPage() {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
         <div style={styles.brand}>MemoryBook</div>
-        <h1 style={styles.title}>Belépés vagy regisztráció</h1>
-        <p style={styles.subtitle}>
-          Google-fiókkal egy lépésben beléphetsz. Ha még nincs MemoryBook-fiókod,
-          az első Google-belépéskor automatikusan létrejön.
-        </p>
+        <h1 style={styles.title}>{t('Belépés vagy regisztráció')}</h1>
+        <p style={styles.subtitle}>{t('Google-fiókkal egy lépésben beléphetsz. Ha még nincs MemoryBook-fiókod, az első Google-belépéskor automatikusan létrejön.')}</p>
 
         <button
           type="button"
           onClick={signInWithGoogle}
           style={styles.googleButton}
           disabled={loading || googleReady !== true}
-          aria-label="Folytatás Google-fiókkal"
+          aria-label={t('Folytatás Google-fiókkal')}
         >
           <span style={styles.googleMark} aria-hidden="true">G</span>
           {loading
-            ? 'Kapcsolódás...'
+            ? t('Kapcsolódás...')
             : googleReady === false
-              ? 'Google-belépés beállítás alatt'
+              ? t('Google-belépés beállítás alatt')
               : googleReady === null
-                ? 'Google-belépés ellenőrzése...'
-                : 'Folytatás Google-fiókkal'}
+                ? t('Google-belépés ellenőrzése...')
+                : t('Folytatás Google-fiókkal')}
         </button>
 
         {googleReady === false && (
           <div style={styles.setupNotice}>
-            A Google OAuth kliens létrehozása után ez a gomb automatikusan aktiválódik.
+            {t('A Google OAuth kliens létrehozása után ez a gomb automatikusan aktiválódik.')}
           </div>
         )}
 
         {error && <div style={styles.error}>{error}</div>}
 
         <details style={styles.testDetails}>
-          <summary style={styles.testSummary}>Teszt / fejlesztői belépés e-maillel</summary>
+          <summary style={styles.testSummary}>{t('Teszt / fejlesztői belépés e-maillel')}</summary>
           <div style={styles.testPanel}>
             <p style={styles.testText}>
-              Ez a lehetőség az automatizált tesztek és a fejlesztés miatt marad meg.
-              A végleges felhasználói belépés elsődleges módja a Google.
+              {t('Ez a lehetőség az automatizált tesztek és a fejlesztés miatt marad meg. A végleges felhasználói belépés elsődleges módja a Google.')}
             </p>
 
             <div style={styles.switcher}>
@@ -191,7 +192,7 @@ export function AuthPage() {
                   ...(mode === 'login' ? styles.switchButtonActive : {}),
                 }}
               >
-                Belépés
+                {t('Belépés')}
               </button>
               <button
                 type="button"
@@ -204,27 +205,27 @@ export function AuthPage() {
                   ...(mode === 'register' ? styles.switchButtonActive : {}),
                 }}
               >
-                Tesztregisztráció
+                {t('Tesztregisztráció')}
               </button>
             </div>
 
             <form onSubmit={submit} style={styles.form}>
               {mode === 'register' && (
                 <label style={styles.label}>
-                  Név
+                  {t('Név')}
                   <input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     autoComplete="name"
                     style={styles.input}
-                    placeholder="Neved"
+                    placeholder={t('Neved')}
                     disabled={loading}
                   />
                 </label>
               )}
 
               <label style={styles.label}>
-                E-mail
+                {t('E-mail')}
                 <input
                   type="email"
                   value={email}
@@ -237,7 +238,7 @@ export function AuthPage() {
               </label>
 
               <label style={styles.label}>
-                Tesztjelszó
+                {t('Tesztjelszó')}
                 <input
                   type="password"
                   value={password}
@@ -246,17 +247,17 @@ export function AuthPage() {
                     mode === 'register' ? 'new-password' : 'current-password'
                   }
                   style={styles.input}
-                  placeholder="Legalább 8 karakter"
+                  placeholder={t('Legalább 8 karakter')}
                   disabled={loading}
                 />
               </label>
 
               <button type="submit" style={styles.secondaryAction} disabled={loading}>
                 {loading
-                  ? 'Folyamatban...'
+                  ? t('Folyamatban...')
                   : mode === 'login'
-                    ? 'Teszt belépés'
-                    : 'Tesztfiók létrehozása'}
+                    ? t('Teszt belépés')
+                    : t('Tesztfiók létrehozása')}
               </button>
             </form>
           </div>
@@ -277,6 +278,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'Arial, sans-serif',
     boxSizing: 'border-box',
   },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 10 },
   card: {
     width: '100%',
     maxWidth: 430,
