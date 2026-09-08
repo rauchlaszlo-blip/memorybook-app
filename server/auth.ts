@@ -42,7 +42,7 @@ export const auth = betterAuth({
     modelName: 'auth_accounts',
     accountLinking: {
       enabled: true,
-      trustedProviders: ['google', 'credential'],
+      trustedProviders: ['google', 'email-password'],
       allowDifferentEmails: false,
     },
   },
