@@ -124,7 +124,9 @@ async function savePageVersioned(
   canvasData: Record<string, any>,
   previewDataUrl: string | null | undefined,
   expectedVersion: number,
-  inviteStatus?: string
+  inviteStatus?: string,
+  requireEditable = false,
+  db: any = pool
 ) {
   let newPreviewUrl: string | null = null;
 
@@ -132,11 +134,13 @@ async function savePageVersioned(
     newPreviewUrl = await processAndSavePreview(pageId, previewDataUrl);
   }
 
-  const result = await pool.query(
+  const result = await db.query(
     `WITH old_state AS (
        SELECT id, preview_image_url
        FROM pages
-       WHERE id = $3 AND version = $4
+       WHERE id = $3
+         AND version = $4
+         AND ($6::boolean = FALSE OR invite_status <> 'submitted')
      ),
      updated AS (
        UPDATE pages p
@@ -148,6 +152,7 @@ async function savePageVersioned(
          updated_at = CURRENT_TIMESTAMP
        FROM old_state os
        WHERE p.id = os.id
+         AND ($6::boolean = FALSE OR p.invite_status <> 'submitted')
        RETURNING
          p.id,
          p.version,
@@ -162,20 +167,35 @@ async function savePageVersioned(
        updated_at AS "updatedAt",
        previous_preview_url AS "previousPreviewUrl"
      FROM updated`,
-    [canvasData, newPreviewUrl, pageId, expectedVersion, inviteStatus ?? null]
+    [
+      canvasData,
+      newPreviewUrl,
+      pageId,
+      expectedVersion,
+      inviteStatus ?? null,
+      requireEditable,
+    ]
   );
 
   if (result.rowCount === 0) {
     await deletePreviewSafely(newPreviewUrl);
 
-    const check = await pool.query(
-      'SELECT version FROM pages WHERE id = $1',
+    const check = await db.query(
+      `SELECT version, invite_status AS "inviteStatus"
+       FROM pages
+       WHERE id = $1`,
       [pageId]
     );
 
     if (check.rowCount === 0) {
       const error: any = new Error('PAGE_NOT_FOUND');
       error.status = 404;
+      throw error;
+    }
+
+    if (requireEditable && check.rows[0].inviteStatus === 'submitted') {
+      const error: any = new Error('PAGE_ALREADY_SUBMITTED');
+      error.status = 410;
       throw error;
     }
 
@@ -353,6 +373,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          version,
          invite_status AS "inviteStatus",
          invite_token AS "inviteToken",
+         submitted_at AS "submittedAt",
          updated_at AS "updatedAt"
        FROM pages
        WHERE book_id = $1
@@ -448,7 +469,8 @@ app.get('/api/page-invites/:token', async (req, res) => {
          p.canvas_json AS "canvasData",
          p.preview_image_url AS "previewImageUrl",
          p.version,
-         p.invite_status AS "inviteStatus"
+         p.invite_status AS "inviteStatus",
+         p.submitted_at AS "submittedAt"
        FROM pages p
        JOIN books b ON b.id = p.book_id
        WHERE p.invite_token = $1`,
@@ -485,20 +507,27 @@ app.put('/api/page-invites/:token', async (req, res) => {
     return;
   }
 
+  const client = await pool.connect();
+
   try {
-    const inviteResult = await pool.query(
+    await client.query('BEGIN');
+
+    const inviteResult = await client.query(
       `SELECT id, invite_status AS "inviteStatus"
        FROM pages
-       WHERE invite_token = $1`,
+       WHERE invite_token = $1
+       FOR UPDATE`,
       [req.params.token]
     );
 
     if (inviteResult.rowCount === 0) {
+      await client.query('ROLLBACK');
       res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
       return;
     }
 
     if (inviteResult.rows[0].inviteStatus === 'submitted') {
+      await client.query('ROLLBACK');
       res.status(410).json({ error: 'PAGE_ALREADY_SUBMITTED' });
       return;
     }
@@ -508,8 +537,12 @@ app.put('/api/page-invites/:token', async (req, res) => {
       canvasData,
       previewDataUrl,
       expectedVersion,
-      'draft'
+      'draft',
+      true,
+      client
     );
+
+    await client.query('COMMIT');
 
     res.status(200).json({
       success: true,
@@ -518,6 +551,7 @@ app.put('/api/page-invites/:token', async (req, res) => {
       updatedAt: row.updatedAt,
     });
   } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Invite page save error:', err);
 
     if (err?.status === 404) {
@@ -533,6 +567,11 @@ app.put('/api/page-invites/:token', async (req, res) => {
       return;
     }
 
+    if (err?.status === 410 || err?.message === 'PAGE_ALREADY_SUBMITTED') {
+      res.status(410).json({ error: 'PAGE_ALREADY_SUBMITTED' });
+      return;
+    }
+
     if (
       err?.message === 'INVALID_PREVIEW_FORMAT' ||
       err?.message === 'INVALID_PREVIEW_JPEG' ||
@@ -543,6 +582,74 @@ app.put('/api/page-invites/:token', async (req, res) => {
     }
 
     res.status(500).json({ error: 'PAGE_SAVE_FAILED' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/page-invites/:token/submit', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const pageResult = await client.query(
+      `SELECT
+         id,
+         page_number AS "pageNumber",
+         invite_status AS "inviteStatus",
+         submitted_at AS "submittedAt"
+       FROM pages
+       WHERE invite_token = $1
+       FOR UPDATE`,
+      [req.params.token]
+    );
+
+    if (pageResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
+      return;
+    }
+
+    if (pageResult.rows[0].inviteStatus === 'submitted') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_ALREADY_SUBMITTED' });
+      return;
+    }
+
+    if (!['invited', 'draft'].includes(pageResult.rows[0].inviteStatus)) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_NOT_READY_FOR_SUBMIT' });
+      return;
+    }
+
+    const result = await client.query(
+      `UPDATE pages
+       SET invite_status = 'submitted',
+           submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING
+         id,
+         page_number AS "pageNumber",
+         submitted_at AS "submittedAt"`,
+      [pageResult.rows[0].id]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(200).json({
+      success: true,
+      pageId: result.rows[0].id,
+      pageNumber: result.rows[0].pageNumber,
+      submittedAt: result.rows[0].submittedAt,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Invite page submit error:', err);
+    res.status(500).json({ error: 'PAGE_SUBMIT_FAILED' });
+  } finally {
+    client.release();
   }
 });
 
@@ -625,6 +732,15 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
 
   if (!memoryText || typeof memoryText !== 'string' || !memoryText.trim()) {
     res.status(400).json({ error: 'INVALID_MEMORY_TEXT' });
+    return;
+  }
+
+  if (
+    photoDataUrl !== undefined &&
+    photoDataUrl !== null &&
+    typeof photoDataUrl !== 'string'
+  ) {
+    res.status(400).json({ error: 'INVALID_CONTRIBUTION_PHOTO' });
     return;
   }
 
@@ -744,6 +860,30 @@ app.put('/api/books/:bookId/pages/reorder', async (req, res) => {
 
   try {
     await client.query('BEGIN');
+
+    const bookResult = await client.query(
+      `SELECT id, owner_user_id AS "ownerUserId"
+       FROM books
+       WHERE id = $1
+       FOR UPDATE`,
+      [req.params.bookId]
+    );
+
+    if (bookResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+
+    if (req.params.bookId !== DEMO_BOOK_ID) {
+      const session = await getSession(req);
+
+      if (!session || session.user.id !== bookResult.rows[0].ownerUserId) {
+        await client.query('ROLLBACK');
+        res.status(403).json({ error: 'BOOK_WRITE_FORBIDDEN' });
+        return;
+      }
+    }
 
     const existingResult = await client.query(
       `SELECT id
@@ -1015,6 +1155,7 @@ async function initializeDatabase(): Promise<void> {
       invite_token TEXT UNIQUE,
       invite_status TEXT NOT NULL DEFAULT 'empty',
       invite_created_at TIMESTAMPTZ,
+      submitted_at TIMESTAMPTZ,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -1023,6 +1164,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_token TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'empty'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
 
   await pool.query(
     `UPDATE pages SET book_id = $1 WHERE book_id IS NULL`,
@@ -1060,11 +1202,12 @@ async function initializeDatabase(): Promise<void> {
     WHERE invite_token IS NOT NULL
   `);
 
-  await pool.query(`
-    INSERT INTO pages (id, book_id, page_number)
-    VALUES ('page-1', $1, 1), ('page-2', $1, 2)
-    ON CONFLICT (id) DO NOTHING
-  `, [DEMO_BOOK_ID]);
+  await pool.query(
+    `INSERT INTO pages (id, book_id, page_number)
+     VALUES ('page-1', $1, 1), ('page-2', $1, 2)
+     ON CONFLICT (id) DO NOTHING`,
+    [DEMO_BOOK_ID]
+  );
 
   console.log('Users, books, contributions, pages and page invites ready.');
 }
