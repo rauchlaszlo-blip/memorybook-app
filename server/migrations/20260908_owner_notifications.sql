@@ -31,3 +31,63 @@ WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS contributions_book_pending_idx
 ON contributions (book_id, created_at DESC)
 WHERE owner_status = 'pending';
+
+-- Final page submission notifications are created inside the same database
+-- transaction as the page status change. Draft/autosave updates do not match
+-- this trigger condition, and event books are explicitly excluded.
+CREATE OR REPLACE FUNCTION create_standard_page_submission_notification()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  owner_id TEXT;
+  current_book_type TEXT;
+BEGIN
+  IF NEW.invite_status <> 'submitted'
+     OR OLD.invite_status = 'submitted'
+     OR NEW.submitted_at IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT b.owner_user_id, b.book_type
+  INTO owner_id, current_book_type
+  FROM books b
+  WHERE b.id = NEW.book_id;
+
+  IF current_book_type <> 'standard' THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO notifications (
+    id,
+    recipient_user_id,
+    book_id,
+    type,
+    source_page_id,
+    source_submitted_at,
+    actor_name,
+    page_number
+  )
+  VALUES (
+    'notification-' || gen_random_uuid()::text,
+    owner_id,
+    NEW.book_id,
+    'standard_page_submitted',
+    NEW.id,
+    NEW.submitted_at,
+    COALESCE(NULLIF(NEW.invite_recipient_name, ''), NULLIF(NEW.invite_recipient_email, '')),
+    NEW.page_number
+  )
+  ON CONFLICT (source_page_id, source_submitted_at) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS pages_standard_submission_notification_trigger ON pages;
+
+CREATE TRIGGER pages_standard_submission_notification_trigger
+AFTER UPDATE OF invite_status, submitted_at ON pages
+FOR EACH ROW
+WHEN (NEW.invite_status = 'submitted')
+EXECUTE FUNCTION create_standard_page_submission_notification();
