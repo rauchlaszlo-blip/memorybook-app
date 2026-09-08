@@ -1,0 +1,137 @@
+import { useEffect, useState } from 'react';
+import {
+  getAppLanguage,
+  subscribeAppLanguage,
+  type AppLanguage,
+} from './i18n';
+
+type Translation = { en: string; de: string };
+
+const translations: Record<string, Translation> = {
+  'A Google-belépés nem sikerült. Próbáld újra.': { en: 'Google sign-in failed. Please try again.', de: 'Die Google-Anmeldung ist fehlgeschlagen. Bitte versuche es erneut.' },
+  'A Google-belépés technikailag elő van készítve, de az OAuth kliens még nincs aktiválva.': { en: 'Google sign-in is technically prepared, but the OAuth client has not been activated yet.', de: 'Die Google-Anmeldung ist technisch vorbereitet, aber der OAuth-Client ist noch nicht aktiviert.' },
+  'A Google-belépés nem sikerült.': { en: 'Google sign-in failed.', de: 'Die Google-Anmeldung ist fehlgeschlagen.' },
+  'Add meg a neved.': { en: 'Enter your name.', de: 'Gib deinen Namen ein.' },
+  'Add meg az e-mail-címed.': { en: 'Enter your email address.', de: 'Gib deine E-Mail-Adresse ein.' },
+  'A tesztjelszó legalább 8 karakter legyen.': { en: 'The test password must be at least 8 characters.', de: 'Das Testpasswort muss mindestens 8 Zeichen lang sein.' },
+  'A tesztregisztráció nem sikerült.': { en: 'Test registration failed.', de: 'Die Testregistrierung ist fehlgeschlagen.' },
+  'A tesztbelépés nem sikerült.': { en: 'Test sign-in failed.', de: 'Die Testanmeldung ist fehlgeschlagen.' },
+  'Hiba történt.': { en: 'An error occurred.', de: 'Ein Fehler ist aufgetreten.' },
+  'Belépés vagy regisztráció': { en: 'Sign in or register', de: 'Anmelden oder registrieren' },
+  'Google-fiókkal egy lépésben beléphetsz. Ha még nincs MemoryBook-fiókod, az első Google-belépéskor automatikusan létrejön.': { en: 'Sign in in one step with your Google account. If you do not have a MemoryBook account yet, it will be created automatically on your first Google sign-in.', de: 'Melde dich in einem Schritt mit deinem Google-Konto an. Wenn du noch kein MemoryBook-Konto hast, wird es bei der ersten Google-Anmeldung automatisch erstellt.' },
+  'Folytatás Google-fiókkal': { en: 'Continue with Google', de: 'Mit Google fortfahren' },
+  'Kapcsolódás...': { en: 'Connecting...', de: 'Verbindung wird hergestellt...' },
+  'Google-belépés beállítás alatt': { en: 'Google sign-in is being set up', de: 'Google-Anmeldung wird eingerichtet' },
+  'Google-belépés ellenőrzése...': { en: 'Checking Google sign-in...', de: 'Google-Anmeldung wird geprüft...' },
+  'A Google OAuth kliens létrehozása után ez a gomb automatikusan aktiválódik.': { en: 'This button will activate automatically after the Google OAuth client is created.', de: 'Diese Schaltfläche wird automatisch aktiviert, sobald der Google-OAuth-Client erstellt wurde.' },
+  'Teszt / fejlesztői belépés e-maillel': { en: 'Test / developer sign-in with email', de: 'Test-/Entwickleranmeldung per E-Mail' },
+  'Ez a lehetőség az automatizált tesztek és a fejlesztés miatt marad meg. A végleges felhasználói belépés elsődleges módja a Google.': { en: 'This option remains for automated testing and development. Google is the primary sign-in method for the final user experience.', de: 'Diese Option bleibt für automatisierte Tests und die Entwicklung erhalten. Google ist die primäre Anmeldemethode für die endgültige Benutzeroberfläche.' },
+  'Belépés': { en: 'Sign in', de: 'Anmelden' },
+  'Tesztregisztráció': { en: 'Test registration', de: 'Testregistrierung' },
+  'Név': { en: 'Name', de: 'Name' },
+  'Neved': { en: 'Your name', de: 'Dein Name' },
+  'E-mail': { en: 'Email', de: 'E-Mail' },
+  'Tesztjelszó': { en: 'Test password', de: 'Testpasswort' },
+  'Legalább 8 karakter': { en: 'At least 8 characters', de: 'Mindestens 8 Zeichen' },
+  'Folyamatban...': { en: 'Working...', de: 'In Bearbeitung...' },
+  'Teszt belépés': { en: 'Test sign-in', de: 'Testanmeldung' },
+  'Tesztfiók létrehozása': { en: 'Create test account', de: 'Testkonto erstellen' },
+
+  'Töltsd ki a számlázáshoz szükséges adatokat.': { en: 'Fill in the billing information required for the purchase.', de: 'Fülle die für die Rechnungsstellung erforderlichen Angaben aus.' },
+  'A vásárlás előkészítése nem sikerült.': { en: 'The purchase could not be prepared.', de: 'Der Kauf konnte nicht vorbereitet werden.' },
+  '← Vissza': { en: '← Back', de: '← Zurück' },
+  'Emlékkönyv vásárlása': { en: 'Buy a memory book', de: 'Erinnerungsbuch kaufen' },
+  'A fizetési alapfolyamat elkészült. A PayPal és SimplePay tényleges fizetési indítása a következő integrációs lépés.': { en: 'The payment foundation is ready. Starting actual PayPal and SimplePay payments is the next integration step.', de: 'Die Zahlungsgrundlage ist fertig. Die tatsächliche PayPal- und SimplePay-Zahlung wird im nächsten Integrationsschritt angebunden.' },
+  'Magamnak': { en: 'For myself', de: 'Für mich' },
+  'Ajándékba': { en: 'As a gift', de: 'Als Geschenk' },
+  'Saját könyv vásárlásához előbb be kell lépned vagy regisztrálnod.': { en: 'To buy a book for yourself, sign in or register first.', de: 'Um ein Buch für dich selbst zu kaufen, musst du dich zuerst anmelden oder registrieren.' },
+  'Belépés / regisztráció': { en: 'Sign in / register', de: 'Anmelden / registrieren' },
+  'Könyv típusa': { en: 'Book type', de: 'Buchtyp' },
+  'Normál emlékkönyv – 30 oldal': { en: 'Standard memory book – 30 pages', de: 'Normales Erinnerungsbuch – 30 Seiten' },
+  'Rendezvény-vendégkönyv': { en: 'Event guestbook', de: 'Veranstaltungs-Gästebuch' },
+  'Fizetési mód': { en: 'Payment method', de: 'Zahlungsart' },
+  'Vásárló azonosítása': { en: 'Buyer information', de: 'Angaben zum Käufer' },
+  'Számlázási adatok': { en: 'Billing information', de: 'Rechnungsdaten' },
+  'Számlázási név': { en: 'Billing name', de: 'Rechnungsname' },
+  'Számlázási e-mail': { en: 'Billing email', de: 'Rechnungs-E-Mail' },
+  'Ország': { en: 'Country', de: 'Land' },
+  'Irányítószám': { en: 'Postal code', de: 'Postleitzahl' },
+  'Település': { en: 'City', de: 'Ort' },
+  'Cím': { en: 'Address', de: 'Adresse' },
+  'Adószám (ha szükséges)': { en: 'Tax number (if required)', de: 'Steuernummer (falls erforderlich)' },
+  'Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.': { en: 'For a gift purchase, the book is not created in the payer’s account. After successful payment, a redeemable link is generated and can be forwarded.', de: 'Bei einem Geschenkkauf wird das Buch nicht im Konto des Zahlenden erstellt. Nach erfolgreicher Zahlung wird ein weiterleitbarer Einlösungslink erzeugt.' },
+  'Mentés...': { en: 'Saving...', de: 'Speichern...' },
+  'Vásárlási adatok mentése': { en: 'Save purchase details', de: 'Kaufdaten speichern' },
+  'Vásárlási alap rögzítve.': { en: 'Purchase draft saved.', de: 'Kaufentwurf gespeichert.' },
+  'Azonosító: {id}': { en: 'ID: {id}', de: 'Kennung: {id}' },
+  'Még nem történt fizetés, ezért könyvjogosultság sem keletkezett. A következő lépésben ehhez kötjük a PayPal és SimplePay fizetést.': { en: 'No payment has been made yet, so no book entitlement has been created. PayPal and SimplePay payments will be connected to this in the next step.', de: 'Es wurde noch keine Zahlung durchgeführt, daher ist noch keine Buchberechtigung entstanden. Im nächsten Schritt werden PayPal- und SimplePay-Zahlungen daran angebunden.' },
+
+  'Ez az ajándék-jogosultság nem található vagy még nincs kifizetve.': { en: 'This gift entitlement was not found or has not been paid yet.', de: 'Diese Geschenkberechtigung wurde nicht gefunden oder noch nicht bezahlt.' },
+  'Ezt az ajándékot már másik fiók beváltotta.': { en: 'This gift has already been redeemed by another account.', de: 'Dieses Geschenk wurde bereits von einem anderen Konto eingelöst.' },
+  'Az ajándék beváltása nem sikerült.': { en: 'The gift could not be redeemed.', de: 'Das Geschenk konnte nicht eingelöst werden.' },
+  'Ajándék emlékkönyv': { en: 'Gift memory book', de: 'Geschenk-Erinnerungsbuch' },
+  'Betöltés...': { en: 'Loading...', de: 'Laden...' },
+  'Normál emlékkönyv – {count} oldal': { en: 'Standard memory book – {count} pages', de: 'Normales Erinnerungsbuch – {count} Seiten' },
+  'Beváltás...': { en: 'Redeeming...', de: 'Wird eingelöst...' },
+  'Ajándék beváltása': { en: 'Redeem gift', de: 'Geschenk einlösen' },
+  'Belépés / regisztráció a beváltáshoz': { en: 'Sign in / register to redeem', de: 'Zum Einlösen anmelden / registrieren' },
+  'Ezzel a jogosultsággal a könyvet már létrehozták.': { en: 'A book has already been created with this entitlement.', de: 'Mit dieser Berechtigung wurde bereits ein Buch erstellt.' },
+  'Ezt az ajándékot már egy fiókhoz hozzárendelték.': { en: 'This gift has already been assigned to an account.', de: 'Dieses Geschenk wurde bereits einem Konto zugeordnet.' },
+
+  'Nekem is kell emlékkönyv': { en: 'I want a memory book too', de: 'Ich möchte auch ein Erinnerungsbuch' },
+  'Készíts saját online emlékkönyvet, hívd meg azokat, akik fontosak neked, és gyűjtsd össze az emlékeiteket egy közös könyvbe.': { en: 'Create your own online memory book, invite the people who matter to you, and collect your memories in one shared book.', de: 'Erstelle dein eigenes Online-Erinnerungsbuch, lade die Menschen ein, die dir wichtig sind, und sammle eure Erinnerungen in einem gemeinsamen Buch.' },
+  'Saját MemoryBook létrehozása': { en: 'Create your own MemoryBook', de: 'Eigenes MemoryBook erstellen' },
+  'A létrehozás regisztrációval indul.': { en: 'Creation starts with registration.', de: 'Die Erstellung beginnt mit der Registrierung.' },
+
+  'Ez az oldal nem nyilvános vagy már nem érhető el.': { en: 'This page is not public or is no longer available.', de: 'Diese Seite ist nicht öffentlich oder nicht mehr verfügbar.' },
+  'Oldal betöltése...': { en: 'Loading page...', de: 'Seite wird geladen...' },
+  'Az oldal nem található.': { en: 'The page was not found.', de: 'Die Seite wurde nicht gefunden.' },
+  'Nyilvánosan megosztott oldal · {page}. oldal': { en: 'Publicly shared page · page {page}', de: 'Öffentlich geteilte Seite · Seite {page}' },
+  'MemoryBook {page}. oldal': { en: 'MemoryBook page {page}', de: 'MemoryBook Seite {page}' },
+  'Ehhez az oldalhoz nincs előnézeti kép.': { en: 'No preview image is available for this page.', de: 'Für diese Seite ist kein Vorschaubild verfügbar.' },
+
+  'Ez a vendégkönyv-meghívó nem érhető el.': { en: 'This guestbook invitation is not available.', de: 'Diese Gästebuch-Einladung ist nicht verfügbar.' },
+  'JPG, PNG vagy WEBP képet válassz.': { en: 'Choose a JPG, PNG or WEBP image.', de: 'Wähle ein JPG-, PNG- oder WEBP-Bild.' },
+  'A kép legfeljebb 3 MB lehet.': { en: 'The image can be up to 3 MB.', de: 'Das Bild darf höchstens 3 MB groß sein.' },
+  'A képet nem sikerült beolvasni.': { en: 'The image could not be read.', de: 'Das Bild konnte nicht gelesen werden.' },
+  'Erről az eszközről már elküldted az engedélyezett számú bejegyzést.': { en: 'You have already sent the allowed number of entries from this device.', de: 'Von diesem Gerät wurde bereits die erlaubte Anzahl an Einträgen gesendet.' },
+  'Az üzenetet nem sikerült elküldeni. Próbáld újra.': { en: 'The message could not be sent. Please try again.', de: 'Die Nachricht konnte nicht gesendet werden. Bitte versuche es erneut.' },
+  'Vendégkönyv betöltése...': { en: 'Loading guestbook...', de: 'Gästebuch wird geladen...' },
+  'A vendégkönyv nem található.': { en: 'The guestbook was not found.', de: 'Das Gästebuch wurde nicht gefunden.' },
+  'MemoryBook vendégkönyv': { en: 'MemoryBook guestbook', de: 'MemoryBook Gästebuch' },
+  'Köszönjük, {name}!': { en: 'Thank you, {name}!', de: 'Danke, {name}!' },
+  'Az üzeneted bekerült a rendezvény vendégkönyvébe.': { en: 'Your message was added to the event guestbook.', de: 'Deine Nachricht wurde in das Veranstaltungs-Gästebuch aufgenommen.' },
+  'Erről az eszközről még {count} bejegyzést küldhetsz.': { en: 'You can send {count} more entries from this device.', de: 'Von diesem Gerät kannst du noch {count} weitere Einträge senden.' },
+  'Újabb bejegyzés': { en: 'Add another entry', de: 'Weiteren Eintrag hinzufügen' },
+  'Erről az eszközről elérted a rendezvényhez engedélyezett bejegyzésszámot.': { en: 'You have reached the number of entries allowed for this event from this device.', de: 'Du hast die für diese Veranstaltung erlaubte Anzahl an Einträgen von diesem Gerät erreicht.' },
+  'Írj egy üzenetet vagy emléket a rendezvény vendégkönyvébe.': { en: 'Write a message or memory in the event guestbook.', de: 'Schreibe eine Nachricht oder Erinnerung in das Veranstaltungs-Gästebuch.' },
+  'Erről az eszközről legfeljebb {count} bejegyzés küldhető ebbe a vendégkönyvbe.': { en: 'Up to {count} entries can be sent to this guestbook from this device.', de: 'Von diesem Gerät können höchstens {count} Einträge in dieses Gästebuch gesendet werden.' },
+  'Üzeneted': { en: 'Your message', de: 'Deine Nachricht' },
+  'Fotó (opcionális)': { en: 'Photo (optional)', de: 'Foto (optional)' },
+  'Kiválasztott kép: {name}': { en: 'Selected image: {name}', de: 'Ausgewähltes Bild: {name}' },
+  'Küldés...': { en: 'Sending...', de: 'Wird gesendet...' },
+  'Bejegyzés elküldése': { en: 'Send entry', de: 'Eintrag senden' },
+};
+
+export function publicText(language: AppLanguage, key: string): string {
+  if (language === 'hu') return key;
+  return translations[key]?.[language] ?? key;
+}
+
+export function publicFormat(
+  language: AppLanguage,
+  key: string,
+  values: Record<string, string | number> = {}
+): string {
+  let value = publicText(language, key);
+  for (const [name, replacement] of Object.entries(values)) {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  }
+  return value;
+}
+
+export function usePublicUiLanguage(): AppLanguage {
+  const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
+  useEffect(() => subscribeAppLanguage(setLanguage), []);
+  return language;
+}
