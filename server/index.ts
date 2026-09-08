@@ -134,6 +134,45 @@ app.get('/api/me', async (req, res) => {
   }
 });
 
+app.get('/api/my/books', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         b.id,
+         b.title,
+         b.created_at AS "createdAt",
+         COUNT(DISTINCT p.id)::int AS "pageCount",
+         COUNT(DISTINCT c.id)::int AS "contributionCount"
+       FROM books b
+       LEFT JOIN pages p ON p.book_id = b.id
+       LEFT JOIN contributions c ON c.book_id = b.id
+       WHERE b.owner_user_id = $1
+       GROUP BY b.id, b.title, b.created_at
+       ORDER BY b.created_at DESC`,
+      [session.user.id]
+    );
+
+    res.status(200).json({ books: result.rows });
+  } catch (err) {
+    console.error('Sajat konyvek betoltesi hiba:', err);
+    res.status(500).json({ error: 'OWNER_BOOK_LIST_LOAD_FAILED' });
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     const result = await pool.query('SELECT NOW() AS now');
@@ -781,7 +820,6 @@ async function startServer(): Promise<void> {
 }
 
 startServer();
-
 
 
 
