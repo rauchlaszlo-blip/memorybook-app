@@ -355,6 +355,86 @@ app.post('/api/my/books', async (req, res) => {
   }
 });
 
+app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         event_device_limit AS "deviceLimit",
+         event_identity_mode AS "identityMode"
+       FROM books
+       WHERE id = $1
+         AND owner_user_id = $2
+         AND book_type = 'event'`,
+      [req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'EVENT_BOOK_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Event settings load error:', err);
+    res.status(500).json({ error: 'EVENT_SETTINGS_LOAD_FAILED' });
+  }
+});
+
+app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const deviceLimit = Number(req.body?.deviceLimit);
+  if (!Number.isInteger(deviceLimit) || deviceLimit < 1 || deviceLimit > 100) {
+    res.status(400).json({ error: 'INVALID_EVENT_DEVICE_LIMIT' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE books
+       SET event_device_limit = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+         AND owner_user_id = $3
+         AND book_type = 'event'
+       RETURNING
+         event_device_limit AS "deviceLimit",
+         event_identity_mode AS "identityMode"`,
+      [deviceLimit, req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'EVENT_BOOK_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Event settings update error:', err);
+    res.status(500).json({ error: 'EVENT_SETTINGS_UPDATE_FAILED' });
+  }
+});
+
 app.get('/api/my/books/:bookId/pages', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
@@ -953,7 +1033,12 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/invites/:token', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title, book_type AS "bookType"
+      `SELECT
+         id,
+         title,
+         book_type AS "bookType",
+         event_device_limit AS "deviceLimit",
+         event_identity_mode AS "identityMode"
        FROM books
        WHERE invite_token = $1`,
       [req.params.token]
@@ -973,6 +1058,8 @@ app.get('/api/invites/:token', async (req, res) => {
       bookId: result.rows[0].id,
       title: result.rows[0].title,
       bookType: result.rows[0].bookType,
+      deviceLimit: result.rows[0].deviceLimit,
+      identityMode: result.rows[0].identityMode,
     });
   } catch (err) {
     console.error('Legacy invite load error:', err);
@@ -1037,7 +1124,7 @@ app.get('/api/books/:bookId/contributions', async (req, res) => {
 });
 
 app.post('/api/invites/:token/contributions', async (req, res) => {
-  const { contributorName, memoryText, photoDataUrl } = req.body;
+  const { contributorName, memoryText, photoDataUrl, deviceId } = req.body;
 
   if (!contributorName || typeof contributorName !== 'string' || !contributorName.trim()) {
     res.status(400).json({ error: 'INVALID_CONTRIBUTOR_NAME' });
@@ -1058,11 +1145,28 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
     return;
   }
 
+  if (
+    deviceId !== undefined &&
+    deviceId !== null &&
+    (typeof deviceId !== 'string' || deviceId.length < 8 || deviceId.length > 200)
+  ) {
+    res.status(400).json({ error: 'INVALID_DEVICE_ID' });
+    return;
+  }
+
   let savedPhotoUrl: string | null = null;
+  let previousDeviceSubmissionCount = 0;
+  let deviceLimit: number | null = null;
 
   try {
     const bookResult = await pool.query(
-      `SELECT id, book_type AS "bookType" FROM books WHERE invite_token = $1`,
+      `SELECT
+         id,
+         book_type AS "bookType",
+         event_device_limit AS "deviceLimit",
+         event_identity_mode AS "identityMode"
+       FROM books
+       WHERE invite_token = $1`,
       [req.params.token]
     );
 
@@ -1076,6 +1180,32 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
       return;
     }
 
+    deviceLimit = Number(bookResult.rows[0].deviceLimit) || 1;
+
+    if (
+      bookResult.rows[0].bookType === 'event' &&
+      typeof deviceId === 'string' &&
+      deviceId.trim()
+    ) {
+      const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM contributions
+         WHERE book_id = $1 AND device_id = $2`,
+        [bookResult.rows[0].id, deviceId.trim()]
+      );
+      previousDeviceSubmissionCount = Number(countResult.rows[0]?.count || 0);
+
+      if (previousDeviceSubmissionCount >= deviceLimit) {
+        res.status(429).json({
+          error: 'DEVICE_CONTRIBUTION_LIMIT_REACHED',
+          deviceLimit,
+          deviceSubmissionsUsed: previousDeviceSubmissionCount,
+          deviceSubmissionsRemaining: 0,
+        });
+        return;
+      }
+    }
+
     const contributionId = `contribution-${crypto.randomUUID()}`;
 
     if (photoDataUrl && typeof photoDataUrl === 'string' && photoDataUrl.trim()) {
@@ -1087,9 +1217,9 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO contributions (
-         id, book_id, contributor_name, memory_text, photo_url
+         id, book_id, contributor_name, memory_text, photo_url, device_id
        )
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING
          id,
          book_id AS "bookId",
@@ -1104,10 +1234,26 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
         contributorName.trim(),
         memoryText.trim(),
         savedPhotoUrl,
+        typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null,
       ]
     );
 
-    res.status(201).json({ success: true, contribution: result.rows[0] });
+    const deviceSubmissionsUsed =
+      typeof deviceId === 'string' && deviceId.trim()
+        ? previousDeviceSubmissionCount + 1
+        : null;
+    const deviceSubmissionsRemaining =
+      deviceSubmissionsUsed !== null && deviceLimit !== null
+        ? Math.max(0, deviceLimit - deviceSubmissionsUsed)
+        : null;
+
+    res.status(201).json({
+      success: true,
+      contribution: result.rows[0],
+      deviceLimit,
+      deviceSubmissionsUsed,
+      deviceSubmissionsRemaining,
+    });
   } catch (err: any) {
     console.error('Contribution save error:', err);
 
@@ -1692,6 +1838,8 @@ async function initializeDatabase(): Promise<void> {
 
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS invite_token TEXT UNIQUE`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS book_type TEXT NOT NULL DEFAULT 'standard'`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_device_limit INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
 
   await pool.query(
     `UPDATE books
@@ -1715,6 +1863,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS owner_status TEXT NOT NULL DEFAULT 'pending'`);
   await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS owner_group TEXT`);
   await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS owner_order INTEGER`);
+  await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS device_id TEXT`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pages (
