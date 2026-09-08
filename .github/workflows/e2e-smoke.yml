@@ -1,0 +1,170 @@
+name: MemoryBook E2E Smoke
+
+on:
+  push:
+    branches:
+      - e2e-smoke-2026-09-08
+
+jobs:
+  market-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run live market E2E flow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE="https://memorybook-app.onrender.com"
+          TS="$(date +%s)"
+          EMAIL="memorybook-e2e-${TS}@example.com"
+          PASSWORD="E2E-${TS}-Aa9!"
+          TITLE="E2E Smoke Test ${TS}"
+          COOKIES="$RUNNER_TEMP/memorybook-cookies.txt"
+          BODY="$RUNNER_TEMP/body.json"
+
+          check_code() {
+            local got="$1"
+            local expected="$2"
+            local label="$3"
+            if [[ "$got" != "$expected" ]]; then
+              echo "FAIL: $label expected HTTP $expected, got $got"
+              cat "$BODY" 2>/dev/null || true
+              exit 1
+            fi
+            echo "PASS: $label (HTTP $got)"
+          }
+
+          echo "== Health and SPA routes =="
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/api/health")
+          check_code "$CODE" "200" "health"
+          jq -e '.ok == true' "$BODY" >/dev/null
+
+          for ROUTE in / /login /my-books /demo; do
+            CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE$ROUTE")
+            check_code "$CODE" "200" "SPA route $ROUTE"
+          done
+
+          echo "== Create owner account =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" \
+            -H "Origin: $BASE" \
+            -H 'Content-Type: application/json' \
+            -o "$BODY" -w '%{http_code}' \
+            -X POST "$BASE/api/auth/sign-up/email" \
+            --data "{\"name\":\"MemoryBook E2E\",\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
+          if [[ "$CODE" != "200" && "$CODE" != "201" ]]; then
+            echo "FAIL: sign-up expected HTTP 200/201, got $CODE"
+            cat "$BODY"
+            exit 1
+          fi
+          echo "PASS: sign-up (HTTP $CODE)"
+
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -o "$BODY" -w '%{http_code}' "$BASE/api/me")
+          check_code "$CODE" "200" "authenticated session"
+          jq -e '.user.id and .user.email' "$BODY" >/dev/null
+
+          echo "== Create book =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" \
+            -H 'Content-Type: application/json' \
+            -o "$BODY" -w '%{http_code}' \
+            -X POST "$BASE/api/my/books" \
+            --data "{\"title\":\"$TITLE\"}")
+          check_code "$CODE" "201" "book creation"
+          BOOK_ID=$(jq -r '.book.id' "$BODY")
+          [[ -n "$BOOK_ID" && "$BOOK_ID" != "null" ]]
+          echo "Book: $BOOK_ID"
+
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -o "$BODY" -w '%{http_code}' "$BASE/api/my/books/$BOOK_ID/pages")
+          check_code "$CODE" "200" "owner page list"
+          PAGE_ID=$(jq -r '.pages[0].id' "$BODY")
+          VERSION=$(jq -r '.pages[0].version' "$BODY")
+          [[ -n "$PAGE_ID" && "$PAGE_ID" != "null" ]]
+          echo "Page: $PAGE_ID v$VERSION"
+
+          for ROUTE in "/my-books/$BOOK_ID" "/book/$BOOK_ID/view" "/organizer/$BOOK_ID/contributions"; do
+            CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE$ROUTE")
+            check_code "$CODE" "200" "SPA route $ROUTE"
+          done
+
+          echo "== Invite guest =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -o "$BODY" -w '%{http_code}' \
+            -X POST "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID/invite")
+          check_code "$CODE" "200" "page invite creation"
+          INVITE_TOKEN=$(jq -r '.inviteToken' "$BODY")
+          [[ -n "$INVITE_TOKEN" && "$INVITE_TOKEN" != "null" ]]
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/p/$INVITE_TOKEN")
+          check_code "$CODE" "200" "guest SPA route"
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/api/page-invites/$INVITE_TOKEN")
+          check_code "$CODE" "200" "guest invite load"
+          VERSION=$(jq -r '.version' "$BODY")
+          jq -e '.inviteStatus == "invited"' "$BODY" >/dev/null
+
+          echo "== Guest edits and submits =="
+          CODE=$(curl -sS -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X PUT "$BASE/api/page-invites/$INVITE_TOKEN" \
+            --data "{\"canvasData\":{\"version\":\"7.4.0\",\"objects\":[]},\"expectedVersion\":$VERSION}")
+          check_code "$CODE" "200" "guest page save"
+          NEW_VERSION=$(jq -r '.newVersion' "$BODY")
+          [[ "$NEW_VERSION" -gt "$VERSION" ]]
+
+          CODE=$(curl -sS -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X POST "$BASE/api/page-invites/$INVITE_TOKEN/submit" \
+            --data '{"authorShareApproved":true}')
+          check_code "$CODE" "200" "guest submit"
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/api/page-invites/$INVITE_TOKEN")
+          check_code "$CODE" "410" "submitted invite is closed"
+
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -o "$BODY" -w '%{http_code}' "$BASE/api/my/books/$BOOK_ID/pages")
+          check_code "$CODE" "200" "owner sees submitted page"
+          jq -e --arg id "$PAGE_ID" '.pages[] | select(.id == $id) | .inviteStatus == "submitted" and .authorShareApproved == true' "$BODY" >/dev/null
+          echo "PASS: owner sees submitted + author-approved page"
+
+          echo "== Archive and restore =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X PATCH "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID/visibility" \
+            --data '{"visibility":"archived"}')
+          check_code "$CODE" "200" "archive page"
+          jq -e '.page.ownerVisibility == "archived"' "$BODY" >/dev/null
+
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X PATCH "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID/visibility" \
+            --data '{"visibility":"active"}')
+          check_code "$CODE" "200" "restore page"
+          jq -e '.page.ownerVisibility == "active"' "$BODY" >/dev/null
+
+          echo "== Two-sided public sharing =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X PATCH "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID/sharing" \
+            --data '{"approved":true}')
+          check_code "$CODE" "200" "owner public-share approval"
+          PUBLIC_TOKEN=$(jq -r '.page.publicShareToken' "$BODY")
+          jq -e '.page.ownerShareApproved == true' "$BODY" >/dev/null
+          [[ -n "$PUBLIC_TOKEN" && "$PUBLIC_TOKEN" != "null" ]]
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/api/public-pages/$PUBLIC_TOKEN")
+          check_code "$CODE" "200" "public page API"
+          jq -e --arg id "$PAGE_ID" '.id == $id' "$BODY" >/dev/null
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/share/$PUBLIC_TOKEN")
+          check_code "$CODE" "200" "public share SPA route"
+
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -H 'Content-Type: application/json' -o "$BODY" -w '%{http_code}' \
+            -X PATCH "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID/sharing" \
+            --data '{"approved":false}')
+          check_code "$CODE" "200" "owner revokes public share"
+          jq -e '.page.ownerShareApproved == false' "$BODY" >/dev/null
+
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' "$BASE/api/public-pages/$PUBLIC_TOKEN")
+          check_code "$CODE" "404" "revoked public page is unavailable"
+
+          echo "== Reset tested page =="
+          CODE=$(curl -sS -c "$COOKIES" -b "$COOKIES" -o "$BODY" -w '%{http_code}' \
+            -X DELETE "$BASE/api/my/books/$BOOK_ID/pages/$PAGE_ID")
+          check_code "$CODE" "200" "reset submitted page"
+          jq -e '.page.inviteStatus == "empty" and .page.publicShareToken == null' "$BODY" >/dev/null
+
+          echo "ALL MARKET E2E CHECKS PASSED"
+          echo "Test account: $EMAIL"
+          echo "Test book: $BOOK_ID"
