@@ -1,0 +1,30 @@
+name: Apply submit lock patch v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/apply-submit-lock-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: run submit lock patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply source patch
+        run: python scripts/apply_submit_lock.py
+      - name: Commit source changes and clean temporary files
+        run: |
+          git config user.name "ChatGPT MemoryBook"
+          git config user.email "actions@users.noreply.github.com"
+          git rm -f scripts/apply_submit_lock.py
+          git rm -f .github/workflows/apply-submit-lock.yml
+          git rm -f .github/workflows/apply-submit-lock-v2.yml
+          git add server/index.ts src/PageInviteEditorPage.tsx
+          git commit -m "Add final page submission lock"
+          git push
