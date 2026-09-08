@@ -9,6 +9,7 @@ import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth';
 import { pool } from './db';
+import { getInvoicingCapabilities } from './invoicing';
 
 dotenv.config();
 
@@ -242,6 +243,10 @@ app.get('/api/auth-capabilities', (_req, res) => {
   res.status(200).json({
     google: Boolean(process.env.GOOGLE_CLIENT_ID) && Boolean(process.env.GOOGLE_CLIENT_SECRET),
   });
+});
+
+app.get('/api/invoicing-capabilities', (_req, res) => {
+  res.status(200).json(getInvoicingCapabilities());
 });
 
 app.get('/api/me', async (req, res) => {
@@ -2726,6 +2731,12 @@ async function initializeDatabase(): Promise<void> {
     )
   `);
 
+  const invoicingMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),
+    'utf8'
+  );
+  await pool.query(invoicingMigration);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS book_entitlements (
       id TEXT PRIMARY KEY,
@@ -2862,7 +2873,7 @@ async function initializeDatabase(): Promise<void> {
   );
   await pool.query(ownerNotificationsMigration);
 
-  console.log('Users, books, contributions, pages, notifications and owner page controls ready.');
+  console.log('Users, books, contributions, pages, notifications, invoices and owner page controls ready.');
 }
 
 async function startServer(): Promise<void> {
