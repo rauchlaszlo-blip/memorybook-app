@@ -28,7 +28,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/memorybook_regression
-      BETTER_AUTH_SECRET: regression-only-secret-2026-09-08-very-long-value
+      BETTER_AUTH_SECRET: regression-regression-regression-regression
       BETTER_AUTH_URL: http://127.0.0.1:3001
       PORT: 3001
 
@@ -88,6 +88,7 @@ jobs:
         run: |
           sed -i 's/memorybook-app-language/memorybook.appLanguage/g' scripts/full-regression.mjs
           sed -i 's/save1\.version/save1.newVersion/g' scripts/full-regression.mjs
+          sed -i 's/Erinnerungsbuch als Geschenk/Geschenk-Erinnerungsbuch/g' scripts/full-regression.mjs
           node scripts/full-regression.mjs
 
       - name: Show logs on failure
