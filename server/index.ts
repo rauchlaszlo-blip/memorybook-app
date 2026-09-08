@@ -636,6 +636,9 @@ app.patch('/api/my/books/:bookId/pages/:pageId/visibility', async (req, res) => 
          invite_token AS "inviteToken",
          owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
+         author_share_approved AS "authorShareApproved",
+         owner_share_approved AS "ownerShareApproved",
+         public_share_token AS "publicShareToken",
          updated_at AS "updatedAt"`,
       [visibility, req.params.pageId, req.params.bookId]
     );
@@ -714,6 +717,9 @@ app.delete('/api/my/books/:bookId/pages/:pageId', async (req, res) => {
          invite_token AS "inviteToken",
          owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
+         author_share_approved AS "authorShareApproved",
+         owner_share_approved AS "ownerShareApproved",
+         public_share_token AS "publicShareToken",
          updated_at AS "updatedAt"`,
       [req.params.pageId, req.params.bookId]
     );
