@@ -1,0 +1,82 @@
+name: Invite Message CTA Smoke
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/invite-message-cta-smoke.yml
+
+jobs:
+  invite-message:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test invitation message and CTA
+        shell: bash
+        run: |
+          npm install @playwright/test@1.55.0 --no-save >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          mkdir -p tests
+          cat > tests/invite-message-cta.spec.js <<'EOF'
+          import { test, expect } from '@playwright/test';
+
+          test('individual invite copies a full message with conversion CTA', async ({ browser }) => {
+            const base = 'https://memorybook-app.onrender.com';
+            const stamp = Date.now();
+            const email = `invite-message-${stamp}@example.com`;
+            const password = `Test-${stamp}-Im9!`;
+            const title = `Invite Message ${stamp}`;
+
+            const context = await browser.newContext({
+              viewport: { width: 390, height: 844 },
+              isMobile: true,
+              hasTouch: true,
+              permissions: ['clipboard-read', 'clipboard-write'],
+            });
+            const page = await context.newPage();
+            const api = context.request;
+
+            const signUp = await api.post(`${base}/api/auth/sign-up/email`, {
+              headers: { Origin: base },
+              data: { name: 'Invite Message Test', email, password },
+            });
+            expect([200, 201]).toContain(signUp.status());
+
+            const createBook = await api.post(`${base}/api/my/books`, {
+              data: { title },
+            });
+            expect(createBook.status()).toBe(201);
+            const bookId = (await createBook.json()).book.id;
+
+            await page.goto(`${base}/my-books/${bookId}`, { waitUntil: 'networkidle' });
+            const firstCard = page.locator('article').first();
+            await firstCard.getByRole('button', { name: 'Meghívó létrehozása' }).click();
+            const copyButton = firstCard.getByRole('button', { name: 'Meghívó üzenet másolása' });
+            await expect(copyButton).toBeVisible();
+            await copyButton.click();
+            await expect(firstCard.getByRole('button', { name: 'Meghívó üzenet kimásolva' })).toBeVisible();
+
+            const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+            expect(clipboard).toContain('A saját oldalad itt éred el:');
+            expect(clipboard).toContain(`${base}/p/`);
+            expect(clipboard).toContain('Nekem is kell emlékkönyv');
+            expect(clipboard).toContain(`${base}/nekem-is-kell`);
+            expect(clipboard).not.toContain('QR');
+
+            await page.goto(`${base}/nekem-is-kell`, { waitUntil: 'networkidle' });
+            await expect(page.getByRole('heading', { name: 'Nekem is kell emlékkönyv' })).toBeVisible();
+            const start = page.getByRole('link', { name: 'Saját MemoryBook létrehozása' });
+            await expect(start).toBeVisible();
+            expect(await start.getAttribute('href')).toBe('/login');
+
+            console.log('PASS: individual invitation copies full owner-sent message');
+            console.log('PASS: personal page link is included');
+            console.log('PASS: MemoryBook purchase CTA is included');
+            console.log('PASS: no QR is exposed in individual invitation');
+            console.log('PASS: CTA landing route opens and leads to account start');
+
+            await context.close();
+          });
+          EOF
+          npx playwright test tests/invite-message-cta.spec.js --workers=1
