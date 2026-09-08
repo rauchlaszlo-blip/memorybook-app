@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -24,6 +25,9 @@ type ContributionsResponse = {
 type Props = { bookId: string };
 
 export function OrganizerContributionsPage({ bookId }: Props) {
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
   const [data, setData] = useState<ContributionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +60,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
         );
       } catch (err) {
         console.error(err);
-        setError('A beérkezett bejegyzéseket nem sikerült betölteni.');
+        setError(t('A beérkezett bejegyzéseket nem sikerült betölteni.'));
       } finally {
         setLoading(false);
       }
@@ -136,7 +140,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
       replaceContribution(result.contribution);
     } catch (err) {
       console.error(err);
-      setError('A bejegyzés állapotát nem sikerült módosítani.');
+      setError(t('A bejegyzés állapotát nem sikerült módosítani.'));
     } finally {
       setWorkingId(null);
     }
@@ -160,7 +164,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
       replaceContribution(result.contribution);
     } catch (err) {
       console.error(err);
-      setError('A csoport/tematika mentése nem sikerült.');
+      setError(t('A csoport/tematika mentése nem sikerült.'));
     } finally {
       setWorkingId(null);
     }
@@ -211,15 +215,15 @@ export function OrganizerContributionsPage({ bookId }: Props) {
       );
     } catch (err) {
       console.error(err);
-      setError('A sorrend mentése nem sikerült.');
+      setError(t('A sorrend mentése nem sikerült.'));
     } finally {
       setReordering(false);
     }
   };
 
-  if (loading) return <div style={styles.message}>Bejegyzések betöltése...</div>;
+  if (loading) return <div style={styles.message}>{t('Bejegyzések betöltése...')}</div>;
   if (error && !data) return <div style={styles.message}>{error}</div>;
-  if (!data) return <div style={styles.message}>A könyv nem található.</div>;
+  if (!data) return <div style={styles.message}>{t('A könyv nem található.')}</div>;
 
   return (
     <main style={styles.page}>
@@ -228,55 +232,50 @@ export function OrganizerContributionsPage({ bookId }: Props) {
           href={`/my-books/${encodeURIComponent(bookId)}`}
           style={styles.back}
         >
-          ← Vissza a könyvhöz
+          {t('← Vissza a könyvhöz')}
         </a>
-        <div style={styles.eyebrow}>MemoryBook · rendezvény</div>
+        <div style={styles.eyebrow}>{t('MemoryBook · rendezvény')}</div>
         <h1 style={styles.title}>{data.book.title}</h1>
         <p style={styles.intro}>
-          Itt te döntöd el, mely vendégbejegyzéseket tartod meg. A megtartott
-          anyagokat kézzel rendezheted; később az AI javasolhat csoportokat és
-          sorrendet, de nem dönt helyetted.
+          {t('Itt te döntöd el, mely vendégbejegyzéseket tartod meg. A megtartott anyagokat kézzel rendezheted; később az AI javasolhat csoportokat és sorrendet, de nem dönt helyetted.')}
         </p>
 
         {error && <div style={styles.error}>{error}</div>}
 
         <div style={styles.filters}>
           <FilterButton active={filter === 'pending'} onClick={() => setFilter('pending')}>
-            Új ({counts.pending})
+            {t('Új')} ({counts.pending})
           </FilterButton>
           <FilterButton active={filter === 'kept'} onClick={() => setFilter('kept')}>
-            Megtartott ({counts.kept})
+            {t('Megtartott')} ({counts.kept})
           </FilterButton>
           <FilterButton active={filter === 'rejected'} onClick={() => setFilter('rejected')}>
-            Elutasított ({counts.rejected})
+            {t('Elutasított')} ({counts.rejected})
           </FilterButton>
           <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>
-            Összes ({counts.all})
+            {t('Összes')} ({counts.all})
           </FilterButton>
         </div>
 
         {filter === 'kept' && (
           <section style={styles.organizationPanel}>
             <div>
-              <strong style={styles.organizationTitle}>Megtartott bejegyzések rendezése</strong>
+              <strong style={styles.organizationTitle}>{t('Megtartott bejegyzések rendezése')}</strong>
               <div style={styles.organizationText}>
-                A ↑ / ↓ gombokkal állítsd be a sorrendet. A „Csoport / tematika”
-                mezővel például Család, Barátok, Kollégák vagy Esti pillanatok
-                csoportot adhatsz meg.
+                {t('A ↑ / ↓ gombokkal állítsd be a sorrendet. A „Csoport / tematika” mezővel például Család, Barátok, Kollégák vagy Esti pillanatok csoportot adhatsz meg.')}
               </div>
             </div>
             <div style={styles.aiBox}>
-              <strong>AI-rendszerezési javaslat – később</strong>
+              <strong>{t('AI-rendszerezési javaslat – később')}</strong>
               <span>
-                Az AI csak javasolhat csoportokat és sorrendet. Minden változtatást
-                a tulajdonos hagy jóvá.
+                {t('Az AI csak javasolhat csoportokat és sorrendet. Minden változtatást a tulajdonos hagy jóvá.')}
               </span>
             </div>
           </section>
         )}
 
         {visible.length === 0 ? (
-          <div style={styles.empty}>Ebben a csoportban nincs bejegyzés.</div>
+          <div style={styles.empty}>{t('Ebben a csoportban nincs bejegyzés.')}</div>
         ) : (
           <div style={styles.list}>
             {visible.map((contribution) => {
@@ -296,16 +295,16 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                         </span>
                       )}
                     </div>
-                    <span style={styles.status}>{statusLabel(status)}</span>
+                    <span style={styles.status}>{statusLabel(status, language)}</span>
                   </div>
                   <div style={styles.date}>
-                    {new Date(contribution.createdAt).toLocaleString('hu-HU')}
+                    {new Date(contribution.createdAt).toLocaleString(ownerLocale(language))}
                   </div>
                   <p style={styles.memory}>{contribution.memoryText}</p>
                   {contribution.photoUrl && (
                     <img
                       src={contribution.photoUrl}
-                      alt={`${contribution.contributorName} fotója`}
+                      alt={f('{name} fotója', { name: contribution.contributorName })}
                       style={styles.photo}
                     />
                   )}
@@ -313,7 +312,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                   {status === 'kept' && (
                     <div style={styles.organizeCard}>
                       <label style={styles.groupLabel}>
-                        Csoport / tematika
+                        {t('Csoport / tematika')}
                         <input
                           type="text"
                           maxLength={80}
@@ -324,7 +323,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                               [contribution.id]: event.target.value,
                             }))
                           }
-                          placeholder="Például: Család"
+                          placeholder={t('Például: Család')}
                           style={styles.groupInput}
                         />
                       </label>
@@ -334,26 +333,26 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                         disabled={working}
                         style={styles.groupSaveButton}
                       >
-                        Tematika mentése
+                        {t('Tematika mentése')}
                       </button>
                       <div style={styles.orderActions}>
                         <button
                           type="button"
-                          aria-label="Bejegyzés feljebb"
+                          aria-label={t('Bejegyzés feljebb')}
                           onClick={() => moveKept(contribution.id, -1)}
                           disabled={reordering || keptIndex <= 0}
                           style={styles.orderButton}
                         >
-                          ↑ Feljebb
+                          {t('↑ Feljebb')}
                         </button>
                         <button
                           type="button"
-                          aria-label="Bejegyzés lejjebb"
+                          aria-label={t('Bejegyzés lejjebb')}
                           onClick={() => moveKept(contribution.id, 1)}
                           disabled={reordering || keptIndex < 0 || keptIndex >= keptSorted.length - 1}
                           style={styles.orderButton}
                         >
-                          ↓ Lejjebb
+                          {t('↓ Lejjebb')}
                         </button>
                       </div>
                     </div>
@@ -366,7 +365,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                       onClick={() => setStatus(contribution, 'kept')}
                       style={styles.keepButton}
                     >
-                      {working ? 'Folyamatban...' : 'Megtartom'}
+                      {working ? t('Folyamatban...') : t('Megtartom')}
                     </button>
                     <button
                       type="button"
@@ -374,7 +373,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                       onClick={() => setStatus(contribution, 'rejected')}
                       style={styles.rejectButton}
                     >
-                      Elutasítom
+                      {t('Elutasítom')}
                     </button>
                     {status !== 'pending' && (
                       <button
@@ -383,7 +382,7 @@ export function OrganizerContributionsPage({ bookId }: Props) {
                         onClick={() => setStatus(contribution, 'pending')}
                         style={styles.resetButton}
                       >
-                        Vissza az új bejegyzésekhez
+                        {t('Vissza az új bejegyzésekhez')}
                       </button>
                     )}
                   </div>
@@ -419,10 +418,10 @@ function FilterButton({
   );
 }
 
-function statusLabel(status: OwnerStatus) {
-  if (status === 'kept') return 'Megtartva';
-  if (status === 'rejected') return 'Elutasítva';
-  return 'Új';
+function statusLabel(status: OwnerStatus, language: import('./i18n').AppLanguage) {
+  if (status === 'kept') return ownerText(language, 'Megtartva');
+  if (status === 'rejected') return ownerText(language, 'Elutasítva');
+  return ownerText(language, 'Új');
 }
 
 const styles: Record<string, React.CSSProperties> = {

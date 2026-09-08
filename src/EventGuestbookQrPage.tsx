@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
+import { ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://' + window.location.hostname + ':3001' : '';
 type EventGuestbookQrPageProps = { bookId: string };
 
 export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
-  const [title, setTitle] = useState('MemoryBook vendégkönyv');
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
+  const [title, setTitle] = useState('MemoryBook');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,11 +22,11 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
         if (!response.ok) throw new Error('LOAD_FAILED');
         const data = await response.json();
         if (data.book?.bookType !== 'event') throw new Error('NOT_EVENT_BOOK');
-        setTitle(data.book?.title || 'MemoryBook vendégkönyv');
+        setTitle(data.book?.title || 'MemoryBook');
         setInviteToken(data.book?.eventInviteToken || null);
       } catch (err) {
         console.error(err);
-        setError('Nem sikerült betölteni a rendezvény QR-kódját.');
+        setError(t('Nem sikerült betölteni a rendezvény QR-kódját.'));
       }
     };
     load();
@@ -33,21 +36,21 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
     if (!inviteToken) return;
     QRCode.toDataURL(`${origin}/join/${inviteToken}`, { width: 900, margin: 3, errorCorrectionLevel: 'M' })
       .then(setQrDataUrl)
-      .catch((err) => { console.error(err); setError('Nem sikerült elkészíteni a QR-kódot.'); });
+      .catch((err) => { console.error(err); setError(t('Nem sikerült elkészíteni a QR-kódot.')); });
   }, [inviteToken, origin]);
 
   if (error) return <main style={styles.center}>{error}</main>;
-  if (!inviteToken || !qrDataUrl) return <main style={styles.center}>QR-kód készítése...</main>;
+  if (!inviteToken || !qrDataUrl) return <main style={styles.center}>{t('QR-kód készítése...')}</main>;
 
   return (
     <main style={styles.page}>
-      <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.back}>← Vissza a könyvhöz</a>
+      <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.back}>{t('← Vissza a könyvhöz')}</a>
       <section style={styles.card}>
-        <div style={styles.brand}>MemoryBook vendégkönyv</div>
+        <div style={styles.brand}>{t('MemoryBook vendégkönyv')}</div>
         <h1 style={styles.title}>{title}</h1>
-        <p style={styles.lead}>Olvasd be a QR-kódot, és írj a vendégkönyvbe!</p>
-        <img src={qrDataUrl} alt="Rendezvény vendégkönyv QR-kód" style={styles.qr} />
-        <p style={styles.hint}>A QR-kód ugyanarra a közös vendégkönyvre visz minden vendéget.</p>
+        <p style={styles.lead}>{t('Olvasd be a QR-kódot, és írj a vendégkönyvbe!')}</p>
+        <img src={qrDataUrl} alt={t('Rendezvény vendégkönyv QR-kód')} style={styles.qr} />
+        <p style={styles.hint}>{t('A QR-kód ugyanarra a közös vendégkönyvre visz minden vendéget.')}</p>
       </section>
     </main>
   );

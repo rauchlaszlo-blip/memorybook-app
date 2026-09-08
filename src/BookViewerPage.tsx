@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
+import type { AppLanguage } from './i18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -32,6 +34,9 @@ type BookViewerPageProps = {
 };
 
 export function BookViewerPage({ bookId }: BookViewerPageProps) {
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
@@ -89,7 +94,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setPage(null);
       } catch (err) {
         console.error(err);
-        setError('A könyvet nem sikerült betölteni.');
+        setError(t('A könyvet nem sikerült betölteni.'));
         setPageIds([]);
         setPage(null);
       } finally {
@@ -130,7 +135,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setNoteSaved(false);
       } catch (err) {
         console.error(err);
-        setError('Az oldalt nem sikerült betölteni.');
+        setError(t('Az oldalt nem sikerült betölteni.'));
         setPage(null);
       } finally {
         setLoading(false);
@@ -162,7 +167,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
       setNoteSaved(true);
     } catch (err) {
       console.error(err);
-      setError('A saját megjegyzést nem sikerült elmenteni.');
+      setError(t('A saját megjegyzést nem sikerült elmenteni.'));
     } finally {
       setNoteSaving(false);
     }
@@ -172,12 +177,12 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
     <main style={styles.page}>
       <section style={styles.container}>
         <a href="/my-books" style={styles.backLink}>
-          ← Saját könyveim
+          {t('← Saját könyveim')}
         </a>
 
         <div style={styles.eyebrow}>MemoryBook</div>
         <h1 style={styles.title}>{bookTitle}</h1>
-        <div style={styles.meta}>Csak olvasható könyvnézet</div>
+        <div style={styles.meta}>{t('Csak olvasható könyvnézet')}</div>
 
         <div style={styles.topBar}>
           <button
@@ -187,15 +192,15 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             }
             disabled={currentIndex === 0 || pageIds.length === 0}
             style={styles.button}
-            aria-label="Előző oldal"
+            aria-label={t('Előző oldal')}
           >
-            ← Előző
+            {t('← Előző')}
           </button>
 
           <div style={styles.pageNumber}>
             {pageIds.length > 0
-              ? `${currentIndex + 1} / ${pageIds.length} oldal`
-              : 'Nincs oldal'}
+              ? f('{current} / {total} oldal', { current: currentIndex + 1, total: pageIds.length })
+              : t('Nincs oldal')}
           </div>
 
           <button
@@ -210,9 +215,9 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               currentIndex === pageIds.length - 1
             }
             style={styles.button}
-            aria-label="Következő oldal"
+            aria-label={t('Következő oldal')}
           >
-            Következő →
+            {t('Következő →')}
           </button>
         </div>
 
@@ -220,69 +225,69 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         <div style={styles.viewer} data-memory-content="true">
           {loading ? (
-            <div style={styles.message}>Oldal betöltése...</div>
+            <div style={styles.message}>{t('Oldal betöltése...')}</div>
           ) : pageIds.length === 0 ? (
             <div style={styles.emptyPage}>
-              <div>Még nincs beküldött oldal ebben a könyvben.</div>
+              <div>{t('Még nincs beküldött oldal ebben a könyvben.')}</div>
             </div>
           ) : page?.previewImageUrl ? (
             <img
               src={page.previewImageUrl}
-              alt={`${page.pageNumber}. oldal`}
+              alt={f('{page}. oldal', { page: page.pageNumber })}
               style={styles.image}
             />
           ) : (
             <div style={styles.emptyPage}>
-              <div>{currentIndex + 1}. oldal</div>
-              <div style={styles.emptyText}>Ehhez az oldalhoz nincs előnézeti kép.</div>
+              <div>{f('{page}. oldal', { page: currentIndex + 1 })}</div>
+              <div style={styles.emptyText}>{t('Ehhez az oldalhoz nincs előnézeti kép.')}</div>
             </div>
           )}
         </div>
 
         {!loading && page && (
           <section style={styles.identityPanel} data-memory-metadata="true">
-            <div style={styles.identityEyebrow}>Az emlék adatai</div>
+            <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
             <h2 style={styles.identityTitle}>
-              {page.inviteRecipientName || page.inviteRecipientEmail || 'Nincs azonosítva'}
+              {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
             </h2>
             <div style={styles.identityGrid}>
               {page.inviteRecipientName && page.inviteRecipientEmail && (
                 <div><span style={styles.identityLabel}>E-mail</span>{page.inviteRecipientEmail}</div>
               )}
               <div>
-                <span style={styles.identityLabel}>Küldési mód</span>
+                <span style={styles.identityLabel}>{t('Küldési mód')}</span>
                 {page.inviteDeliveryMethod === 'email'
                   ? 'E-mail'
                   : page.inviteDeliveryMethod === 'share'
-                    ? 'Megosztás'
-                    : 'Nincs rögzítve'}
+                    ? t('Megosztás')
+                    : t('Nincs rögzítve')}
               </div>
               <div>
-                <span style={styles.identityLabel}>Meghívás dátuma</span>
-                {formatDate(page.inviteSentAt)}
+                <span style={styles.identityLabel}>{t('Meghívás dátuma')}</span>
+                {formatDate(page.inviteSentAt, language)}
               </div>
               <div>
-                <span style={styles.identityLabel}>Beküldés dátuma</span>
-                {formatDate(page.submittedAt)}
+                <span style={styles.identityLabel}>{t('Beküldés dátuma')}</span>
+                {formatDate(page.submittedAt, language)}
               </div>
             </div>
 
             <label style={styles.noteLabel}>
-              Saját megjegyzés
+              {t('Saját megjegyzés')}
               <textarea
                 value={ownerNote}
                 onChange={(event) => { setOwnerNote(event.target.value); setNoteSaved(false); }}
                 maxLength={2000}
                 rows={4}
-                placeholder="Pl. hol találkoztunk, milyen eseményhez kapcsolódik az emlék…"
+                placeholder={t('Pl. hol találkoztunk, milyen eseményhez kapcsolódik az emlék…')}
                 style={styles.noteInput}
               />
             </label>
             <button type="button" onClick={saveOwnerNote} disabled={noteSaving} style={styles.noteButton}>
-              {noteSaving ? 'Mentés…' : noteSaved ? 'Megjegyzés elmentve' : 'Megjegyzés mentése'}
+              {noteSaving ? t('Mentés…') : noteSaved ? t('Megjegyzés elmentve') : t('Megjegyzés mentése')}
             </button>
             <div style={styles.printHint}>
-              Ez az adatblokk az online könyvhöz tartozik. Későbbi nyomtatásnál csak a fenti emlékoldal kerül a könyvbe.
+              {t('Ez az adatblokk az online könyvhöz tartozik. Későbbi nyomtatásnál csak a fenti emlékoldal kerül a könyvbe.')}
             </div>
           </section>
         )}
@@ -291,12 +296,12 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   );
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return 'Nincs rögzítve';
+function formatDate(value: string | null | undefined, language: AppLanguage) {
+  if (!value) return ownerText(language, 'Nincs rögzítve');
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    : date.toLocaleDateString(ownerLocale(language), { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 const styles: Record<string, React.CSSProperties> = {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ownerFormat, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -20,6 +21,9 @@ type NotificationItem = {
 };
 
 export function NotificationMenu() {
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -64,7 +68,7 @@ export function NotificationMenu() {
       setUnreadCount(Number(data?.unreadCount || 0));
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült betölteni az értesítéseket.');
+      setError(t('Nem sikerült betölteni az értesítéseket.'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +106,7 @@ export function NotificationMenu() {
         type="button"
         onClick={toggleMenu}
         style={styles.iconButton}
-        aria-label={`Értesítések${unreadCount > 0 ? `, ${unreadCount} olvasatlan` : ''}`}
+        aria-label={`${t('Értesítések')}${unreadCount > 0 ? `, ${f('{count} olvasatlan', { count: unreadCount })}` : ''}`}
         aria-expanded={open}
       >
         <span aria-hidden="true" style={styles.bell}>🔔</span>
@@ -112,24 +116,24 @@ export function NotificationMenu() {
       </button>
 
       {open && (
-        <div style={styles.menu} role="region" aria-label="Értesítések">
+        <div style={styles.menu} role="region" aria-label={t('Értesítések')}>
           <div style={styles.menuHeader}>
-            <strong>Értesítések</strong>
-            {unreadCount > 0 && <span style={styles.unreadLabel}>{unreadCount} új</span>}
+            <strong>{t('Értesítések')}</strong>
+            {unreadCount > 0 && <span style={styles.unreadLabel}>{f('{count} új', { count: unreadCount })}</span>}
           </div>
 
-          {loading && <div style={styles.state}>Betöltés...</div>}
+          {loading && <div style={styles.state}>{t('Betöltés...')}</div>}
           {!loading && error && <div style={styles.error}>{error}</div>}
           {!loading && !error && notifications.length === 0 && (
-            <div style={styles.state}>Nincs értesítés.</div>
+            <div style={styles.state}>{t('Nincs értesítés.')}</div>
           )}
 
           {!loading && !error && notifications.length > 0 && (
             <div style={styles.list}>
               {notifications.map((notification) => {
                 const message = notification.actorName
-                  ? `${notification.actorName} visszaküldte a ${notification.pageNumber}. oldalt.`
-                  : `Visszaérkezett a ${notification.pageNumber}. oldal.`;
+                  ? f('{name} visszaküldte a {page}. oldalt.', { name: notification.actorName, page: notification.pageNumber })
+                  : f('Visszaérkezett a {page}. oldal.', { page: notification.pageNumber });
 
                 return (
                   <button
