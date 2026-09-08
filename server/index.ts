@@ -550,6 +550,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pages (
       id TEXT PRIMARY KEY,
+      book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
       page_number INTEGER NOT NULL,
       canvas_json JSONB NOT NULL DEFAULT '{}'::jsonb,
       preview_image_url TEXT,
@@ -559,8 +560,45 @@ async function initializeDatabase(): Promise<void> {
   `);
 
   await pool.query(`
-    INSERT INTO pages (id, page_number)
-    VALUES ('page-1', 1), ('page-2', 2)
+    ALTER TABLE pages
+    ADD COLUMN IF NOT EXISTS book_id TEXT
+  `);
+
+  await pool.query(
+    `UPDATE pages
+     SET book_id = $1
+     WHERE book_id IS NULL`,
+    ['book-12b']
+  );
+
+  await pool.query(`
+    DO $
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'pages'::regclass
+          AND contype = 'f'
+          AND conname = 'pages_book_id_fkey'
+      ) THEN
+        ALTER TABLE pages
+        ADD CONSTRAINT pages_book_id_fkey
+        FOREIGN KEY (book_id)
+        REFERENCES books(id)
+        ON DELETE CASCADE;
+      END IF;
+    END
+    $
+  `);
+
+  await pool.query(`
+    ALTER TABLE pages
+    ALTER COLUMN book_id SET NOT NULL
+  `);
+
+  await pool.query(`
+    INSERT INTO pages (id, book_id, page_number)
+    VALUES ('page-1', 'book-12b', 1), ('page-2', 'book-12b', 2)
     ON CONFLICT (id) DO NOTHING
   `);
 
