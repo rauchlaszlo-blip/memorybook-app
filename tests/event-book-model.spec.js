@@ -59,21 +59,13 @@ test('standard and event book models work on mobile', async ({ browser }) => {
 
   await ownerPage.goto(`${base}/organizer/${eventBook.id}/contributions`, { waitUntil: 'networkidle' });
   await expect(ownerPage.getByRole('button', { name: 'Új (2)' })).toBeVisible();
-  const cards = ownerPage.locator('article');
-  await expect(cards).toHaveCount(2);
+  await expect(ownerPage.locator('article')).toHaveCount(2);
 
-  const firstCard = cards.nth(0);
-  const secondCard = cards.nth(1);
-  const firstText = await firstCard.innerText();
-  const secondText = await secondCard.innerText();
-
-  await firstCard.getByRole('button', { name: 'Megtartom' }).click();
+  await ownerPage.locator('article').first().getByRole('button', { name: 'Megtartom' }).click();
   await ownerPage.getByRole('button', { name: 'Új (1)' }).waitFor();
-  await secondCard.getByRole('button', { name: 'Elutasítom' }).click().catch(async () => {
-    const remaining = ownerPage.locator('article').first();
-    await remaining.getByRole('button', { name: 'Elutasítom' }).click();
-  });
 
+  await ownerPage.locator('article').first().getByRole('button', { name: 'Elutasítom' }).click();
+  await ownerPage.getByRole('button', { name: 'Új (0)' }).waitFor();
   await ownerPage.getByRole('button', { name: 'Megtartott (1)' }).waitFor();
   await ownerPage.getByRole('button', { name: 'Elutasított (1)' }).waitFor();
 
