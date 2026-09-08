@@ -59,6 +59,7 @@ export const MemoryBookEditor = forwardRef<
   MemoryBookEditorProps
 >(({ page, onSavePage, onConflict }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -71,6 +72,7 @@ export const MemoryBookEditor = forwardRef<
   const [hasSelection, setHasSelection] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [canvasScale, setCanvasScale] = useState(1);
 
   const pageSaveStatesRef = useRef<Map<string, PageSaveState>>(new Map());
   const currentPageIdRef = useRef(page.id);
@@ -95,6 +97,29 @@ export const MemoryBookEditor = forwardRef<
   useEffect(() => {
     pageDataRef.current = page;
   }, [page]);
+
+  useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+
+    const updateScale = () => {
+      const availableWidth = viewport.clientWidth || CANVAS_WIDTH;
+      setCanvasScale(Math.min(1, availableWidth / CANVAS_WIDTH));
+    };
+
+    updateScale();
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateScale)
+        : null;
+    observer?.observe(viewport);
+    window.addEventListener('resize', updateScale);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
+  }, []);
 
   const getPageState = useCallback(
     (pageId: string, initialVersion = 1): PageSaveState => {
@@ -751,7 +776,25 @@ export const MemoryBookEditor = forwardRef<
         fontFamily: 'Arial, sans-serif',
       }}
     >
+      <style>{`
+        .memorybook-editor-toolbar button,
+        .memorybook-editor-toolbar label {
+          min-height: 44px;
+          box-sizing: border-box;
+          font-size: 14px;
+          font-weight: 700;
+        }
+        .memorybook-editor-toolbar button {
+          padding: 9px 12px;
+        }
+        .memorybook-editor-toolbar input[type='range'] {
+          min-width: 120px;
+          height: 44px;
+        }
+      `}</style>
+
       <div
+        className="memorybook-editor-toolbar"
         style={{
           maxWidth: 850,
           margin: '0 auto 16px',
@@ -833,7 +876,7 @@ export const MemoryBookEditor = forwardRef<
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <button onClick={handleUndo} disabled={!canUndo}>
             ↩
           </button>
@@ -867,23 +910,36 @@ export const MemoryBookEditor = forwardRef<
       </div>
 
       <div
+        ref={canvasViewportRef}
         style={{
-          width: CANVAS_WIDTH,
-          maxWidth: '100%',
+          width: '100%',
+          maxWidth: CANVAS_WIDTH,
           margin: '0 auto',
-          background: '#fff',
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 10px 30px rgba(0,0,0,.12)',
-          overflow: 'auto',
         }}
       >
         <div
-          ref={canvasHostRef}
+          data-testid="memorybook-canvas-frame"
           style={{
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT,
+            width: CANVAS_WIDTH * canvasScale,
+            height: CANVAS_HEIGHT * canvasScale,
+            margin: '0 auto',
+            background: '#fff',
+            border: '1px solid #cbd5e1',
+            boxShadow: '0 10px 30px rgba(0,0,0,.12)',
+            overflow: 'hidden',
+            touchAction: isDrawing || isErasing ? 'none' : 'manipulation',
           }}
-        />
+        >
+          <div
+            ref={canvasHostRef}
+            style={{
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              transform: `scale(${canvasScale})`,
+              transformOrigin: 'top left',
+            }}
+          />
+        </div>
       </div>
     </div>
   );

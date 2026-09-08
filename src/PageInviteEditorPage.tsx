@@ -200,7 +200,9 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         <label style={styles.shareConsent}>
           <input
             type="checkbox"
+            aria-label="Nyilvános megosztás engedélyezése"
             checked={authorShareApproved}
+            style={{ width: 20, height: 20, flex: '0 0 auto' }}
             onChange={(event) => setAuthorShareApproved(event.target.checked)}
           />
           <span>
@@ -254,7 +256,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     margin: '6px 0 4px',
     color: '#0f172a',
-    fontSize: 26,
+    fontSize: 'clamp(22px, 7vw, 28px)',
   },
   subtitle: {
     color: '#334155',
@@ -269,7 +271,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 16,
     display: 'flex',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 12,
     padding: 12,
     borderRadius: 10,
     background: '#f8fafc',
@@ -282,11 +284,14 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 16,
     display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
+    alignItems: 'stretch',
+    flexDirection: 'column',
     gap: 10,
   },
   submitButton: {
-    padding: '11px 16px',
+    minHeight: 48,
+    width: '100%',
+    padding: '12px 16px',
     border: 0,
     borderRadius: 9,
     background: '#0f172a',
@@ -294,6 +299,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 800,
     cursor: 'pointer',
+    touchAction: 'manipulation',
   },
   submitWarning: {
     color: '#92400e',
