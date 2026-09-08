@@ -1,0 +1,120 @@
+name: Finished Book View Smoke
+
+on:
+  push:
+    branches:
+      - finished-book-view-smoke-2026-09-08-b
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test finished book visibility rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          cat > "$RUNNER_TEMP/test.mjs" <<'EOF'
+          import { chromium } from 'playwright';
+
+          const base = 'https://memorybook-app.onrender.com';
+          const stamp = Date.now();
+          const email = `memorybook-view-${stamp}@example.com`;
+          const password = `View-${stamp}-Aa9!`;
+          const title = `Finished Book View ${stamp}`;
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext();
+          const page = await context.newPage();
+
+          try {
+            await page.goto(`${base}/login`, { waitUntil: 'networkidle' });
+            await page.getByRole('button', { name: 'Regisztráció' }).click();
+            await page.getByPlaceholder('Neved').fill('MemoryBook View Test');
+            await page.getByPlaceholder('nev@email.hu').fill(email);
+            await page.getByPlaceholder('Legalább 8 karakter').fill(password);
+            await Promise.all([
+              page.waitForURL('**/my-books'),
+              page.getByRole('button', { name: 'Fiók létrehozása' }).click(),
+            ]);
+
+            const api = context.request;
+            const create = await api.post(`${base}/api/my/books`, { data: { title } });
+            if (!create.ok()) throw new Error(`book create ${create.status()}`);
+            const bookId = (await create.json()).book.id;
+
+            const pagesResponse = await api.get(`${base}/api/my/books/${bookId}/pages`);
+            if (!pagesResponse.ok()) throw new Error(`pages load ${pagesResponse.status()}`);
+            const pagesData = await pagesResponse.json();
+            const [activePage, invitedPage, archivedPage] = pagesData.pages.slice(0, 3);
+            if (!activePage || !invitedPage || !archivedPage) throw new Error('Need at least 3 pages');
+
+            async function invite(pageId) {
+              const r = await api.post(`${base}/api/my/books/${bookId}/pages/${pageId}/invite`);
+              if (!r.ok()) throw new Error(`invite ${pageId} ${r.status()}`);
+              return (await r.json()).inviteToken;
+            }
+
+            async function loadInvite(token) {
+              const r = await api.get(`${base}/api/page-invites/${token}`);
+              if (!r.ok()) throw new Error(`invite load ${r.status()}`);
+              return r.json();
+            }
+
+            async function saveAndSubmit(pageId) {
+              const token = await invite(pageId);
+              const inviteData = await loadInvite(token);
+              const save = await api.put(`${base}/api/page-invites/${token}`, {
+                data: {
+                  canvasData: { version: '7.4.0', objects: [] },
+                  expectedVersion: inviteData.version,
+                },
+              });
+              if (!save.ok()) throw new Error(`save ${pageId} ${save.status()}`);
+              const submit = await api.post(`${base}/api/page-invites/${token}/submit`, {
+                data: { authorShareApproved: false },
+              });
+              if (!submit.ok()) throw new Error(`submit ${pageId} ${submit.status()}`);
+            }
+
+            await saveAndSubmit(activePage.id);
+            await invite(invitedPage.id);
+            await saveAndSubmit(archivedPage.id);
+            const archive = await api.patch(`${base}/api/my/books/${bookId}/pages/${archivedPage.id}/visibility`, {
+              data: { visibility: 'archived' },
+            });
+            if (!archive.ok()) throw new Error(`archive ${archive.status()}`);
+
+            await page.goto(`${base}/book/${bookId}/view`, { waitUntil: 'networkidle' });
+            if (await page.getByText('Page 1 / 1').count() !== 1) {
+              throw new Error('Expected exactly one visible finished-book page');
+            }
+            console.log('PASS: active submitted page is shown');
+            console.log('PASS: invited page is excluded');
+            console.log('PASS: archived submitted page is excluded');
+            console.log('PASS: finished book shows exactly Page 1 / 1');
+
+            const archiveActive = await api.patch(`${base}/api/my/books/${bookId}/pages/${activePage.id}/visibility`, {
+              data: { visibility: 'archived' },
+            });
+            if (!archiveActive.ok()) throw new Error(`archive active ${archiveActive.status()}`);
+
+            await page.reload({ waitUntil: 'networkidle' });
+            if (await page.getByText('No pages').count() !== 1) {
+              throw new Error('Expected no visible pages after archiving all submitted pages');
+            }
+            console.log('PASS: book becomes empty when all submitted pages are archived');
+
+            for (const p of [activePage, archivedPage]) {
+              const r = await api.delete(`${base}/api/my/books/${bookId}/pages/${p.id}`);
+              if (!r.ok()) throw new Error(`cleanup reset ${p.id} ${r.status()}`);
+            }
+            console.log('PASS: tested submitted pages reset to empty');
+            console.log('ALL FINISHED BOOK VIEW CHECKS PASSED');
+          } finally {
+            await browser.close();
+          }
+          EOF
+          node "$RUNNER_TEMP/test.mjs"
