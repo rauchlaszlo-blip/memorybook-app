@@ -25,4 +25,4 @@ jobs:
         run: npm run build
 
       - name: Server TypeScript check
-        run: npx tsc --noEmit --module ESNext --moduleResolution Bundler --target ES2022 --esModuleInterop --skipLibCheck server/index.ts server/auth.ts server/db.ts
+        run: npx tsc --ignoreConfig --noEmit --module ESNext --moduleResolution Bundler --target ES2022 --esModuleInterop --skipLibCheck server/index.ts server/auth.ts server/db.ts
