@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppLanguage } from './i18n';
+import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 type InviteSendDialogProps = {
   bookTitle: string;
@@ -112,6 +113,9 @@ export function InviteSendDialog({
   onSent,
   onClose,
 }: InviteSendDialogProps) {
+  const uiLanguage = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(uiLanguage, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(uiLanguage, key, values);
   const hasSavedIdentity = Boolean(savedRecipientName || savedRecipientEmail);
   const identityLocked = isResend && hasSavedIdentity;
   const [platform, setPlatform] = useState<SendPlatform>(
@@ -157,11 +161,11 @@ export function InviteSendDialog({
     setSendError(null);
 
     if (platform === 'share' && !recipientName.trim()) {
-      setSendError('Megosztásnál add meg a címzett nevét, hogy az emlék később is azonosítható legyen.');
+      setSendError(t('Megosztásnál add meg a címzett nevét, hogy az emlék később is azonosítható legyen.'));
       return;
     }
     if (platform === 'email' && !email.trim()) {
-      setSendError('E-mail küldésnél add meg a címzett e-mail címét.');
+      setSendError(t('E-mail küldésnél add meg a címzett e-mail címét.'));
       return;
     }
 
@@ -181,15 +185,13 @@ export function InviteSendDialog({
         onClose();
       } catch (err) {
         console.error(err);
-        setSendError('Nem sikerült rögzíteni a meghívás küldését. Próbáld újra.');
+        setSendError(t('Nem sikerült rögzíteni a meghívás küldését. Próbáld újra.'));
       }
       return;
     }
 
     if (!nativeShareAvailable) {
-      setSendError(
-        'Ezen az eszközön a rendszer megosztás nem érhető el. Válaszd az E-mail lehetőséget.'
-      );
+      setSendError(t('Ezen az eszközön a rendszer megosztás nem érhető el. Válaszd az E-mail lehetőséget.'));
       return;
     }
 
@@ -203,7 +205,7 @@ export function InviteSendDialog({
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error(err);
-      setSendError('Nem sikerült megnyitni a megosztást. Próbáld újra vagy válaszd az E-mailt.');
+      setSendError(t('Nem sikerült megnyitni a megosztást. Próbáld újra vagy válaszd az E-mailt.'));
     }
   };
 
@@ -218,22 +220,22 @@ export function InviteSendDialog({
       >
         <div style={styles.dialogTop}>
           <div>
-            <div style={styles.eyebrow}>Oldal {pageNumber}</div>
-            <h2 id="invite-send-title" style={styles.title}>{isResend ? 'Meghívó újraküldése' : 'Meghívás küldése'}</h2>
+            <div style={styles.eyebrow}>{f('Oldal {page}', { page: pageNumber })}</div>
+            <h2 id="invite-send-title" style={styles.title}>{isResend ? t('Meghívó újraküldése') : t('Meghívás küldése')}</h2>
           </div>
-          <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Bezárás">×</button>
+          <button type="button" onClick={onClose} style={styles.closeButton} aria-label={t('Bezárás')}>×</button>
         </div>
 
         {isResend && (
           <div style={styles.resendWarning}>
-            Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.
+            {t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
           </div>
         )}
         <div style={styles.expiryNote}>
-          A meghívó 14 napig használható{expiresAt ? `, lejár: ${new Date(expiresAt).toLocaleDateString('hu-HU')}` : ''}.
+          {f('A meghívó 14 napig használható{expiry}.', { expiry: expiresAt ? f(', lejár: {date}', { date: new Date(expiresAt).toLocaleDateString(ownerLocale(uiLanguage)) }) : '' })}
         </div>
 
-        <div style={styles.stepLabel}>1. Küldési mód</div>
+        <div style={styles.stepLabel}>{t('1. Küldési mód')}</div>
         <div style={styles.platformGrid}>
           <button
             type="button"
@@ -241,8 +243,8 @@ export function InviteSendDialog({
             disabled={identityLocked}
             style={platform === 'share' ? styles.platformActive : styles.platformButton}
           >
-            Megosztás…
-            <span style={styles.platformHint}>Messenger, WhatsApp, SMS, e-mail és más telepített app</span>
+            {t('Megosztás…')}
+            <span style={styles.platformHint}>{t('Messenger, WhatsApp, SMS, e-mail és más telepített app')}</span>
           </button>
           <button
             type="button"
@@ -251,33 +253,33 @@ export function InviteSendDialog({
             style={platform === 'email' ? styles.platformActive : styles.platformButton}
           >
             E-mail
-            <span style={styles.platformHint}>Közvetlenül a levelező alkalmazásban</span>
+            <span style={styles.platformHint}>{t('Közvetlenül a levelező alkalmazásban')}</span>
           </button>
         </div>
 
-        <div style={styles.stepLabel}>2. Meghívó nyelve</div>
+        <div style={styles.stepLabel}>{t('2. Meghívó nyelve')}</div>
         <label style={styles.label}>
-          Nyelv
+          {t('Nyelv')}
           <select
             value={inviteLanguageChoice}
             onChange={(event) => updateInviteLanguage(event.target.value as InviteLanguageChoice)}
             style={styles.input}
-            aria-label="Meghívó nyelve"
+            aria-label={t('Meghívó nyelve')}
           >
-            <option value="inherit">Könyv nyelve ({languageLabel(bookLanguage)})</option>
+            <option value="inherit">{f('Könyv nyelve ({language})', { language: languageLabel(bookLanguage) })}</option>
             <option value="hu">Magyar</option>
             <option value="en">English</option>
             <option value="de">Deutsch</option>
           </select>
         </label>
 
-        <div style={styles.stepLabel}>3. Személyre szabás</div>
+        <div style={styles.stepLabel}>{t('3. Személyre szabás')}</div>
         <label style={styles.label}>
-          Címzett neve {platform === 'share' ? '(kötelező)' : '(opcionális)'}
+          {t('Címzett neve')} {platform === 'share' ? t('(kötelező)') : t('(opcionális)')}
           <input
             value={recipientName}
             onChange={(event) => updateRecipientName(event.target.value)}
-            placeholder="pl. Rubinszky Gertrúd"
+            placeholder={t('pl. Rubinszky Gertrúd')}
             style={styles.input}
             maxLength={120}
             readOnly={identityLocked}
@@ -286,7 +288,7 @@ export function InviteSendDialog({
 
         {platform === 'email' && (
           <label style={styles.label}>
-            E-mail cím (kötelező)
+            {t('E-mail cím (kötelező)')}
             <input
               type="email"
               value={email}
@@ -299,7 +301,7 @@ export function InviteSendDialog({
         )}
 
         <label style={styles.label}>
-          Meghívó üzenet
+          {t('Meghívó üzenet')}
           <textarea
             value={message}
             onChange={(event) => setMessage(event.target.value)}
@@ -310,19 +312,19 @@ export function InviteSendDialog({
 
         {identityLocked && (
           <div style={styles.identityNote}>
-            A címzett az aktív 14 napos időablak alatt ehhez az oldalhoz rögzült. Lejárat után az oldal új címzettnek adható.
+            {t('A címzett az aktív 14 napos időablak alatt ehhez az oldalhoz rögzült. Lejárat után az oldal új címzettnek adható.')}
           </div>
         )}
         <div style={styles.note}>
-          A „Nekem is kell emlékkönyv” rész a meghívóban marad, így a címzett saját MemoryBookot is indíthat.
+          {t('A „Nekem is kell emlékkönyv” rész a meghívóban marad, így a címzett saját MemoryBookot is indíthat.')}
         </div>
 
         {sendError && <div style={styles.error}>{sendError}</div>}
 
         <div style={styles.actions}>
-          <button type="button" onClick={onClose} style={styles.secondaryButton}>Mégse</button>
+          <button type="button" onClick={onClose} style={styles.secondaryButton}>{t('Mégse')}</button>
           <button type="button" onClick={send} style={styles.primaryButton}>
-            {platform === 'email' ? 'E-mail megnyitása' : 'Címzett és app kiválasztása'}
+            {platform === 'email' ? t('E-mail megnyitása') : t('Címzett és app kiválasztása')}
           </button>
         </div>
       </section>

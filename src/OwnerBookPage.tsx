@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { InviteSendDialog } from './InviteSendDialog.tsx';
 import { EventBookSettings } from './EventBookSettings.tsx';
 import { normalizeAppLanguage, SUPPORTED_APP_LANGUAGES, type AppLanguage } from './i18n';
+import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -36,6 +37,9 @@ type OwnerBookPageProps = {
 };
 
 export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
+  const uiLanguage = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(uiLanguage, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(uiLanguage, key, values);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [eventInviteToken, setEventInviteToken] = useState<string | null>(null);
   const [bookType, setBookType] = useState<'standard' | 'event'>('standard');
@@ -82,7 +86,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
         console.error(err);
-        setError('Nem sikerült betölteni a könyv oldalait.');
+        setError(t('Nem sikerült betölteni a könyv oldalait.'));
       } finally {
         setLoading(false);
       }
@@ -143,7 +147,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       setInviteComposerPage(invitedPage);
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült létrehozni a meghívót.');
+      setError(t('Nem sikerült létrehozni a meghívót.'));
     } finally {
       setWorkingPageId(null);
     }
@@ -202,7 +206,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       setInviteComposerPage(reassignedPage);
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült új címzettnek megnyitni az oldalt.');
+      setError(t('Nem sikerült új címzettnek megnyitni az oldalt.'));
     } finally {
       setWorkingPageId(null);
     }
@@ -292,7 +296,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       );
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült módosítani az oldal állapotát.');
+      setError(t('Nem sikerült módosítani az oldal állapotát.'));
     } finally {
       setWorkingPageId(null);
     }
@@ -336,8 +340,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       console.error(err);
       setError(
         err instanceof Error && err.message === 'AUTHOR_SHARE_APPROVAL_REQUIRED'
-          ? 'A szerző nem járult hozzá a nyilvános megosztáshoz.'
-          : 'Nem sikerült módosítani a nyilvános megosztást.'
+          ? t('A szerző nem járult hozzá a nyilvános megosztáshoz.')
+          : t('Nem sikerült módosítani a nyilvános megosztást.')
       );
     } finally {
       setWorkingPageId(null);
@@ -354,13 +358,13 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       window.setTimeout(() => setCopiedPageId(null), 1800);
     } catch (err) {
       console.error(err);
-      window.prompt('Másold ki a nyilvános linket:', url);
+      window.prompt(t('Másold ki a nyilvános linket:'), url);
     }
   };
 
   const deleteSubmittedPage = async (page: OwnerPage) => {
     const confirmed = window.confirm(
-      `Biztosan végleg törlöd a(z) ${page.pageNumber}. oldal beküldött tartalmát?\n\nA tartalom nem állítható vissza. Az oldal újra üres lesz, és később másnak is kiküldhető.`
+      f('Biztosan végleg törlöd a(z) {page}. oldal beküldött tartalmát?\n\nA tartalom nem állítható vissza. Az oldal újra üres lesz, és később másnak is kiküldhető.', { page: page.pageNumber })
     );
 
     if (!confirmed) return;
@@ -393,7 +397,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       );
     } catch (err) {
       console.error(err);
-      setError('Nem sikerült törölni a beküldött oldalt.');
+      setError(t('Nem sikerült törölni a beküldött oldalt.'));
     } finally {
       setWorkingPageId(null);
     }
@@ -426,7 +430,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       setBookLanguage(normalizeAppLanguage(data.book.language) ?? 'hu');
     } catch (err) {
       console.error(err);
-      setError('A könyv nyelvét nem sikerült módosítani.');
+      setError(t('A könyv nyelvét nem sikerült módosítani.'));
     } finally {
       setLanguageSaving(false);
     }
@@ -437,17 +441,17 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       <section style={styles.container}>
         <div style={styles.topRow}>
           <div>
-            <a href="/my-books" style={styles.backLink}>← Saját könyveim</a>
+            <a href="/my-books" style={styles.backLink}>{t('← Saját könyveim')}</a>
             <div style={styles.brand}>MemoryBook</div>
             <h1 style={styles.title}>{bookTitle}</h1>
             <label style={styles.bookLanguageLabel}>
-              Könyv nyelve
+              {t('Könyv nyelve')}
               <select
                 value={bookLanguage}
                 onChange={(event) => void updateBookLanguage(event.target.value as AppLanguage)}
                 disabled={languageSaving}
                 style={styles.bookLanguageSelect}
-                aria-label="Könyv nyelve"
+                aria-label={t('Könyv nyelve')}
               >
                 {SUPPORTED_APP_LANGUAGES.map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
@@ -456,8 +460,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             </label>
             <p style={styles.subtitle}>
               {bookType === 'event'
-                ? 'A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.'
-                : 'Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött oldalakat megtarthatod, archiválhatod vagy végleg törölheted.'}
+                ? t('A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.')
+                : t('Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött oldalakat megtarthatod, archiválhatod vagy végleg törölheted.')}
             </p>
           </div>
         </div>
@@ -465,19 +469,19 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       {bookType === 'event' && eventInviteToken && (
         <section style={styles.eventPanel}>
           <div>
-            <strong style={styles.eventPanelTitle}>Rendezvény vendégkönyv</strong>
-            <div style={styles.eventPanelText}>Egy közös QR-kódot tehetsz ki a helyszínen. Minden vendég ugyanabba a vendégkönyvbe írhat.</div>
+            <strong style={styles.eventPanelTitle}>{t('Rendezvény vendégkönyv')}</strong>
+            <div style={styles.eventPanelText}>{t('Egy közös QR-kódot tehetsz ki a helyszínen. Minden vendég ugyanabba a vendégkönyvbe írhat.')}</div>
           </div>
           <div style={styles.eventActions}>
-            <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>QR-kód megnyitása</a>
-            <a href={`/organizer/${encodeURIComponent(bookId)}/contributions`} style={styles.eventSecondaryButton}>Beérkezett bejegyzések</a>
+            <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>{t('QR-kód megnyitása')}</a>
+            <a href={`/organizer/${encodeURIComponent(bookId)}/contributions`} style={styles.eventSecondaryButton}>{t('Beérkezett bejegyzések')}</a>
           </div>
         </section>
       )}
 
         {bookType === 'event' && <EventBookSettings bookId={bookId} />}
 
-        {loading && <div style={styles.panel}>Betöltés...</div>}
+        {loading && <div style={styles.panel}>{t('Betöltés...')}</div>}
         {error && <div style={styles.error}>{error}</div>}
 
         {!loading && bookType === 'standard' && (
@@ -499,9 +503,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                   }}
                 >
                   <div style={styles.cardTop}>
-                    <strong style={styles.pageNumber}>Oldal {page.pageNumber}</strong>
+                    <strong style={styles.pageNumber}>{f('Oldal {page}', { page: page.pageNumber })}</strong>
                     <span style={styles.status}>
-                      {displayStatusLabel(page)}
+                      {displayStatusLabel(page, uiLanguage)}
                     </span>
                   </div>
 
@@ -509,22 +513,22 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                     <div>
                       <div style={styles.managementState}>
                         {isArchived
-                          ? 'Elrejtve a könyvből, a tartalom megőrizve.'
-                          : 'Könyvben marad.'}
+                          ? t('Elrejtve a könyvből, a tartalom megőrizve.')
+                          : t('Könyvben marad.')}
                       </div>
 
                       {(page.inviteRecipientName || page.inviteRecipientEmail || page.submittedAt) && (
                         <div style={styles.memoryIdentitySummary}>
-                          <strong>Emlék:</strong>{' '}
-                          {page.inviteRecipientName || page.inviteRecipientEmail || 'Nincs azonosítva'}
-                          {page.submittedAt ? ` · ${formatInviteExpiry(page.submittedAt)}` : ''}
+                          <strong>{t('Emlék:')}</strong>{' '}
+                          {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
+                          {page.submittedAt ? ` · ${formatInviteExpiry(page.submittedAt, uiLanguage)}` : ''}
                         </div>
                       )}
 
                       <div style={styles.shareState}>
-                        Szerző jóváhagyása: <strong>{page.authorShareApproved ? 'igen' : 'nem'}</strong>
+                        {t('Szerző jóváhagyása:')} <strong>{page.authorShareApproved ? t('igen') : t('nem')}</strong>
                         <br />
-                        Tulajdonosi jóváhagyás: <strong>{page.ownerShareApproved ? 'igen' : 'nem'}</strong>
+                        {t('Tulajdonosi jóváhagyás:')} <strong>{page.ownerShareApproved ? t('igen') : t('nem')}</strong>
                       </div>
 
                       <div style={styles.managementActions}>
@@ -536,8 +540,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                             style={styles.secondaryButton}
                           >
                             {page.ownerShareApproved
-                              ? 'Nyilvános megosztás visszavonása'
-                              : 'Nyilvános megosztás jóváhagyása'}
+                              ? t('Nyilvános megosztás visszavonása')
+                              : t('Nyilvános megosztás jóváhagyása')}
                           </button>
                         )}
 
@@ -551,8 +555,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                               style={styles.primaryButton}
                             >
                               {copiedPageId === page.id
-                                ? 'Nyilvános link kimásolva'
-                                : 'Nyilvános link másolása'}
+                                ? t('Nyilvános link kimásolva')
+                                : t('Nyilvános link másolása')}
                             </button>
                           )}
 
@@ -568,10 +572,10 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           style={styles.secondaryButton}
                         >
                           {isWorking
-                            ? 'Folyamatban...'
+                            ? t('Folyamatban...')
                             : isArchived
-                              ? 'Vissza a könyvbe'
-                              : 'Elrejtés / archiválás'}
+                              ? t('Vissza a könyvbe')
+                              : t('Elrejtés / archiválás')}
                         </button>
 
                         <button
@@ -580,7 +584,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           disabled={isWorking}
                           style={styles.dangerButton}
                         >
-                          Végleges törlés
+                          {t('Végleges törlés')}
                         </button>
                       </div>
                     </div>
@@ -589,8 +593,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                       {hasInvite && page.inviteExpiresAt && (
                         <div style={styles.inviteMeta}>
                           {isInviteExpired(page)
-                            ? 'A meghívó lejárt. Az oldal új címzettnek kiadható.'
-                            : <>A meghívó 14 napig használható. Lejár: {formatInviteExpiry(page.inviteExpiresAt)}</>}
+                            ? t('A meghívó lejárt. Az oldal új címzettnek kiadható.')
+                            : f('A meghívó 14 napig használható. Lejár: {date}', { date: formatInviteExpiry(page.inviteExpiresAt, uiLanguage) })}
                         </div>
                       )}
                       <button
@@ -600,14 +604,14 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                         style={styles.primaryButton}
                       >
                         {isWorking
-                          ? 'Készül...'
+                          ? t('Készül...')
                           : !hasInvite
-                            ? 'Meghívás'
+                            ? t('Meghívás')
                             : isInviteExpired(page)
-                              ? 'Új címzett meghívása'
+                              ? t('Új címzett meghívása')
                               : page.inviteSentAt
-                                ? 'Meghívó újraküldése'
-                                : 'Meghívás folytatása'}
+                                ? t('Meghívó újraküldése')
+                                : t('Meghívás folytatása')}
                       </button>
                     </div>
                   )}
@@ -646,33 +650,33 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   );
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, language: AppLanguage) {
   switch (status) {
     case 'empty':
-      return 'Üres';
+      return ownerText(language, 'Üres');
     case 'invited':
-      return 'Meghívva';
+      return ownerText(language, 'Meghívva');
     case 'draft':
-      return 'Szerkesztés alatt';
+      return ownerText(language, 'Szerkesztés alatt');
     case 'submitted':
-      return 'Beküldve';
+      return ownerText(language, 'Beküldve');
     default:
       return status;
   }
 }
 
-function displayStatusLabel(page: OwnerPage) {
+function displayStatusLabel(page: OwnerPage, language: AppLanguage) {
   if (page.inviteStatus === 'submitted' && page.ownerVisibility === 'archived') {
-    return 'Archiválva';
+    return ownerText(language, 'Archiválva');
   }
   if (isInviteExpired(page)) {
-    return 'Meghívó lejárt';
+    return ownerText(language, 'Meghívó lejárt');
   }
   if (page.inviteStatus === 'invited' && page.inviteSentAt) {
-    return 'Meghívó kiküldve';
+    return ownerText(language, 'Meghívó kiküldve');
   }
 
-  return statusLabel(page.inviteStatus);
+  return statusLabel(page.inviteStatus, language);
 }
 
 function isInviteExpired(page: OwnerPage) {
@@ -681,11 +685,11 @@ function isInviteExpired(page: OwnerPage) {
   return Number.isFinite(expires) && expires <= Date.now();
 }
 
-function formatInviteExpiry(value: string) {
+function formatInviteExpiry(value: string, language: AppLanguage) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    : date.toLocaleDateString(ownerLocale(language), { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 const styles: Record<string, React.CSSProperties> = {

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { NotificationMenu } from './NotificationMenu';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getAppLanguage, type AppLanguage } from './i18n';
+import { ownerFormat, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -29,6 +30,9 @@ type Entitlement = {
 };
 
 export function MyBooksPage() {
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
   const [user, setUser] = useState<UserData | null>(null);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
@@ -74,7 +78,7 @@ export function MyBooksPage() {
         setSelectedEntitlementId(firstAvailable?.id || '');
       } catch (err) {
         console.error(err);
-        setError('Nem sikerült betölteni a könyveidet.');
+        setError(t('Nem sikerült betölteni a könyveidet.'));
       } finally {
         setLoading(false);
       }
@@ -87,11 +91,11 @@ export function MyBooksPage() {
     setCreateError(null);
     const title = newBookTitle.trim();
     if (!title) {
-      setCreateError('Adj nevet az emlékkönyvnek.');
+      setCreateError(t('Adj nevet az emlékkönyvnek.'));
       return;
     }
     if (!selectedEntitlementId) {
-      setCreateError('A könyv létrehozásához felhasználható vásárlási jogosultság kell.');
+      setCreateError(t('A könyv létrehozásához felhasználható vásárlási jogosultság kell.'));
       return;
     }
 
@@ -122,8 +126,8 @@ export function MyBooksPage() {
       console.error(err);
       setCreateError(
         err?.message === 'BOOK_ENTITLEMENT_REQUIRED'
-          ? 'A könyv létrehozásához vásárlási jogosultság szükséges.'
-          : 'Nem sikerült létrehozni az emlékkönyvet.'
+          ? t('A könyv létrehozásához vásárlási jogosultság szükséges.')
+          : t('Nem sikerült létrehozni az emlékkönyvet.')
       );
     } finally {
       setCreating(false);
@@ -144,12 +148,12 @@ export function MyBooksPage() {
         <header style={styles.header}>
           <div>
             <div style={styles.brand}>MemoryBook</div>
-            <h1 style={styles.title}>Saját könyveim</h1>
-            {user && <div style={styles.userLine}>{user.name || user.email || 'Bejelentkezett felhasználó'}</div>}
+            <h1 style={styles.title}>{t('Saját könyveim')}</h1>
+            {user && <div style={styles.userLine}>{user.name || user.email || t('Bejelentkezett felhasználó')}</div>}
           </div>
           <div style={styles.headerActions}>
             <LanguageSwitcher />
-            <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+            <button type="button" onClick={signOut} style={styles.secondaryButton}>{t('Kijelentkezés')}</button>
             <NotificationMenu />
           </div>
         </header>
@@ -158,9 +162,9 @@ export function MyBooksPage() {
           <section style={styles.createCard}>
             {availableEntitlements.length > 0 ? (
               <>
-                <h2 style={styles.createTitle}>Új emlékkönyv létrehozása</h2>
+                <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
                 <p style={styles.createText}>
-                  {availableEntitlements.length} felhasználható könyvjogosultságod van. Egy jogosultság egy könyv létrehozására használható fel.
+                  {f('{count} felhasználható könyvjogosultságod van. Egy jogosultság egy könyv létrehozására használható fel.', { count: availableEntitlements.length })}
                 </p>
                 <form onSubmit={createBook} style={styles.createForm}>
                   <select
@@ -168,14 +172,14 @@ export function MyBooksPage() {
                     onChange={(event) => setSelectedEntitlementId(event.target.value)}
                     disabled={creating}
                     style={styles.select}
-                    aria-label="Vásárlási jogosultság"
+                    aria-label={t('Vásárlási jogosultság')}
                   >
                     {availableEntitlements.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.bookType === 'event'
-                          ? 'Rendezvény-vendégkönyv'
-                          : `Normál emlékkönyv – ${item.includedPages} oldal`}
-                        {item.wasGift ? ' · ajándék' : ''}
+                          ? t('Rendezvény-vendégkönyv')
+                          : f('Normál emlékkönyv – {count} oldal', { count: item.includedPages })}
+                        {item.wasGift ? ` ${t('· ajándék')}` : ''}
                       </option>
                     ))}
                   </select>
@@ -183,40 +187,40 @@ export function MyBooksPage() {
                     type="text"
                     value={newBookTitle}
                     onChange={(event) => setNewBookTitle(event.target.value)}
-                    placeholder="Például: Anna 40. születésnapja"
+                    placeholder={t('Például: Anna 40. születésnapja')}
                     maxLength={120}
                     disabled={creating}
                     style={styles.input}
                   />
                   <button type="submit" disabled={creating} style={styles.createButton}>
-                    {creating ? 'Létrehozás...' : 'Emlékkönyv létrehozása'}
+                    {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
                   </button>
                 </form>
                 {createError && <div style={styles.createError}>{createError}</div>}
               </>
             ) : (
               <>
-                <h2 style={styles.createTitle}>Új emlékkönyv</h2>
+                <h2 style={styles.createTitle}>{t('Új emlékkönyv')}</h2>
                 <p style={styles.createText}>
-                  Új könyvet vásárlási jogosultsággal lehet létrehozni. A normál könyv 30 oldallal indul, később bővíthető.
+                  {t('Új könyvet vásárlási jogosultsággal lehet létrehozni. A normál könyv 30 oldallal indul, később bővíthető.')}
                 </p>
-                <a href="/purchase" style={styles.purchaseLink}>Új könyv vásárlása</a>
+                <a href="/purchase" style={styles.purchaseLink}>{t('Új könyv vásárlása')}</a>
               </>
             )}
             {availableEntitlements.length > 0 && (
-              <div style={styles.purchaseMore}><a href="/purchase">További könyv vásárlása vagy ajándékba vétele</a></div>
+              <div style={styles.purchaseMore}><a href="/purchase">{t('További könyv vásárlása vagy ajándékba vétele')}</a></div>
             )}
           </section>
         )}
 
-        {loading && <div style={styles.panel}>Betöltés...</div>}
+        {loading && <div style={styles.panel}>{t('Betöltés...')}</div>}
         {error && <div style={styles.error}>{error}</div>}
 
         {!loading && !error && books.length === 0 && (
           <div style={styles.emptyState}>
-            <h2 style={styles.emptyTitle}>Még nincs emlékkönyved</h2>
+            <h2 style={styles.emptyTitle}>{t('Még nincs emlékkönyved')}</h2>
             <p style={styles.emptyText}>
-              Vásárolj könyvjogosultságot, vagy válts be egy ajándékba kapott jogosultságot. A könyv csak ezután hozható létre.
+              {t('Vásárolj könyvjogosultságot, vagy válts be egy ajándékba kapott jogosultságot. A könyv csak ezután hozható létre.')}
             </p>
           </div>
         )}
@@ -226,14 +230,14 @@ export function MyBooksPage() {
             {books.map((book) => (
               <article key={book.id} style={styles.card}>
                 <h2 style={styles.bookTitle}>{book.title}</h2>
-                <div style={styles.typeBadge}>{book.bookType === 'event' ? 'Rendezvény-vendégkönyv' : 'Normál emlékkönyv'}</div>
-                <div style={styles.meta}>{book.bookType === 'event' ? `${book.contributionCount} bejegyzés` : `${book.pageCount} oldal`}</div>
+                <div style={styles.typeBadge}>{book.bookType === 'event' ? t('Rendezvény-vendégkönyv') : language === 'de' ? 'Normales Erinnerungsbuch' : language === 'en' ? 'Standard memory book' : 'Normál emlékkönyv'}</div>
+                <div style={styles.meta}>{book.bookType === 'event' ? f('{count} bejegyzés', { count: book.contributionCount }) : f('{count} oldal', { count: book.pageCount })}</div>
                 <div style={styles.actions}>
                   <a href={`/my-books/${encodeURIComponent(book.id)}`} style={styles.primaryLink}>
-                    {book.bookType === 'event' ? 'Rendezvény kezelése' : 'Oldalak és meghívók'}
+                    {book.bookType === 'event' ? t('Rendezvény kezelése') : t('Oldalak és meghívók')}
                   </a>
-                  {book.bookType !== 'event' && <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.secondaryLink}>Könyv megnyitása</a>}
-                  {book.bookType === 'event' && <a href={`/organizer/${encodeURIComponent(book.id)}/contributions`} style={styles.secondaryLink}>Beérkezett bejegyzések</a>}
+                  {book.bookType !== 'event' && <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.secondaryLink}>{t('Könyv megnyitása')}</a>}
+                  {book.bookType === 'event' && <a href={`/organizer/${encodeURIComponent(book.id)}/contributions`} style={styles.secondaryLink}>{t('Beérkezett bejegyzések')}</a>}
                 </div>
               </article>
             ))}

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -12,6 +13,8 @@ type SettingsResponse = {
 };
 
 export function EventBookSettings({ bookId }: Props) {
+  const language = useOwnerUiLanguage();
+  const t = (key: string) => ownerText(language, key);
   const [deviceLimit, setDeviceLimit] = useState(1);
   const [identityMode, setIdentityMode] = useState('none');
   const [loading, setLoading] = useState(true);
@@ -36,7 +39,7 @@ export function EventBookSettings({ bookId }: Props) {
         setIdentityMode(data.identityMode || 'none');
       } catch (err) {
         console.error(err);
-        setError('A rendezvény beállításait nem sikerült betölteni.');
+        setError(t('A rendezvény beállításait nem sikerült betölteni.'));
       } finally {
         setLoading(false);
       }
@@ -68,30 +71,30 @@ export function EventBookSettings({ bookId }: Props) {
       if (!response.ok || !data) throw new Error('SAVE_FAILED');
       setDeviceLimit(data.deviceLimit);
       setIdentityMode(data.identityMode || 'none');
-      setMessage('Beállítás mentve.');
+      setMessage(t('Beállítás mentve.'));
     } catch (err) {
       console.error(err);
-      setError('A beállítást nem sikerült menteni.');
+      setError(t('A beállítást nem sikerült menteni.'));
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <section style={styles.panel}>Rendezvény beállítások betöltése...</section>;
+  if (loading) return <section style={styles.panel}>{t('Rendezvény beállítások betöltése...')}</section>;
 
   return (
     <section style={styles.panel}>
-      <div style={styles.eyebrow}>Beküldési szabályok</div>
-      <h2 style={styles.title}>Hány bejegyzés jöhet egy telefonról?</h2>
+      <div style={styles.eyebrow}>{t('Beküldési szabályok')}</div>
+      <h2 style={styles.title}>{t('Hány bejegyzés jöhet egy telefonról?')}</h2>
       <p style={styles.text}>
-        Ezt minden rendezvénykönyvnél külön állítod be. Nagy koncertnél vagy fesztiválnál tipikusan 1, családi rendezvénynél 5 vagy 10 lehet.
+        {t('Ezt minden rendezvénykönyvnél külön állítod be. Nagy koncertnél vagy fesztiválnál tipikusan 1, családi rendezvénynél 5 vagy 10 lehet.')}
       </p>
 
       <form onSubmit={save} style={styles.form}>
         <label style={styles.label}>
-          Bejegyzések száma egy eszközről
+          {t('Bejegyzések száma egy eszközről')}
           <input
-            aria-label="Bejegyzések száma egy eszközről"
+            aria-label={t('Bejegyzések száma egy eszközről')}
             type="number"
             min={1}
             max={100}
@@ -114,15 +117,15 @@ export function EventBookSettings({ bookId }: Props) {
           ))}
         </div>
         <button type="submit" disabled={saving} style={styles.saveButton}>
-          {saving ? 'Mentés...' : 'Beállítás mentése'}
+          {saving ? t('Mentés...') : t('Beállítás mentése')}
         </button>
       </form>
 
       <div style={styles.identityBox}>
-        <strong>Azonosítás</strong>
-        <div style={styles.identityValue}>{identityMode === 'none' ? 'Azonosítás nélkül' : identityMode}</div>
+        <strong>{t('Azonosítás')}</strong>
+        <div style={styles.identityValue}>{identityMode === 'none' ? t('Azonosítás nélkül') : identityMode}</div>
         <div style={styles.identityNote}>
-          Google-, e-mail- és rendezvényalkalmazás-azonosítás külön következő lépésben kapcsolható be. A mostani eszközlimit már működik.
+          {t('Google-, e-mail- és rendezvényalkalmazás-azonosítás külön következő lépésben kapcsolható be. A mostani eszközlimit már működik.')}
         </div>
       </div>
 
