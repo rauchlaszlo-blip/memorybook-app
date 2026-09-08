@@ -1,0 +1,656 @@
+name: Invite editor localization check
+
+on:
+  push:
+    branches:
+      - invite-editor-i18n-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: invite-editor-i18n-2026-09-08
+
+      - name: Add HU EN invite editor localization
+        run: |
+          cat > src/inviteEditorI18n.ts <<'EOF'
+          import type { AppLanguage } from './i18n';
+
+          const messages = {
+            hu: {
+              page: {
+                loading: 'Meghívó betöltése...',
+                alreadySubmitted: 'Ez az oldal már be lett küldve, ezért nem szerkeszthető.',
+                unavailable: 'Ez a meghívó nem érhető el.',
+                notFound: 'Meghívó nem található.',
+                confirmSubmit: 'Beküldés után ezt az oldalt már nem tudod módosítani. Biztosan beküldöd?',
+                conflict: 'Az oldal közben megváltozott. Frissítsd az oldalt, majd próbáld újra.',
+                submitFailed: 'A beküldés nem sikerült. A szerkesztés még nincs lezárva.',
+                success: 'Az oldalad elküldve. Köszönjük!',
+                submittedLocked: 'A beküldött oldal már nem módosítható ezen a meghívón keresztül.',
+                shareApproved: 'Hozzájárultál a nyilvános megosztáshoz. Az oldal csak akkor válik nyilvánossá, ha a könyv tulajdonosa is jóváhagyja.',
+                shareDenied: 'Nem adtál engedélyt nyilvános megosztásra.',
+                pageLabel: (pageNumber: number) => `A te oldalad: ${pageNumber}. oldal`,
+                instructions: 'Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.',
+                shareConsentAria: 'Nyilvános megosztás engedélyezése',
+                shareConsent: 'Hozzájárulok ahhoz, hogy ezt az oldalt nyilvánosan is meg lehessen osztani. A nyilvános megosztáshoz a könyv tulajdonosának külön jóváhagyása is szükséges.',
+                submitting: 'Beküldés...',
+                submit: 'Oldal beküldése',
+                submitWarning: 'Beküldés után az oldal végleg lezárul számodra.',
+              },
+              editor: {
+                textPlaceholder: 'Írd ide a gondolataidat...',
+                addText: '+ Szöveg',
+                addPhoto: '+ Fotó',
+                startDrawing: 'Szabadkézi rajz',
+                stopDrawing: 'Rajz leállítása',
+                eraser: 'Radír',
+                stopEraser: 'Radír leállítása',
+                brushColor: 'Ecset színe',
+                brushWidth: 'Ecset vastagsága',
+                bringForward: '↑ Előre',
+                sendBackward: '↓ Hátra',
+                delete: 'Törlés',
+                undo: 'Visszavonás',
+                redo: 'Újra',
+                saved: '✓ Mentve',
+                saving: 'Mentés...',
+                conflict: '⚠ Ütközés',
+                unsaved: 'Nem mentett',
+                saveNow: 'Mentés most',
+              },
+            },
+            en: {
+              page: {
+                loading: 'Loading invitation...',
+                alreadySubmitted: 'This page has already been submitted and can no longer be edited.',
+                unavailable: 'This invitation is not available.',
+                notFound: 'Invitation not found.',
+                confirmSubmit: 'After submitting, you will no longer be able to edit this page. Are you sure you want to submit it?',
+                conflict: 'This page changed in the meantime. Refresh the page and try again.',
+                submitFailed: 'Submission failed. Your editing session has not been closed.',
+                success: 'Your page has been submitted. Thank you!',
+                submittedLocked: 'The submitted page can no longer be edited through this invitation.',
+                shareApproved: 'You allowed public sharing. The page will become public only if the book owner also approves it.',
+                shareDenied: 'You did not allow public sharing.',
+                pageLabel: (pageNumber: number) => `Your page: Page ${pageNumber}`,
+                instructions: 'This invitation lets you edit only this page. Your changes are saved automatically.',
+                shareConsentAria: 'Allow public sharing',
+                shareConsent: 'I agree that this page may be shared publicly. Public sharing also requires separate approval from the book owner.',
+                submitting: 'Submitting...',
+                submit: 'Submit page',
+                submitWarning: 'After submission, this page will be permanently locked for you.',
+              },
+              editor: {
+                textPlaceholder: 'Write your thoughts here...',
+                addText: '+ Text',
+                addPhoto: '+ Photo',
+                startDrawing: 'Freehand drawing',
+                stopDrawing: 'Stop drawing',
+                eraser: 'Eraser',
+                stopEraser: 'Stop eraser',
+                brushColor: 'Brush color',
+                brushWidth: 'Brush width',
+                bringForward: '↑ Forward',
+                sendBackward: '↓ Back',
+                delete: 'Delete',
+                undo: 'Undo',
+                redo: 'Redo',
+                saved: '✓ Saved',
+                saving: 'Saving...',
+                conflict: '⚠ Conflict',
+                unsaved: 'Unsaved',
+                saveNow: 'Save now',
+              },
+            },
+          } as const;
+
+          export function getInviteEditorMessages(language: AppLanguage) {
+            return messages[language] ?? messages.en;
+          }
+          EOF
+
+          cat > src/PageInviteEditorPage.tsx <<'EOF'
+          import { useCallback, useEffect, useRef, useState } from 'react';
+          import {
+            MemoryBookEditor,
+            type MemoryBookEditorRef,
+            type PageData,
+          } from './MemoryBookEditor';
+          import { detectBrowserAppLanguage, type AppLanguage } from './i18n';
+          import { getInviteEditorMessages } from './inviteEditorI18n';
+
+          const API_BASE =
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1'
+              ? 'http://' + window.location.hostname + ':3001'
+              : '';
+
+          type InvitePageData = PageData & {
+            bookId: string;
+            bookTitle: string;
+            inviteStatus: string;
+            language: AppLanguage;
+          };
+
+          type PageInviteEditorPageProps = {
+            token: string;
+          };
+
+          export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
+            const editorRef = useRef<MemoryBookEditorRef>(null);
+            const [fallbackLanguage] = useState<AppLanguage>(() => detectBrowserAppLanguage());
+            const [page, setPage] = useState<InvitePageData | null>(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState<string | null>(null);
+            const [submitting, setSubmitting] = useState(false);
+            const [submitted, setSubmitted] = useState(false);
+            const [authorShareApproved, setAuthorShareApproved] = useState(false);
+
+            const language: AppLanguage =
+              page?.language === 'en' ? 'en' : page?.language === 'hu' ? 'hu' : fallbackLanguage;
+            const copy = getInviteEditorMessages(language).page;
+
+            useEffect(() => {
+              const load = async () => {
+                try {
+                  setLoading(true);
+                  setError(null);
+
+                  const response = await fetch(
+                    `${API_BASE}/api/page-invites/${encodeURIComponent(token)}`
+                  );
+
+                  const data = await response.json().catch(() => ({}));
+
+                  if (!response.ok) {
+                    if (data?.error === 'PAGE_ALREADY_SUBMITTED') {
+                      throw new Error('PAGE_ALREADY_SUBMITTED');
+                    }
+                    throw new Error('PAGE_INVITE_LOAD_FAILED');
+                  }
+
+                  setPage({
+                    ...data,
+                    language: data?.language === 'hu' ? 'hu' : 'en',
+                  });
+                } catch (err) {
+                  console.error(err);
+                  const fallbackCopy = getInviteEditorMessages(fallbackLanguage).page;
+                  setError(
+                    err instanceof Error && err.message === 'PAGE_ALREADY_SUBMITTED'
+                      ? fallbackCopy.alreadySubmitted
+                      : fallbackCopy.unavailable
+                  );
+                } finally {
+                  setLoading(false);
+                }
+              };
+
+              load();
+            }, [token, fallbackLanguage]);
+
+            const savePage = useCallback(
+              async (
+                _pageId: string,
+                canvasJson: Record<string, any>,
+                previewDataUrl: string,
+                expectedVersion: number
+              ) => {
+                const response = await fetch(
+                  `${API_BASE}/api/page-invites/${encodeURIComponent(token)}`,
+                  {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      canvasData: canvasJson,
+                      previewDataUrl,
+                      expectedVersion,
+                    }),
+                  }
+                );
+
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                  const error: any = new Error(data?.error || 'PAGE_SAVE_FAILED');
+                  error.status = response.status;
+                  throw error;
+                }
+
+                setPage((current) =>
+                  current
+                    ? {
+                        ...current,
+                        version: data.newVersion,
+                        previewImageUrl: data.previewImageUrl,
+                        inviteStatus: 'draft',
+                      }
+                    : current
+                );
+
+                return { newVersion: data.newVersion };
+              },
+              [token]
+            );
+
+            const submitPage = async () => {
+              if (submitting) return;
+
+              const confirmed = window.confirm(copy.confirmSubmit);
+              if (!confirmed) return;
+
+              try {
+                setSubmitting(true);
+                setError(null);
+
+                await editorRef.current?.flush();
+
+                const response = await fetch(
+                  `${API_BASE}/api/page-invites/${encodeURIComponent(token)}/submit`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ authorShareApproved }),
+                  }
+                );
+
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                  if (data?.error === 'PAGE_ALREADY_SUBMITTED') {
+                    setSubmitted(true);
+                    return;
+                  }
+                  throw new Error(data?.error || 'PAGE_SUBMIT_FAILED');
+                }
+
+                setSubmitted(true);
+              } catch (err) {
+                console.error(err);
+                setError(
+                  err instanceof Error && err.message === 'PAGE_CONFLICT'
+                    ? copy.conflict
+                    : copy.submitFailed
+                );
+              } finally {
+                setSubmitting(false);
+              }
+            };
+
+            if (submitted) {
+              return (
+                <main style={styles.page} lang={language}>
+                  <section style={styles.header}>
+                    <div style={styles.brand}>MemoryBook</div>
+                    <h1 style={styles.title}>{page?.bookTitle || 'MemoryBook'}</h1>
+                    <div style={styles.successBox}>{copy.success}</div>
+                    <p style={styles.note}>{copy.submittedLocked}</p>
+                    <p style={styles.note}>
+                      {authorShareApproved ? copy.shareApproved : copy.shareDenied}
+                    </p>
+                  </section>
+                </main>
+              );
+            }
+
+            if (loading) {
+              const loadingCopy = getInviteEditorMessages(fallbackLanguage).page;
+              return <div style={styles.message} lang={fallbackLanguage}>{loadingCopy.loading}</div>;
+            }
+
+            if (error || !page) {
+              const fallbackCopy = getInviteEditorMessages(fallbackLanguage).page;
+              return (
+                <div style={styles.message} lang={fallbackLanguage}>
+                  {error || fallbackCopy.notFound}
+                </div>
+              );
+            }
+
+            return (
+              <main style={styles.page} lang={language}>
+                <section style={styles.header}>
+                  <div style={styles.brand}>MemoryBook</div>
+                  <h1 style={styles.title}>{page.bookTitle}</h1>
+                  <div style={styles.subtitle}>{copy.pageLabel(page.pageNumber)}</div>
+                  <p style={styles.note}>{copy.instructions}</p>
+                  <label style={styles.shareConsent}>
+                    <input
+                      type="checkbox"
+                      aria-label={copy.shareConsentAria}
+                      checked={authorShareApproved}
+                      style={{ width: 20, height: 20, flex: '0 0 auto' }}
+                      onChange={(event) => setAuthorShareApproved(event.target.checked)}
+                    />
+                    <span>{copy.shareConsent}</span>
+                  </label>
+                  <div style={styles.submitArea}>
+                    <button
+                      type="button"
+                      onClick={submitPage}
+                      disabled={submitting}
+                      style={styles.submitButton}
+                    >
+                      {submitting ? copy.submitting : copy.submit}
+                    </button>
+                    <div style={styles.submitWarning}>{copy.submitWarning}</div>
+                  </div>
+                  {error && <div style={styles.error}>{error}</div>}
+                </section>
+
+                <MemoryBookEditor
+                  ref={editorRef}
+                  page={page}
+                  onSavePage={savePage}
+                  language={language}
+                />
+              </main>
+            );
+          }
+
+          const styles: Record<string, React.CSSProperties> = {
+            page: {
+              minHeight: '100vh',
+              background: '#e2e8f0',
+              padding: '20px 12px 40px',
+              fontFamily: 'Arial, sans-serif',
+            },
+            header: {
+              maxWidth: 750,
+              margin: '0 auto 18px',
+              padding: '18px 20px',
+              borderRadius: 14,
+              background: '#ffffff',
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+            },
+            brand: {
+              color: '#64748b',
+              fontSize: 13,
+              fontWeight: 800,
+              letterSpacing: 1.4,
+              textTransform: 'uppercase',
+            },
+            title: {
+              margin: '6px 0 4px',
+              color: '#0f172a',
+              fontSize: 'clamp(22px, 7vw, 28px)',
+            },
+            subtitle: {
+              color: '#334155',
+              fontWeight: 800,
+            },
+            note: {
+              margin: '10px 0 0',
+              color: '#64748b',
+              lineHeight: 1.5,
+            },
+            shareConsent: {
+              marginTop: 16,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+              padding: 12,
+              borderRadius: 10,
+              background: '#f8fafc',
+              color: '#475569',
+              fontSize: 13,
+              lineHeight: 1.45,
+              cursor: 'pointer',
+            },
+            submitArea: {
+              marginTop: 16,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'stretch',
+              flexDirection: 'column',
+              gap: 10,
+            },
+            submitButton: {
+              minHeight: 48,
+              width: '100%',
+              padding: '12px 16px',
+              border: 0,
+              borderRadius: 9,
+              background: '#0f172a',
+              color: '#ffffff',
+              fontSize: 15,
+              fontWeight: 800,
+              cursor: 'pointer',
+              touchAction: 'manipulation',
+            },
+            submitWarning: {
+              color: '#92400e',
+              fontSize: 13,
+              fontWeight: 700,
+            },
+            error: {
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 8,
+              background: '#fef2f2',
+              color: '#991b1b',
+            },
+            successBox: {
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 10,
+              background: '#ecfdf5',
+              color: '#065f46',
+              fontWeight: 800,
+            },
+            message: {
+              padding: 40,
+              textAlign: 'center',
+              fontFamily: 'Arial, sans-serif',
+            },
+          };
+          EOF
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/MemoryBookEditor.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global text
+              if old not in text:
+                  raise SystemExit(f'Marker not found: {label}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import * as fabric from 'fabric';\n",
+              "import * as fabric from 'fabric';\nimport type { AppLanguage } from './i18n';\nimport { getInviteEditorMessages } from './inviteEditorI18n';\n",
+              'imports'
+          )
+          replace_once(
+              "  onConflict?: (pageId: string) => void;\n}",
+              "  onConflict?: (pageId: string) => void;\n  language?: AppLanguage;\n}",
+              'props'
+          )
+          replace_once(
+              ">(({ page, onSavePage, onConflict }, ref) => {",
+              ">(({ page, onSavePage, onConflict, language = 'hu' }, ref) => {",
+              'destructure'
+          )
+          replace_once(
+              "  const fabricRef = useRef<fabric.Canvas | null>(null);\n",
+              "  const fabricRef = useRef<fabric.Canvas | null>(null);\n  const copy = getInviteEditorMessages(language).editor;\n",
+              'copy'
+          )
+          replace_once("new fabric.IText('Írd ide a gondolataidat...', {", "new fabric.IText(copy.textPlaceholder, {", 'placeholder')
+          replace_once("<button onClick={handleAddText}>+ Szöveg</button>", "<button onClick={handleAddText}>{copy.addText}</button>", 'add text')
+          replace_once("            + Fotó\n", "            {copy.addPhoto}\n", 'add photo')
+          replace_once("{isDrawing ? 'Rajz leállítása' : 'Szabadkézi rajz'}", "{isDrawing ? copy.stopDrawing : copy.startDrawing}", 'drawing')
+          replace_once("{isErasing ? 'Radír leállítása' : 'Radír'}", "{isErasing ? copy.stopEraser : copy.eraser}", 'eraser')
+          replace_once("                  type=\"color\"\n                  value={brushColor}", "                  type=\"color\"\n                  aria-label={copy.brushColor}\n                  value={brushColor}", 'color aria')
+          replace_once("                type=\"range\"\n                min=\"1\"", "                type=\"range\"\n                aria-label={copy.brushWidth}\n                min=\"1\"", 'range aria')
+          replace_once("<button onClick={handleBringForward}>↑ Előre</button>", "<button onClick={handleBringForward}>{copy.bringForward}</button>", 'forward')
+          replace_once("<button onClick={handleSendBackwards}>↓ Hátra</button>", "<button onClick={handleSendBackwards}>{copy.sendBackward}</button>", 'backward')
+          replace_once("<button onClick={handleDeleteSelected}>Törlés</button>", "<button onClick={handleDeleteSelected}>{copy.delete}</button>", 'delete')
+          replace_once("<button onClick={handleUndo} disabled={!canUndo}>\n            ↩\n          </button>", "<button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>\n            ↩\n          </button>", 'undo')
+          replace_once("<button onClick={handleRedo} disabled={!canRedo}>\n            ↪\n          </button>", "<button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>\n            ↪\n          </button>", 'redo')
+          replace_once("? '✓ Mentve'\n              : saveStatus === 'saving'\n                ? 'Mentés...'\n                : saveStatus === 'conflict'\n                  ? '⚠ Ütközés'\n                  : 'Nem mentett'", "? copy.saved\n              : saveStatus === 'saving'\n                ? copy.saving\n                : saveStatus === 'conflict'\n                  ? copy.conflict\n                  : copy.unsaved", 'save status')
+          replace_once("            Mentés most\n", "            {copy.saveNow}\n", 'save now')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Production build
+        run: npm run build
+
+      - name: Start preview
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/memorybook-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-preview.log
+          exit 1
+
+      - name: Test HU EN invitation editor on mobile
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              viewport: { width: 390, height: 844 },
+              locale: 'hu-HU',
+            });
+            const page = await context.newPage();
+
+            await page.route('http://127.0.0.1:3001/api/page-invites/**', async (route) => {
+              const request = route.request();
+              const url = new URL(request.url());
+              const tokenPath = url.pathname.replace('/api/page-invites/', '');
+
+              if (request.method() === 'POST' && tokenPath.endsWith('/submit')) {
+                return route.fulfill({
+                  status: 200,
+                  contentType: 'application/json',
+                  body: JSON.stringify({ success: true, pageId: 'page-en', pageNumber: 7 }),
+                });
+              }
+
+              if (request.method() !== 'GET') {
+                return route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+              }
+
+              const isEnglish = tokenPath === 'en-token';
+              return route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  bookId: isEnglish ? 'book-en' : 'book-hu',
+                  bookTitle: isEnglish ? 'English MemoryBook' : 'Magyar MemoryBook',
+                  id: isEnglish ? 'page-en' : 'page-hu',
+                  pageNumber: isEnglish ? 7 : 3,
+                  canvasData: {},
+                  previewImageUrl: null,
+                  version: 1,
+                  inviteStatus: 'invited',
+                  inviteCreatedAt: '2026-09-08T18:00:00Z',
+                  inviteExpiresAt: '2026-09-22T18:00:00Z',
+                  inviteLanguage: isEnglish ? 'en' : null,
+                  language: isEnglish ? 'en' : 'hu',
+                  submittedAt: null,
+                  inviteValidDays: 14,
+                }),
+              });
+            });
+
+            try {
+              await page.goto('http://127.0.0.1:4173/p/en-token');
+              await page.waitForLoadState('networkidle');
+
+              await page.getByText('Your page: Page 7').waitFor({ state: 'visible' });
+              await page.getByText('This invitation lets you edit only this page. Your changes are saved automatically.').waitFor({ state: 'visible' });
+              await page.getByRole('checkbox', { name: 'Allow public sharing' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: '+ Text' }).waitFor({ state: 'visible' });
+              await page.getByText('+ Photo', { exact: true }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Freehand drawing' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Eraser' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Save now' }).waitFor({ state: 'visible' });
+              await page.getByText('✓ Saved', { exact: true }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Undo' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Redo' }).waitFor({ state: 'visible' });
+
+              const lang = await page.locator('main').first().getAttribute('lang');
+              if (lang !== 'en') throw new Error(`Expected English main lang, got ${lang}`);
+
+              let confirmText = '';
+              page.once('dialog', async (dialog) => {
+                confirmText = dialog.message();
+                await dialog.accept();
+              });
+              await page.getByRole('button', { name: 'Submit page' }).click();
+              await page.getByText('Your page has been submitted. Thank you!').waitFor({ state: 'visible' });
+              if (!confirmText.startsWith('After submitting')) {
+                throw new Error(`English confirmation was not localized: ${confirmText}`);
+              }
+
+              await page.goto('http://127.0.0.1:4173/p/hu-token');
+              await page.waitForLoadState('networkidle');
+              await page.getByText('A te oldalad: 3. oldal').waitFor({ state: 'visible' });
+              await page.getByRole('checkbox', { name: 'Nyilvános megosztás engedélyezése' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: '+ Szöveg' }).waitFor({ state: 'visible' });
+              await page.getByText('+ Fotó', { exact: true }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Szabadkézi rajz' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Radír' }).waitFor({ state: 'visible' });
+              await page.getByRole('button', { name: 'Mentés most' }).waitFor({ state: 'visible' });
+              await page.getByText('✓ Mentve', { exact: true }).waitFor({ state: 'visible' });
+
+              console.log('INVITE_EDITOR_I18N_BROWSER_PASS');
+            } finally {
+              await context.close();
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Commit checked source changes and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/invite-editor-i18n-check.yml
+          git add src/PageInviteEditorPage.tsx src/MemoryBookEditor.tsx src/inviteEditorI18n.ts
+          git commit -m "Localize invitation editor in Hungarian and English"
+          git push origin HEAD:invite-editor-i18n-2026-09-08
+
+      - name: Show preview log on failure
+        if: failure()
+        run: cat /tmp/memorybook-preview.log || true
