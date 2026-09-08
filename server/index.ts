@@ -268,6 +268,138 @@ app.get('/api/me', async (req, res) => {
   }
 });
 
+
+app.get('/api/my/notifications', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const requestedLimit = Number(req.query.limit ?? 50);
+    const limit = Number.isInteger(requestedLimit)
+      ? Math.min(100, Math.max(1, requestedLimit))
+      : 50;
+
+    const [notificationsResult, unreadResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           n.id,
+           n.type,
+           n.book_id AS "bookId",
+           b.title AS "bookTitle",
+           n.source_page_id AS "pageId",
+           n.actor_name AS "actorName",
+           n.page_number AS "pageNumber",
+           n.read_at AS "readAt",
+           n.created_at AS "createdAt",
+           '/my-books/' || n.book_id || '?page=' || n.source_page_id AS "targetPath"
+         FROM notifications n
+         JOIN books b ON b.id = n.book_id
+         WHERE n.recipient_user_id = $1
+         ORDER BY n.created_at DESC, n.id DESC
+         LIMIT $2`,
+        [session.user.id, limit]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM notifications
+         WHERE recipient_user_id = $1
+           AND read_at IS NULL`,
+        [session.user.id]
+      ),
+    ]);
+
+    res.status(200).json({
+      notifications: notificationsResult.rows,
+      unreadCount: Number(unreadResult.rows[0]?.count || 0),
+    });
+  } catch (err) {
+    console.error('Notification list error:', err);
+    res.status(500).json({ error: 'NOTIFICATION_LIST_FAILED' });
+  }
+});
+
+app.get('/api/my/notifications/unread-count', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM notifications
+       WHERE recipient_user_id = $1
+         AND read_at IS NULL`,
+      [session.user.id]
+    );
+
+    res.status(200).json({ unreadCount: Number(result.rows[0]?.count || 0) });
+  } catch (err) {
+    console.error('Notification unread count error:', err);
+    res.status(500).json({ error: 'NOTIFICATION_UNREAD_COUNT_FAILED' });
+  }
+});
+
+app.patch('/api/my/notifications/:notificationId/read', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+       WHERE id = $1
+         AND recipient_user_id = $2
+       RETURNING id, read_at AS "readAt"`,
+      [req.params.notificationId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'NOTIFICATION_NOT_FOUND' });
+      return;
+    }
+
+    const unreadResult = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM notifications
+       WHERE recipient_user_id = $1
+         AND read_at IS NULL`,
+      [session.user.id]
+    );
+
+    res.status(200).json({
+      success: true,
+      notification: result.rows[0],
+      unreadCount: Number(unreadResult.rows[0]?.count || 0),
+    });
+  } catch (err) {
+    console.error('Notification read-state error:', err);
+    res.status(500).json({ error: 'NOTIFICATION_READ_STATE_FAILED' });
+  }
+});
+
 app.get('/api/my/books', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
