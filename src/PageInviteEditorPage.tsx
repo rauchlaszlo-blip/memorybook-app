@@ -28,6 +28,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [authorShareApproved, setAuthorShareApproved] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -127,7 +128,13 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
 
       const response = await fetch(
         `${API_BASE}/api/page-invites/${encodeURIComponent(token)}/submit`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ authorShareApproved }),
+        }
       );
 
       const data = await response.json().catch(() => ({}));
@@ -163,6 +170,11 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
           <p style={styles.note}>
             A beküldött oldal már nem módosítható ezen a meghívón keresztül.
           </p>
+          <p style={styles.note}>
+            {authorShareApproved
+              ? 'Hozzájárultál a nyilvános megosztáshoz. Az oldal csak akkor válik nyilvánossá, ha a könyv tulajdonosa is jóváhagyja.'
+              : 'Nem adtál engedélyt nyilvános megosztásra.'}
+          </p>
         </section>
       </main>
     );
@@ -185,6 +197,17 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         <p style={styles.note}>
           Ezzel a meghívóval csak ezt az egy oldalt tudod szerkeszteni. A módosítások automatikusan mentődnek.
         </p>
+        <label style={styles.shareConsent}>
+          <input
+            type="checkbox"
+            checked={authorShareApproved}
+            onChange={(event) => setAuthorShareApproved(event.target.checked)}
+          />
+          <span>
+            Hozzájárulok ahhoz, hogy ezt az oldalt nyilvánosan is meg lehessen osztani.
+            A nyilvános megosztáshoz a könyv tulajdonosának külön jóváhagyása is szükséges.
+          </span>
+        </label>
         <div style={styles.submitArea}>
           <button
             type="button"
@@ -241,6 +264,19 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '10px 0 0',
     color: '#64748b',
     lineHeight: 1.5,
+  },
+  shareConsent: {
+    marginTop: 16,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    background: '#f8fafc',
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 1.45,
+    cursor: 'pointer',
   },
   submitArea: {
     marginTop: 16,
