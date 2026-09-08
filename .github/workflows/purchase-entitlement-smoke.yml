@@ -1,0 +1,18 @@
+name: Purchase Entitlement Smoke
+
+on:
+  push:
+    branches:
+      - purchase-entitlement-smoke-2026-09-08
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Playwright
+        run: |
+          npm install @playwright/test@1.55.0 --no-save >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+      - name: Run purchase entitlement smoke
+        run: npx playwright test tests/purchase-entitlement-foundation.spec.js --workers=1
