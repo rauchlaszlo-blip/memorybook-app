@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { InviteSendDialog } from './InviteSendDialog.tsx';
 import { EventBookSettings } from './EventBookSettings.tsx';
-import { SUPPORTED_APP_LANGUAGES, type AppLanguage } from './i18n';
+import { normalizeAppLanguage, SUPPORTED_APP_LANGUAGES, type AppLanguage } from './i18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -78,7 +78,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         setBookTitle(data.book?.title || 'MemoryBook');
         setEventInviteToken(data.book?.eventInviteToken || null);
         setBookType(data.book?.bookType === 'event' ? 'event' : 'standard');
-        setBookLanguage(data.book?.language === 'en' ? 'en' : 'hu');
+        setBookLanguage(normalizeAppLanguage(data.book?.language) ?? 'hu');
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
         console.error(err);
@@ -245,12 +245,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       inviteRecipientName: data.inviteRecipientName || page.inviteRecipientName || null,
       inviteRecipientEmail: data.inviteRecipientEmail || page.inviteRecipientEmail || null,
       inviteDeliveryMethod: data.inviteDeliveryMethod || page.inviteDeliveryMethod || null,
-      inviteLanguage:
-        data.inviteLanguage === 'en'
-          ? 'en'
-          : data.inviteLanguage === 'hu'
-            ? 'hu'
-            : null,
+      inviteLanguage: normalizeAppLanguage(data.inviteLanguage),
     };
 
     setPages((current) =>
@@ -428,7 +423,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         throw new Error(data?.error || 'BOOK_LANGUAGE_UPDATE_FAILED');
       }
 
-      setBookLanguage(data.book.language === 'en' ? 'en' : 'hu');
+      setBookLanguage(normalizeAppLanguage(data.book.language) ?? 'hu');
     } catch (err) {
       console.error(err);
       setError('A könyv nyelvét nem sikerült módosítani.');

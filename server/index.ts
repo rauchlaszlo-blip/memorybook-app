@@ -743,13 +743,14 @@ app.post('/api/my/books', async (req, res) => {
   if (
     requestedLanguage !== undefined &&
     requestedLanguage !== 'hu' &&
-    requestedLanguage !== 'en'
+    requestedLanguage !== 'en' &&
+    requestedLanguage !== 'de'
   ) {
     res.status(400).json({ error: 'INVALID_BOOK_LANGUAGE' });
     return;
   }
 
-  const language = requestedLanguage === 'en' ? 'en' : 'hu';
+  const language = requestedLanguage === 'de' ? 'de' : requestedLanguage === 'en' ? 'en' : 'hu';
 
   if (!title || title.length > 120) {
     res.status(400).json({ error: 'INVALID_BOOK_TITLE' });
@@ -865,7 +866,7 @@ app.patch('/api/my/books/:bookId/language', async (req, res) => {
   }
 
   const language = req.body?.language;
-  if (language !== 'hu' && language !== 'en') {
+  if (language !== 'hu' && language !== 'en' && language !== 'de') {
     res.status(400).json({ error: 'INVALID_BOOK_LANGUAGE' });
     return;
   }
@@ -1141,7 +1142,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
   const inviteLanguage =
     rawInviteLanguage === null || rawInviteLanguage === undefined || rawInviteLanguage === ''
       ? null
-      : rawInviteLanguage === 'hu' || rawInviteLanguage === 'en'
+      : rawInviteLanguage === 'hu' || rawInviteLanguage === 'en' || rawInviteLanguage === 'de'
         ? rawInviteLanguage
         : 'invalid';
 
@@ -2694,7 +2695,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);
-  await pool.query(`UPDATE books SET language = 'hu' WHERE language NOT IN ('hu', 'en') OR language IS NULL`);
+  await pool.query(`UPDATE books SET language = 'hu' WHERE language NOT IN ('hu', 'en', 'de') OR language IS NULL`);
   await pool.query(`UPDATE books SET language = 'en' WHERE id = $1`, [DEMO_BOOK_ID]);
   await pool.query(`UPDATE books SET page_capacity = 0 WHERE book_type = 'event' AND page_capacity <> 0`);
 
@@ -2798,7 +2799,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_recipient_email TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_delivery_method TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_language TEXT`);
-  await pool.query(`UPDATE pages SET invite_language = NULL WHERE invite_language IS NOT NULL AND invite_language NOT IN ('hu', 'en')`);
+  await pool.query(`UPDATE pages SET invite_language = NULL WHERE invite_language IS NOT NULL AND invite_language NOT IN ('hu', 'en', 'de')`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_note TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);

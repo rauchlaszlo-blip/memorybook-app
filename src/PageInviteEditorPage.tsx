@@ -4,7 +4,7 @@ import {
   type MemoryBookEditorRef,
   type PageData,
 } from './MemoryBookEditor';
-import { detectBrowserAppLanguage, type AppLanguage } from './i18n';
+import { detectBrowserAppLanguage, normalizeAppLanguage, type AppLanguage } from './i18n';
 import { getInviteEditorMessages } from './inviteEditorI18n';
 
 const API_BASE =
@@ -34,8 +34,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const [submitted, setSubmitted] = useState(false);
   const [authorShareApproved, setAuthorShareApproved] = useState(false);
 
-  const language: AppLanguage =
-    page?.language === 'en' ? 'en' : page?.language === 'hu' ? 'hu' : fallbackLanguage;
+  const language: AppLanguage = normalizeAppLanguage(page?.language) ?? fallbackLanguage;
   const copy = getInviteEditorMessages(language).page;
 
   useEffect(() => {
@@ -59,7 +58,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
 
         setPage({
           ...data,
-          language: data?.language === 'hu' ? 'hu' : 'en',
+          language: normalizeAppLanguage(data?.language) ?? fallbackLanguage,
         });
       } catch (err) {
         console.error(err);
