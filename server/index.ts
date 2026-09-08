@@ -299,6 +299,296 @@ app.get('/api/my/books', async (req, res) => {
   }
 });
 
+app.post('/api/purchases', async (req, res) => {
+  const purchaseMode = req.body?.purchaseMode === 'gift' ? 'gift' : 'self';
+  const bookType = req.body?.bookType === 'event' ? 'event' : 'standard';
+  const paymentProvider =
+    req.body?.paymentProvider === 'paypal'
+      ? 'paypal'
+      : req.body?.paymentProvider === 'simplepay'
+        ? 'simplepay'
+        : null;
+
+  const session = await getSession(req).catch(() => null);
+  if (purchaseMode === 'self' && !session) {
+    res.status(401).json({ error: 'ACCOUNT_REQUIRED_FOR_SELF_PURCHASE' });
+    return;
+  }
+
+  const purchaserName =
+    purchaseMode === 'self'
+      ? String(session?.user?.name || req.body?.purchaserName || '').trim()
+      : String(req.body?.purchaserName || '').trim();
+  const purchaserEmail =
+    purchaseMode === 'self'
+      ? String(session?.user?.email || req.body?.purchaserEmail || '').trim().toLowerCase()
+      : String(req.body?.purchaserEmail || '').trim().toLowerCase();
+  const billingName = String(req.body?.billingName || '').trim();
+  const billingEmail = String(req.body?.billingEmail || '').trim().toLowerCase();
+  const billingCountry = String(req.body?.billingCountry || '').trim();
+  const billingPostalCode = String(req.body?.billingPostalCode || '').trim();
+  const billingCity = String(req.body?.billingCity || '').trim();
+  const billingAddress = String(req.body?.billingAddress || '').trim();
+  const billingTaxNumber = String(req.body?.billingTaxNumber || '').trim();
+
+  if (!paymentProvider) {
+    res.status(400).json({ error: 'INVALID_PAYMENT_PROVIDER' });
+    return;
+  }
+
+  const requiredValues = [
+    purchaserName,
+    purchaserEmail,
+    billingName,
+    billingEmail,
+    billingCountry,
+    billingPostalCode,
+    billingCity,
+    billingAddress,
+  ];
+  if (requiredValues.some((value) => !value)) {
+    res.status(400).json({ error: 'INCOMPLETE_PURCHASE_IDENTITY' });
+    return;
+  }
+  if (!purchaserEmail.includes('@') || !billingEmail.includes('@')) {
+    res.status(400).json({ error: 'INVALID_PURCHASE_EMAIL' });
+    return;
+  }
+  if (
+    purchaserName.length > 160 ||
+    purchaserEmail.length > 240 ||
+    billingName.length > 200 ||
+    billingEmail.length > 240 ||
+    billingCountry.length > 100 ||
+    billingPostalCode.length > 30 ||
+    billingCity.length > 120 ||
+    billingAddress.length > 240 ||
+    billingTaxNumber.length > 80
+  ) {
+    res.status(400).json({ error: 'PURCHASE_IDENTITY_TOO_LONG' });
+    return;
+  }
+
+  const purchaseId = `purchase-${crypto.randomUUID()}`;
+  const includedPages = bookType === 'standard' ? DEFAULT_BOOK_PAGE_COUNT : 0;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO purchases (
+         id,
+         purchase_mode,
+         book_type,
+         included_pages,
+         purchaser_user_id,
+         purchaser_name,
+         purchaser_email,
+         billing_name,
+         billing_email,
+         billing_country,
+         billing_postal_code,
+         billing_city,
+         billing_address,
+         billing_tax_number,
+         payment_provider,
+         payment_status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), $15, 'draft')
+       RETURNING
+         id,
+         purchase_mode AS "purchaseMode",
+         book_type AS "bookType",
+         included_pages AS "includedPages",
+         payment_provider AS "paymentProvider",
+         payment_status AS "paymentStatus",
+         created_at AS "createdAt"`,
+      [
+        purchaseId,
+        purchaseMode,
+        bookType,
+        includedPages,
+        session?.user?.id || null,
+        purchaserName,
+        purchaserEmail,
+        billingName,
+        billingEmail,
+        billingCountry,
+        billingPostalCode,
+        billingCity,
+        billingAddress,
+        billingTaxNumber,
+        paymentProvider,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      purchase: result.rows[0],
+      paymentReady: false,
+      message: 'PAYMENT_PROVIDER_INTEGRATION_PENDING',
+    });
+  } catch (err) {
+    console.error('Purchase draft create error:', err);
+    res.status(500).json({ error: 'PURCHASE_DRAFT_CREATE_FAILED' });
+  }
+});
+
+app.get('/api/my/entitlements', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         e.id,
+         e.book_type AS "bookType",
+         e.included_pages AS "includedPages",
+         e.status,
+         e.gift_token IS NOT NULL AS "wasGift",
+         e.claimed_at AS "claimedAt",
+         e.redeemed_at AS "redeemedAt",
+         e.redeemed_book_id AS "redeemedBookId",
+         e.created_at AS "createdAt"
+       FROM book_entitlements e
+       WHERE e.assigned_user_id = $1
+       ORDER BY
+         CASE WHEN e.status = 'available' THEN 0 ELSE 1 END,
+         e.created_at DESC`,
+      [session.user.id]
+    );
+
+    res.status(200).json({ entitlements: result.rows });
+  } catch (err) {
+    console.error('Entitlement list error:', err);
+    res.status(500).json({ error: 'ENTITLEMENT_LIST_FAILED' });
+  }
+});
+
+app.get('/api/gift-entitlements/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         e.book_type AS "bookType",
+         e.included_pages AS "includedPages",
+         e.status,
+         e.assigned_user_id IS NOT NULL AS "claimed"
+       FROM book_entitlements e
+       JOIN purchases p ON p.id = e.purchase_id
+       WHERE e.gift_token = $1
+         AND p.purchase_mode = 'gift'
+         AND p.payment_status = 'paid'`,
+      [req.params.token]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'GIFT_ENTITLEMENT_NOT_FOUND' });
+      return;
+    }
+
+    const row = result.rows[0];
+    res.status(200).json({
+      bookType: row.bookType,
+      includedPages: row.includedPages,
+      claimStatus:
+        row.status === 'redeemed'
+          ? 'redeemed'
+          : row.claimed
+            ? 'claimed'
+            : 'available',
+    });
+  } catch (err) {
+    console.error('Gift entitlement load error:', err);
+    res.status(500).json({ error: 'GIFT_ENTITLEMENT_LOAD_FAILED' });
+  }
+});
+
+app.post('/api/gift-entitlements/:token/redeem', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT
+         e.id,
+         e.assigned_user_id AS "assignedUserId",
+         e.status,
+         e.book_type AS "bookType",
+         e.included_pages AS "includedPages"
+       FROM book_entitlements e
+       JOIN purchases p ON p.id = e.purchase_id
+       WHERE e.gift_token = $1
+         AND p.purchase_mode = 'gift'
+         AND p.payment_status = 'paid'
+       FOR UPDATE OF e`,
+      [req.params.token]
+    );
+
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'GIFT_ENTITLEMENT_NOT_FOUND' });
+      return;
+    }
+
+    const entitlement = result.rows[0];
+    if (entitlement.status !== 'available') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'GIFT_ENTITLEMENT_ALREADY_USED' });
+      return;
+    }
+
+    if (entitlement.assignedUserId && entitlement.assignedUserId !== session.user.id) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'GIFT_ENTITLEMENT_ALREADY_CLAIMED' });
+      return;
+    }
+
+    if (!entitlement.assignedUserId) {
+      await client.query(
+        `UPDATE book_entitlements
+         SET assigned_user_id = $1,
+             claimed_at = COALESCE(claimed_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [session.user.id, entitlement.id]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({
+      success: true,
+      entitlement: {
+        id: entitlement.id,
+        bookType: entitlement.bookType,
+        includedPages: entitlement.includedPages,
+        status: 'available',
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Gift entitlement redeem error:', err);
+    res.status(500).json({ error: 'GIFT_ENTITLEMENT_REDEEM_FAILED' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/my/books', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
@@ -306,15 +596,19 @@ app.post('/api/my/books', async (req, res) => {
   }
 
   const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
-  const bookType = req.body?.bookType === 'event' ? 'event' : 'standard';
+  const entitlementId =
+    typeof req.body?.entitlementId === 'string' ? req.body.entitlementId.trim() : '';
 
   if (!title || title.length > 120) {
     res.status(400).json({ error: 'INVALID_BOOK_TITLE' });
     return;
   }
+  if (!entitlementId) {
+    res.status(402).json({ error: 'BOOK_ENTITLEMENT_REQUIRED' });
+    return;
+  }
 
   const session = await getSession(req).catch(() => null);
-
   if (!session) {
     res.status(401).json({ error: 'UNAUTHENTICATED' });
     return;
@@ -327,15 +621,52 @@ app.post('/api/my/books', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const entitlementResult = await client.query(
+      `SELECT
+         id,
+         book_type AS "bookType",
+         included_pages AS "includedPages",
+         status
+       FROM book_entitlements
+       WHERE id = $1
+         AND assigned_user_id = $2
+       FOR UPDATE`,
+      [entitlementId, session.user.id]
+    );
+
+    if (entitlementResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'BOOK_ENTITLEMENT_NOT_AVAILABLE' });
+      return;
+    }
+
+    const entitlement = entitlementResult.rows[0];
+    if (entitlement.status !== 'available') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'BOOK_ENTITLEMENT_ALREADY_USED' });
+      return;
+    }
+
+    const bookType = entitlement.bookType === 'event' ? 'event' : 'standard';
+    const includedPages =
+      bookType === 'standard'
+        ? Math.max(1, Number(entitlement.includedPages) || DEFAULT_BOOK_PAGE_COUNT)
+        : 0;
+
     const bookResult = await client.query(
-      `INSERT INTO books (id, owner_user_id, title, invite_token, book_type)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, title, book_type AS "bookType", created_at AS "createdAt"`,
-      [bookId, session.user.id, title, inviteToken, bookType]
+      `INSERT INTO books (id, owner_user_id, title, invite_token, book_type, page_capacity)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING
+         id,
+         title,
+         book_type AS "bookType",
+         page_capacity AS "pageCapacity",
+         created_at AS "createdAt"`,
+      [bookId, session.user.id, title, inviteToken, bookType, includedPages]
     );
 
     if (bookType === 'standard') {
-      for (let pageNumber = 1; pageNumber <= DEFAULT_BOOK_PAGE_COUNT; pageNumber += 1) {
+      for (let pageNumber = 1; pageNumber <= includedPages; pageNumber += 1) {
         await client.query(
           `INSERT INTO pages (id, book_id, page_number)
            VALUES ($1, $2, $3)`,
@@ -344,15 +675,26 @@ app.post('/api/my/books', async (req, res) => {
       }
     }
 
+    await client.query(
+      `UPDATE book_entitlements
+       SET status = 'redeemed',
+           redeemed_at = CURRENT_TIMESTAMP,
+           redeemed_book_id = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [bookId, entitlement.id]
+    );
+
     await client.query('COMMIT');
 
     res.status(201).json({
       success: true,
       book: {
         ...bookResult.rows[0],
-        pageCount: bookType === 'standard' ? DEFAULT_BOOK_PAGE_COUNT : 0,
+        pageCount: includedPages,
         contributionCount: 0,
       },
+      consumedEntitlementId: entitlement.id,
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -2135,6 +2477,55 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS book_type TEXT NOT NULL DEFAULT 'standard'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_device_limit INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
+  await pool.query(`UPDATE books SET page_capacity = 0 WHERE book_type = 'event' AND page_capacity <> 0`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS purchases (
+      id TEXT PRIMARY KEY,
+      purchase_mode TEXT NOT NULL CHECK (purchase_mode IN ('self', 'gift')),
+      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event')),
+      included_pages INTEGER NOT NULL DEFAULT 30,
+      purchaser_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      purchaser_name TEXT NOT NULL,
+      purchaser_email TEXT NOT NULL,
+      billing_name TEXT NOT NULL,
+      billing_email TEXT NOT NULL,
+      billing_country TEXT NOT NULL,
+      billing_postal_code TEXT NOT NULL,
+      billing_city TEXT NOT NULL,
+      billing_address TEXT NOT NULL,
+      billing_tax_number TEXT,
+      payment_provider TEXT NOT NULL CHECK (payment_provider IN ('paypal', 'simplepay')),
+      payment_status TEXT NOT NULL DEFAULT 'draft' CHECK (payment_status IN ('draft', 'pending', 'paid', 'cancelled', 'refunded')),
+      provider_reference TEXT,
+      amount_minor INTEGER,
+      currency TEXT,
+      paid_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS book_entitlements (
+      id TEXT PRIMARY KEY,
+      purchase_id TEXT NOT NULL UNIQUE REFERENCES purchases(id) ON DELETE RESTRICT,
+      assigned_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      gift_token TEXT UNIQUE,
+      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event')),
+      included_pages INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'redeemed', 'revoked')),
+      claimed_at TIMESTAMPTZ,
+      redeemed_at TIMESTAMPTZ,
+      redeemed_book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS book_entitlements_assigned_user_idx ON book_entitlements (assigned_user_id, status)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS purchases_purchaser_user_idx ON purchases (purchaser_user_id, created_at DESC)`);
 
   await pool.query(
     `UPDATE books

@@ -10,6 +10,11 @@ const API_BASE =
 type Mode = 'login' | 'register';
 
 export function AuthPage() {
+  const requestedReturnTo = new URLSearchParams(window.location.search).get('returnTo');
+  const returnTo =
+    requestedReturnTo && requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//')
+      ? requestedReturnTo
+      : '/my-books';
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -76,7 +81,7 @@ export function AuthPage() {
         throw new Error(message);
       }
 
-      window.location.href = '/my-books';
+      window.location.href = returnTo;
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Hiba történt.');
