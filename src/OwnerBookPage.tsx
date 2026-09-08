@@ -45,6 +45,10 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [inviteComposerPage, setInviteComposerPage] = useState<OwnerPage | null>(null);
 
   const origin = useMemo(() => window.location.origin, []);
+  const targetPageId = useMemo(
+    () => new URLSearchParams(window.location.search).get('page'),
+    []
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -81,6 +85,19 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
 
     load();
   }, [bookId]);
+
+  useEffect(() => {
+    if (loading || bookType !== 'standard' || !targetPageId) return;
+
+    const target = document.getElementById(`owner-page-${targetPageId}`);
+    if (!target) return;
+
+    const timer = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, bookType, pages, targetPageId]);
 
   const createInvite = async (page: OwnerPage) => {
     try {
@@ -419,11 +436,12 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
               return (
                 <article
                   key={page.id}
-                  style={
-                    isArchived
-                      ? { ...styles.card, ...styles.archivedCard }
-                      : styles.card
-                  }
+                  id={`owner-page-${page.id}`}
+                  style={{
+                    ...styles.card,
+                    ...(isArchived ? styles.archivedCard : {}),
+                    ...(targetPageId === page.id ? styles.targetCard : {}),
+                  }}
                 >
                   <div style={styles.cardTop}>
                     <strong style={styles.pageNumber}>Oldal {page.pageNumber}</strong>
@@ -694,6 +712,11 @@ const styles: Record<string, React.CSSProperties> = {
   archivedCard: {
     background: '#f8fafc',
     border: '1px dashed #94a3b8',
+  },
+  targetCard: {
+    outline: '3px solid #2563eb',
+    outlineOffset: 2,
+    boxShadow: '0 10px 28px rgba(37, 99, 235, 0.22)',
   },
   cardTop: {
     display: 'flex',

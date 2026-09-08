@@ -141,9 +141,9 @@ export function MyBooksPage() {
             {user && <div style={styles.userLine}>{user.name || user.email || 'Bejelentkezett felhasználó'}</div>}
           </div>
           <div style={styles.headerActions}>
-  <NotificationMenu />
-  <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
-</div>
+            <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
+            <NotificationMenu />
+          </div>
         </header>
 
         {!loading && !error && (
