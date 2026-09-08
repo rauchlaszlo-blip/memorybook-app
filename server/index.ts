@@ -1017,6 +1017,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          invite_recipient_name AS "inviteRecipientName",
          invite_recipient_email AS "inviteRecipientEmail",
          invite_delivery_method AS "inviteDeliveryMethod",
+         invite_language AS "inviteLanguage",
          CASE
            WHEN invite_created_at IS NULL THEN NULL
            ELSE invite_created_at + INTERVAL '14 days'
@@ -1136,6 +1137,18 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
       : req.body?.deliveryMethod === 'share'
         ? 'share'
         : null;
+  const rawInviteLanguage = req.body?.inviteLanguage;
+  const inviteLanguage =
+    rawInviteLanguage === null || rawInviteLanguage === undefined || rawInviteLanguage === ''
+      ? null
+      : rawInviteLanguage === 'hu' || rawInviteLanguage === 'en'
+        ? rawInviteLanguage
+        : 'invalid';
+
+  if (inviteLanguage === 'invalid') {
+    res.status(400).json({ error: 'INVALID_INVITE_LANGUAGE' });
+    return;
+  }
 
   if (!deliveryMethod) {
     res.status(400).json({ error: 'INVALID_INVITE_DELIVERY_METHOD' });
@@ -1167,6 +1180,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
            invite_recipient_name = COALESCE(p.invite_recipient_name, NULLIF($4, '')),
            invite_recipient_email = COALESCE(p.invite_recipient_email, NULLIF($5, '')),
            invite_delivery_method = COALESCE(p.invite_delivery_method, $6),
+           invite_language = $7,
            updated_at = CURRENT_TIMESTAMP
        FROM books b
        WHERE p.id = $1
@@ -1181,7 +1195,8 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
          p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",
          p.invite_recipient_name AS "inviteRecipientName",
          p.invite_recipient_email AS "inviteRecipientEmail",
-         p.invite_delivery_method AS "inviteDeliveryMethod"`,
+         p.invite_delivery_method AS "inviteDeliveryMethod",
+         p.invite_language AS "inviteLanguage"`,
       [
         req.params.pageId,
         req.params.bookId,
@@ -1189,6 +1204,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
         recipientName,
         recipientEmail,
         deliveryMethod,
+        inviteLanguage,
       ]
     );
 
@@ -1265,6 +1281,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/reassign', async (req, res)
            invite_recipient_name = NULL,
            invite_recipient_email = NULL,
            invite_delivery_method = NULL,
+           invite_language = NULL,
            submitted_at = NULL,
            owner_note = NULL,
            owner_visibility = 'active',
@@ -1293,6 +1310,7 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/reassign', async (req, res)
       inviteRecipientName: null,
       inviteRecipientEmail: null,
       inviteDeliveryMethod: null,
+      inviteLanguage: null,
       inviteValidDays: PAGE_INVITE_VALID_DAYS,
     });
   } catch (err) {
@@ -1537,6 +1555,7 @@ app.delete('/api/my/books/:bookId/pages/:pageId', async (req, res) => {
            invite_recipient_name = NULL,
            invite_recipient_email = NULL,
            invite_delivery_method = NULL,
+           invite_language = NULL,
            submitted_at = NULL,
            owner_note = NULL,
            owner_visibility = 'active',
@@ -1587,6 +1606,8 @@ app.get('/api/page-invites/:token', async (req, res) => {
          p.invite_status AS "inviteStatus",
          p.invite_created_at AS "inviteCreatedAt",
          p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",
+         p.invite_language AS "inviteLanguage",
+         COALESCE(p.invite_language, b.language) AS "language",
          p.submitted_at AS "submittedAt"
        FROM pages p
        JOIN books b ON b.id = p.book_id
@@ -2776,6 +2797,8 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_recipient_name TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_recipient_email TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_delivery_method TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_language TEXT`);
+  await pool.query(`UPDATE pages SET invite_language = NULL WHERE invite_language IS NOT NULL AND invite_language NOT IN ('hu', 'en')`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_note TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);

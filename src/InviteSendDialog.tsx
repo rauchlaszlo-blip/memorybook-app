@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
+import type { AppLanguage } from './i18n';
 
 type InviteSendDialogProps = {
   bookTitle: string;
   pageNumber: number;
   pageUrl: string;
   ctaUrl: string;
+  bookLanguage: AppLanguage;
+  savedInviteLanguage?: AppLanguage | null;
   isResend?: boolean;
   expiresAt?: string | null;
   savedRecipientName?: string | null;
@@ -14,15 +17,49 @@ type InviteSendDialogProps = {
     recipientName: string;
     recipientEmail: string;
     deliveryMethod: 'share' | 'email';
+    inviteLanguage: AppLanguage | null;
   }) => Promise<void>;
   onClose: () => void;
 };
 
 type SendPlatform = 'share' | 'email';
+type InviteLanguageChoice = 'inherit' | AppLanguage;
 
-function buildMessage(bookTitle: string, pageUrl: string, ctaUrl: string) {
+function languageLabel(language: AppLanguage) {
+  return language === 'en' ? 'English' : 'Magyar';
+}
+
+function buildGreeting(language: AppLanguage, recipientName: string) {
+  const name = recipientName.trim();
+  if (language === 'en') return name ? `Hi, ${name}!` : 'Hi!';
+  return name ? `Szia, ${name}!` : 'Szia!';
+}
+
+function buildMessage(
+  bookTitle: string,
+  pageUrl: string,
+  ctaUrl: string,
+  language: AppLanguage,
+  recipientName = ''
+) {
+  if (language === 'en') {
+    return [
+      buildGreeting(language, recipientName),
+      '',
+      `I created a MemoryBook called “${bookTitle}”. I would like you to create your own page for it.`,
+      '',
+      'Open your page here:',
+      pageUrl,
+      '',
+      'This link belongs only to your page. When you are finished, submit it at the bottom of the page.',
+      'The invitation is valid for 14 days.',
+      '',
+      `👉 Create your own MemoryBook: ${ctaUrl}`,
+    ].join('\n');
+  }
+
   return [
-    'Szia!',
+    buildGreeting(language, recipientName),
     '',
     `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,
     '',
@@ -41,6 +78,8 @@ export function InviteSendDialog({
   pageNumber,
   pageUrl,
   ctaUrl,
+  bookLanguage,
+  savedInviteLanguage = null,
   isResend = false,
   expiresAt = null,
   savedRecipientName = null,
@@ -56,7 +95,20 @@ export function InviteSendDialog({
   );
   const [recipientName, setRecipientName] = useState(savedRecipientName || '');
   const [email, setEmail] = useState(savedRecipientEmail || '');
-  const [message, setMessage] = useState(() => buildMessage(bookTitle, pageUrl, ctaUrl));
+  const [inviteLanguageChoice, setInviteLanguageChoice] = useState<InviteLanguageChoice>(
+    savedInviteLanguage || 'inherit'
+  );
+  const effectiveInviteLanguage: AppLanguage =
+    inviteLanguageChoice === 'inherit' ? bookLanguage : inviteLanguageChoice;
+  const [message, setMessage] = useState(() =>
+    buildMessage(
+      bookTitle,
+      pageUrl,
+      ctaUrl,
+      savedInviteLanguage || bookLanguage,
+      savedRecipientName || ''
+    )
+  );
   const [sendError, setSendError] = useState<string | null>(null);
 
   const nativeShareAvailable = useMemo(
@@ -66,10 +118,15 @@ export function InviteSendDialog({
 
   const updateRecipientName = (value: string) => {
     setRecipientName(value);
-    setMessage((current) => {
-      const greeting = value.trim() ? `Szia, ${value.trim()}!` : 'Szia!';
-      return current.replace(/^Szia(?:, [^!]+)?!/, greeting);
-    });
+    setMessage((current) =>
+      current.replace(/^[^\n]*/, buildGreeting(effectiveInviteLanguage, value))
+    );
+  };
+
+  const updateInviteLanguage = (choice: InviteLanguageChoice) => {
+    setInviteLanguageChoice(choice);
+    const language = choice === 'inherit' ? bookLanguage : choice;
+    setMessage(buildMessage(bookTitle, pageUrl, ctaUrl, language, recipientName));
   };
 
   const send = async () => {
@@ -88,11 +145,15 @@ export function InviteSendDialog({
       recipientName: recipientName.trim(),
       recipientEmail: email.trim(),
       deliveryMethod: platform,
+      inviteLanguage: inviteLanguageChoice === 'inherit' ? null : inviteLanguageChoice,
     } as const;
 
     if (platform === 'email') {
       try {
-        const subject = `MemoryBook meghívás – ${bookTitle}`;
+        const subject =
+          effectiveInviteLanguage === 'en'
+            ? `MemoryBook invitation – ${bookTitle}`
+            : `MemoryBook meghívás – ${bookTitle}`;
         const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
         await onSent(metadata);
         window.location.href = mailto;
@@ -113,7 +174,10 @@ export function InviteSendDialog({
 
     try {
       await navigator.share({
-        title: `MemoryBook meghívás – ${bookTitle}`,
+        title:
+          effectiveInviteLanguage === 'en'
+            ? `MemoryBook invitation – ${bookTitle}`
+            : `MemoryBook meghívás – ${bookTitle}`,
         text: message,
       });
       await onSent(metadata);
@@ -173,7 +237,22 @@ export function InviteSendDialog({
           </button>
         </div>
 
-        <div style={styles.stepLabel}>2. Személyre szabás</div>
+        <div style={styles.stepLabel}>2. Meghívó nyelve</div>
+        <label style={styles.label}>
+          Nyelv
+          <select
+            value={inviteLanguageChoice}
+            onChange={(event) => updateInviteLanguage(event.target.value as InviteLanguageChoice)}
+            style={styles.input}
+            aria-label="Meghívó nyelve"
+          >
+            <option value="inherit">Könyv nyelve ({languageLabel(bookLanguage)})</option>
+            <option value="hu">Magyar</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+
+        <div style={styles.stepLabel}>3. Személyre szabás</div>
         <label style={styles.label}>
           Címzett neve {platform === 'share' ? '(kötelező)' : '(opcionális)'}
           <input

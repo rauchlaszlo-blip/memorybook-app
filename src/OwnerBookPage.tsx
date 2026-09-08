@@ -21,6 +21,7 @@ type OwnerPage = {
   inviteRecipientName?: string | null;
   inviteRecipientEmail?: string | null;
   inviteDeliveryMethod?: 'share' | 'email' | string | null;
+  inviteLanguage?: AppLanguage | null;
   ownerNote?: string | null;
   ownerVisibility?: 'active' | 'archived' | string;
   submittedAt?: string | null;
@@ -192,6 +193,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         inviteRecipientName: null,
         inviteRecipientEmail: null,
         inviteDeliveryMethod: null,
+        inviteLanguage: null,
         submittedAt: null,
         ownerNote: null,
       };
@@ -212,6 +214,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       recipientName: string;
       recipientEmail: string;
       deliveryMethod: 'share' | 'email';
+      inviteLanguage: AppLanguage | null;
     }
   ) => {
     const response = await fetch(
@@ -242,6 +245,12 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       inviteRecipientName: data.inviteRecipientName || page.inviteRecipientName || null,
       inviteRecipientEmail: data.inviteRecipientEmail || page.inviteRecipientEmail || null,
       inviteDeliveryMethod: data.inviteDeliveryMethod || page.inviteDeliveryMethod || null,
+      inviteLanguage:
+        data.inviteLanguage === 'en'
+          ? 'en'
+          : data.inviteLanguage === 'hu'
+            ? 'hu'
+            : null,
     };
 
     setPages((current) =>
@@ -621,6 +630,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           pageNumber={inviteComposerPage.pageNumber}
           pageUrl={`${origin}/p/${inviteComposerPage.inviteToken}`}
           ctaUrl={`${origin}/nekem-is-kell`}
+          bookLanguage={bookLanguage}
+          savedInviteLanguage={inviteComposerPage.inviteLanguage || null}
           isResend={Boolean(inviteComposerPage.inviteSentAt)}
           expiresAt={inviteComposerPage.inviteExpiresAt || null}
           savedRecipientName={inviteComposerPage.inviteRecipientName || null}
