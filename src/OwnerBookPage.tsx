@@ -17,6 +17,10 @@ type OwnerPage = {
   inviteCreatedAt?: string | null;
   inviteSentAt?: string | null;
   inviteExpiresAt?: string | null;
+  inviteRecipientName?: string | null;
+  inviteRecipientEmail?: string | null;
+  inviteDeliveryMethod?: 'share' | 'email' | string | null;
+  ownerNote?: string | null;
   ownerVisibility?: 'active' | 'archived' | string;
   submittedAt?: string | null;
   authorShareApproved?: boolean;
@@ -129,13 +133,74 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       return;
     }
 
+    if (isInviteExpired(page)) {
+      void reassignExpiredInvite(page);
+      return;
+    }
+
     setInviteComposerPage(page);
   };
 
-  const markInviteSent = async (page: OwnerPage) => {
+  const reassignExpiredInvite = async (page: OwnerPage) => {
+    try {
+      setWorkingPageId(page.id);
+      setError(null);
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}/invite/reassign`,
+        { method: 'POST', credentials: 'include' }
+      );
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'PAGE_INVITE_REASSIGN_FAILED');
+      }
+
+      const reassignedPage: OwnerPage = {
+        ...page,
+        version: page.version + 1,
+        inviteStatus: 'invited',
+        inviteToken: data.inviteToken,
+        inviteCreatedAt: data.inviteCreatedAt || null,
+        inviteSentAt: null,
+        inviteExpiresAt: data.inviteExpiresAt || null,
+        inviteRecipientName: null,
+        inviteRecipientEmail: null,
+        inviteDeliveryMethod: null,
+        submittedAt: null,
+        ownerNote: null,
+      };
+
+      setPages((current) => current.map((item) => item.id === page.id ? reassignedPage : item));
+      setInviteComposerPage(reassignedPage);
+    } catch (err) {
+      console.error(err);
+      setError('Nem sikerült új címzettnek megnyitni az oldalt.');
+    } finally {
+      setWorkingPageId(null);
+    }
+  };
+
+  const markInviteSent = async (
+    page: OwnerPage,
+    metadata: {
+      recipientName: string;
+      recipientEmail: string;
+      deliveryMethod: 'share' | 'email';
+    }
+  ) => {
     const response = await fetch(
       `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}/invite/sent`,
-      { method: 'POST', credentials: 'include' }
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metadata),
+      }
     );
 
     if (response.status === 401) {
@@ -153,6 +218,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       inviteSentAt: data.inviteSentAt,
       inviteCreatedAt: data.inviteCreatedAt || page.inviteCreatedAt || null,
       inviteExpiresAt: data.inviteExpiresAt || page.inviteExpiresAt || null,
+      inviteRecipientName: data.inviteRecipientName || page.inviteRecipientName || null,
+      inviteRecipientEmail: data.inviteRecipientEmail || page.inviteRecipientEmail || null,
+      inviteDeliveryMethod: data.inviteDeliveryMethod || page.inviteDeliveryMethod || null,
     };
 
     setPages((current) =>
@@ -372,6 +440,14 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           : 'Könyvben marad.'}
                       </div>
 
+                      {(page.inviteRecipientName || page.inviteRecipientEmail || page.submittedAt) && (
+                        <div style={styles.memoryIdentitySummary}>
+                          <strong>Emlék:</strong>{' '}
+                          {page.inviteRecipientName || page.inviteRecipientEmail || 'Nincs azonosítva'}
+                          {page.submittedAt ? ` · ${formatInviteExpiry(page.submittedAt)}` : ''}
+                        </div>
+                      )}
+
                       <div style={styles.shareState}>
                         Szerző jóváhagyása: <strong>{page.authorShareApproved ? 'igen' : 'nem'}</strong>
                         <br />
@@ -439,7 +515,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                     <div>
                       {hasInvite && page.inviteExpiresAt && (
                         <div style={styles.inviteMeta}>
-                          A meghívó 14 napig használható. Lejár: {formatInviteExpiry(page.inviteExpiresAt)}
+                          {isInviteExpired(page)
+                            ? 'A meghívó lejárt. Az oldal új címzettnek kiadható.'
+                            : <>A meghívó 14 napig használható. Lejár: {formatInviteExpiry(page.inviteExpiresAt)}</>}
                         </div>
                       )}
                       <button
@@ -452,9 +530,11 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           ? 'Készül...'
                           : !hasInvite
                             ? 'Meghívás'
-                            : page.inviteSentAt
-                              ? 'Meghívó újraküldése'
-                              : 'Meghívás folytatása'}
+                            : isInviteExpired(page)
+                              ? 'Új címzett meghívása'
+                              : page.inviteSentAt
+                                ? 'Meghívó újraküldése'
+                                : 'Meghívás folytatása'}
                       </button>
                     </div>
                   )}
@@ -474,7 +554,16 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           ctaUrl={`${origin}/nekem-is-kell`}
           isResend={Boolean(inviteComposerPage.inviteSentAt)}
           expiresAt={inviteComposerPage.inviteExpiresAt || null}
-          onSent={() => markInviteSent(inviteComposerPage)}
+          savedRecipientName={inviteComposerPage.inviteRecipientName || null}
+          savedRecipientEmail={inviteComposerPage.inviteRecipientEmail || null}
+          savedDeliveryMethod={
+            inviteComposerPage.inviteDeliveryMethod === 'email'
+              ? 'email'
+              : inviteComposerPage.inviteDeliveryMethod === 'share'
+                ? 'share'
+                : null
+          }
+          onSent={(metadata) => markInviteSent(inviteComposerPage, metadata)}
           onClose={() => setInviteComposerPage(null)}
         />
       )}
@@ -501,11 +590,20 @@ function displayStatusLabel(page: OwnerPage) {
   if (page.inviteStatus === 'submitted' && page.ownerVisibility === 'archived') {
     return 'Archiválva';
   }
+  if (isInviteExpired(page)) {
+    return 'Meghívó lejárt';
+  }
   if (page.inviteStatus === 'invited' && page.inviteSentAt) {
     return 'Meghívó kiküldve';
   }
 
   return statusLabel(page.inviteStatus);
+}
+
+function isInviteExpired(page: OwnerPage) {
+  if (page.inviteStatus === 'submitted' || !page.inviteExpiresAt) return false;
+  const expires = new Date(page.inviteExpiresAt).getTime();
+  return Number.isFinite(expires) && expires <= Date.now();
 }
 
 function formatInviteExpiry(value: string) {
@@ -569,6 +667,7 @@ const styles: Record<string, React.CSSProperties> = {
   eventQrButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, whiteSpace: 'nowrap' },
   eventSecondaryButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', textDecoration: 'none', fontWeight: 800, whiteSpace: 'nowrap' },
   inviteMeta: { marginBottom: 10, color: '#64748b', fontSize: 12, lineHeight: 1.45 },
+  memoryIdentitySummary: { margin: '8px 0 10px', padding: 10, borderRadius: 8, background: '#f8fafc', color: '#334155', fontSize: 13, lineHeight: 1.45 },
   panel: {
     padding: 24,
     borderRadius: 14,
