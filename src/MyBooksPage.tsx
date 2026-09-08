@@ -217,8 +217,14 @@ export function MyBooksPage() {
                 </div>
                 <div style={styles.actions}>
                   <a
-                    href={`/book/${encodeURIComponent(book.id)}/view`}
+                    href={`/my-books/${encodeURIComponent(book.id)}`}
                     style={styles.primaryLink}
+                  >
+                    Oldalak és meghívók
+                  </a>
+                  <a
+                    href={`/book/${encodeURIComponent(book.id)}/view`}
+                    style={styles.secondaryLink}
                   >
                     Könyv megnyitása
                   </a>
