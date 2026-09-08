@@ -85,7 +85,9 @@ jobs:
           exit 1
 
       - name: Run full regression
-        run: node scripts/full-regression.mjs
+        run: |
+          sed -i 's/memorybook-app-language/memorybook.appLanguage/g' scripts/full-regression.mjs
+          node scripts/full-regression.mjs
 
       - name: Show logs on failure
         if: failure()
