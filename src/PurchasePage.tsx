@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://' + window.location.hostname + ':3001'
@@ -11,6 +13,9 @@ type BookType = 'standard' | 'event';
 type Provider = 'paypal' | 'simplepay';
 
 export function PurchasePage() {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const query = new URLSearchParams(window.location.search);
   const [user, setUser] = useState<UserData | null>(null);
   const [mode, setMode] = useState<Mode>(query.get('mode') === 'gift' ? 'gift' : 'self');
@@ -79,7 +84,7 @@ export function PurchasePage() {
       setPurchaseId(data.purchase?.id || null);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message === 'INCOMPLETE_PURCHASE_IDENTITY' ? 'Töltsd ki a számlázáshoz szükséges adatokat.' : 'A vásárlás előkészítése nem sikerült.');
+      setError(err?.message === 'INCOMPLETE_PURCHASE_IDENTITY' ? t('Töltsd ki a számlázáshoz szükséges adatokat.') : t('A vásárlás előkészítése nem sikerült.'));
     } finally {
       setLoading(false);
     }
@@ -88,83 +93,84 @@ export function PurchasePage() {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
-        <a href={user ? '/my-books' : '/login'} style={styles.back}>← Vissza</a>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
+        <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
         <div style={styles.brand}>MemoryBook</div>
-        <h1 style={styles.title}>Emlékkönyv vásárlása</h1>
-        <p style={styles.lead}>A fizetési alapfolyamat elkészült. A PayPal és SimplePay tényleges fizetési indítása a következő integrációs lépés.</p>
+        <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
+        <p style={styles.lead}>{t('A fizetési alapfolyamat elkészült. A PayPal és SimplePay tényleges fizetési indítása a következő integrációs lépés.')}</p>
 
         <div style={styles.switcher}>
-          <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>Magamnak</button>
-          <button type="button" onClick={() => setMode('gift')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.active : {}) }}>Ajándékba</button>
+          <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
+          <button type="button" onClick={() => setMode('gift')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.active : {}) }}>{t('Ajándékba')}</button>
         </div>
 
         {mode === 'self' && !user && (
           <div style={styles.notice}>
-            Saját könyv vásárlásához előbb be kell lépned vagy regisztrálnod.
-            <a href={`/login?returnTo=${encodeURIComponent('/purchase?mode=self')}`} style={styles.inlineLink}> Belépés / regisztráció</a>
+            {t('Saját könyv vásárlásához előbb be kell lépned vagy regisztrálnod.')}
+            <a href={`/login?returnTo=${encodeURIComponent('/purchase?mode=self')}`} style={styles.inlineLink}> {t('Belépés / regisztráció')}</a>
           </div>
         )}
 
         <form onSubmit={submit} style={styles.form}>
-          <label style={styles.label}>Könyv típusa
+          <label style={styles.label}>{t('Könyv típusa')}
             <select value={bookType} onChange={(event) => setBookType(event.target.value as BookType)} style={styles.input}>
-              <option value="standard">Normál emlékkönyv – 30 oldal</option>
-              <option value="event">Rendezvény-vendégkönyv</option>
+              <option value="standard">{t('Normál emlékkönyv – 30 oldal')}</option>
+              <option value="event">{t('Rendezvény-vendégkönyv')}</option>
             </select>
           </label>
 
-          <label style={styles.label}>Fizetési mód
+          <label style={styles.label}>{t('Fizetési mód')}
             <select value={provider} onChange={(event) => setProvider(event.target.value as Provider)} style={styles.input}>
               <option value="simplepay">SimplePay</option>
               <option value="paypal">PayPal</option>
             </select>
           </label>
 
-          <div style={styles.sectionTitle}>Vásárló azonosítása</div>
-          <label style={styles.label}>Név
+          <div style={styles.sectionTitle}>{t('Vásárló azonosítása')}</div>
+          <label style={styles.label}>{t('Név')}
             <input value={purchaserName} onChange={(event) => setPurchaserName(event.target.value)} style={styles.input} disabled={mode === 'self' && Boolean(user)} />
           </label>
-          <label style={styles.label}>E-mail
+          <label style={styles.label}>{t('E-mail')}
             <input type="email" value={purchaserEmail} onChange={(event) => setPurchaserEmail(event.target.value)} style={styles.input} disabled={mode === 'self' && Boolean(user)} />
           </label>
 
-          <div style={styles.sectionTitle}>Számlázási adatok</div>
-          <label style={styles.label}>Számlázási név
+          <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>
+          <label style={styles.label}>{t('Számlázási név')}
             <input value={billingName} onChange={(event) => setBillingName(event.target.value)} style={styles.input} />
           </label>
-          <label style={styles.label}>Számlázási e-mail
+          <label style={styles.label}>{t('Számlázási e-mail')}
             <input type="email" value={billingEmail} onChange={(event) => setBillingEmail(event.target.value)} style={styles.input} />
           </label>
-          <label style={styles.label}>Ország
+          <label style={styles.label}>{t('Ország')}
             <input value={billingCountry} onChange={(event) => setBillingCountry(event.target.value)} style={styles.input} />
           </label>
           <div style={styles.twoCols}>
-            <label style={styles.label}>Irányítószám
+            <label style={styles.label}>{t('Irányítószám')}
               <input value={billingPostalCode} onChange={(event) => setBillingPostalCode(event.target.value)} style={styles.input} />
             </label>
-            <label style={styles.label}>Település
+            <label style={styles.label}>{t('Település')}
               <input value={billingCity} onChange={(event) => setBillingCity(event.target.value)} style={styles.input} />
             </label>
           </div>
-          <label style={styles.label}>Cím
+          <label style={styles.label}>{t('Cím')}
             <input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} style={styles.input} />
           </label>
-          <label style={styles.label}>Adószám (ha szükséges)
+          <label style={styles.label}>{t('Adószám (ha szükséges)')}
             <input value={billingTaxNumber} onChange={(event) => setBillingTaxNumber(event.target.value)} style={styles.input} />
           </label>
 
-          {mode === 'gift' && <div style={styles.giftInfo}>Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.</div>}
+          {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || (mode === 'self' && !user)} style={styles.primaryButton}>
-            {loading ? 'Mentés...' : 'Vásárlási adatok mentése'}
+            {loading ? t('Mentés...') : t('Vásárlási adatok mentése')}
           </button>
         </form>
 
         {purchaseId && (
           <div style={styles.success}>
-            <strong>Vásárlási alap rögzítve.</strong><br />
-            Azonosító: {purchaseId}<br />
-            Még nem történt fizetés, ezért könyvjogosultság sem keletkezett. A következő lépésben ehhez kötjük a PayPal és SimplePay fizetést.
+            <strong>{t('Vásárlási alap rögzítve.')}</strong><br />
+            {f('Azonosító: {id}', { id: purchaseId })}<br />
+            {t('Még nem történt fizetés, ezért könyvjogosultság sem keletkezett. A következő lépésben ehhez kötjük a PayPal és SimplePay fizetést.')}
           </div>
         )}
       </section>
@@ -174,6 +180,7 @@ export function PurchasePage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', padding: '18px 12px 40px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 20, background: '#fff', borderRadius: 16, boxSizing: 'border-box', boxShadow: '0 10px 30px rgba(15,23,42,.08)' },
   back: { display: 'inline-flex', minHeight: 44, alignItems: 'center', color: '#475569', textDecoration: 'none', fontWeight: 700 },
   brand: { marginTop: 4, color: '#64748b', fontWeight: 800, fontSize: 13, letterSpacing: 1.4, textTransform: 'uppercase' },

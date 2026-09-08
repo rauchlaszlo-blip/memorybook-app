@@ -1,15 +1,20 @@
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicText, usePublicUiLanguage } from './publicUiI18n';
+
 export function InviteCtaPage() {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
   return (
     <main style={styles.page}>
       <section style={styles.card}>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
         <div style={styles.brand}>MemoryBook</div>
-        <h1 style={styles.title}>Nekem is kell emlékkönyv</h1>
+        <h1 style={styles.title}>{t('Nekem is kell emlékkönyv')}</h1>
         <p style={styles.text}>
-          Készíts saját online emlékkönyvet, hívd meg azokat, akik fontosak neked,
-          és gyűjtsd össze az emlékeiteket egy közös könyvbe.
+          {t('Készíts saját online emlékkönyvet, hívd meg azokat, akik fontosak neked, és gyűjtsd össze az emlékeiteket egy közös könyvbe.')}
         </p>
-        <a href="/login" style={styles.button}>Saját MemoryBook létrehozása</a>
-        <p style={styles.note}>A létrehozás regisztrációval indul.</p>
+        <a href="/login" style={styles.button}>{t('Saját MemoryBook létrehozása')}</a>
+        <p style={styles.note}>{t('A létrehozás regisztrációval indul.')}</p>
       </section>
     </main>
   );
@@ -25,6 +30,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f1f5f9',
     fontFamily: 'Arial, sans-serif',
   },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   card: {
     width: '100%',
     maxWidth: 560,

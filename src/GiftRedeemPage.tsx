@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://' + window.location.hostname + ':3001'
@@ -7,6 +9,9 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
 type GiftInfo = { bookType: 'standard' | 'event' | string; includedPages: number; claimStatus: 'available' | 'claimed' | 'redeemed' | string };
 
 export function GiftRedeemPage({ token }: { token: string }) {
+  const language = usePublicUiLanguage();
+  const t = (key: string) => publicText(language, key);
+  const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const [info, setInfo] = useState<GiftInfo | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -22,7 +27,7 @@ export function GiftRedeemPage({ token }: { token: string }) {
       fetch(`${API_BASE}/api/me`, { credentials: 'include' }).then((response) => response.ok),
     ])
       .then(([gift, isLoggedIn]) => { setInfo(gift); setLoggedIn(isLoggedIn); })
-      .catch(() => setError('Ez az ajándék-jogosultság nem található vagy még nincs kifizetve.'))
+      .catch(() => setError(t('Ez az ajándék-jogosultság nem található vagy még nincs kifizetve.')))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -40,7 +45,7 @@ export function GiftRedeemPage({ token }: { token: string }) {
       window.location.href = '/my-books';
     } catch (err: any) {
       console.error(err);
-      setError(err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED' ? 'Ezt az ajándékot már másik fiók beváltotta.' : 'Az ajándék beváltása nem sikerült.');
+      setError(err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED' ? t('Ezt az ajándékot már másik fiók beváltotta.') : t('Az ajándék beváltása nem sikerült.'));
     } finally {
       setWorking(false);
     }
@@ -49,23 +54,24 @@ export function GiftRedeemPage({ token }: { token: string }) {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
+        <div style={styles.languageRow}><LanguageSwitcher /></div>
         <div style={styles.brand}>MemoryBook</div>
-        <h1 style={styles.title}>Ajándék emlékkönyv</h1>
-        {loading && <div>Betöltés...</div>}
+        <h1 style={styles.title}>{t('Ajándék emlékkönyv')}</h1>
+        {loading && <div>{t('Betöltés...')}</div>}
         {error && <div style={styles.error}>{error}</div>}
         {!loading && info && (
           <>
             <p style={styles.text}>
-              {info.bookType === 'event' ? 'Rendezvény-vendégkönyv' : `Normál emlékkönyv – ${info.includedPages} oldal`}
+              {info.bookType === 'event' ? t('Rendezvény-vendégkönyv') : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}
             </p>
             {info.claimStatus === 'available' ? (
               loggedIn ? (
-                <button type="button" onClick={redeem} disabled={working} style={styles.primaryButton}>{working ? 'Beváltás...' : 'Ajándék beváltása'}</button>
+                <button type="button" onClick={redeem} disabled={working} style={styles.primaryButton}>{working ? t('Beváltás...') : t('Ajándék beváltása')}</button>
               ) : (
-                <a href={`/login?returnTo=${encodeURIComponent(`/gift/${token}`)}`} style={styles.primaryLink}>Belépés / regisztráció a beváltáshoz</a>
+                <a href={`/login?returnTo=${encodeURIComponent(`/gift/${token}`)}`} style={styles.primaryLink}>{t('Belépés / regisztráció a beváltáshoz')}</a>
               )
             ) : (
-              <div style={styles.notice}>{info.claimStatus === 'redeemed' ? 'Ezzel a jogosultsággal a könyvet már létrehozták.' : 'Ezt az ajándékot már egy fiókhoz hozzárendelték.'}</div>
+              <div style={styles.notice}>{info.claimStatus === 'redeemed' ? t('Ezzel a jogosultsággal a könyvet már létrehozták.') : t('Ezt az ajándékot már egy fiókhoz hozzárendelték.')}</div>
             )}
           </>
         )}
@@ -76,6 +82,7 @@ export function GiftRedeemPage({ token }: { token: string }) {
 
 const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18, background: '#f1f5f9', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
+  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
   card: { width: '100%', maxWidth: 500, padding: 24, background: '#fff', borderRadius: 16, boxSizing: 'border-box', boxShadow: '0 12px 34px rgba(15,23,42,.1)' },
   brand: { color: '#64748b', fontSize: 13, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { margin: '7px 0 10px', color: '#0f172a', fontSize: 30 },
