@@ -1,0 +1,67 @@
+name: Invite Message CTA Patch
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/invite-message-cta-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add shareable invite message and CTA landing page
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          owner = Path('src/OwnerBookPage.tsx')
+          text = owner.read_text(encoding='utf-8')
+          old = '''  const copyInvite = async (page: OwnerPage) => {\n    if (!page.inviteToken) return;\n\n    const url = `${origin}/p/${page.inviteToken}`;\n\n    try {\n      await navigator.clipboard.writeText(url);\n      setCopiedPageId(page.id);\n      window.setTimeout(() => setCopiedPageId(null), 1800);\n    } catch (err) {\n      console.error(err);\n      window.prompt('Másold ki a meghívó linket:', url);\n    }\n  };'''
+          new = '''  const copyInvite = async (page: OwnerPage) => {\n    if (!page.inviteToken) return;\n\n    const pageUrl = `${origin}/p/${page.inviteToken}`;\n    const ctaUrl = `${origin}/nekem-is-kell`;\n    const message = [\n      'Szia!',\n      '',\n      `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,\n      '',\n      'A saját oldalad itt éred el:',\n      pageUrl,\n      '',\n      'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',\n      '',\n      `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,\n    ].join('\\n');\n\n    try {\n      await navigator.clipboard.writeText(message);\n      setCopiedPageId(page.id);\n      window.setTimeout(() => setCopiedPageId(null), 1800);\n    } catch (err) {\n      console.error(err);\n      window.prompt('Másold ki a meghívó üzenetet:', message);\n    }\n  };'''
+          if old not in text:
+              raise SystemExit('copyInvite pattern not found')
+          text = text.replace(old, new, 1)
+          old_button = "? 'Link kimásolva'\n                          : 'Meghívó link másolása'"
+          new_button = "? 'Meghívó üzenet kimásolva'\n                          : 'Meghívó üzenet másolása'"
+          if old_button not in text:
+              raise SystemExit('invite button pattern not found')
+          owner.write_text(text.replace(old_button, new_button, 1), encoding='utf-8')
+
+          landing = Path('src/InviteCtaPage.tsx')
+          landing.write_text('''export function InviteCtaPage() {\n  return (\n    <main style={styles.page}>\n      <section style={styles.card}>\n        <div style={styles.brand}>MemoryBook</div>\n        <h1 style={styles.title}>Nekem is kell emlékkönyv</h1>\n        <p style={styles.text}>\n          Készíts saját online emlékkönyvet, hívd meg azokat, akik fontosak neked,\n          és gyűjtsd össze az emlékeiteket egy közös könyvbe.\n        </p>\n        <a href=\"/login\" style={styles.button}>Saját MemoryBook létrehozása</a>\n        <p style={styles.note}>A létrehozás regisztrációval indul.</p>\n      </section>\n    </main>\n  );\n}\n\nconst styles: Record<string, React.CSSProperties> = {\n  page: {\n    minHeight: '100vh',\n    display: 'grid',\n    placeItems: 'center',\n    padding: '24px 16px',\n    boxSizing: 'border-box',\n    background: '#f1f5f9',\n    fontFamily: 'Arial, sans-serif',\n  },\n  card: {\n    width: '100%',\n    maxWidth: 560,\n    padding: '32px 24px',\n    boxSizing: 'border-box',\n    borderRadius: 18,\n    background: '#ffffff',\n    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.10)',\n    textAlign: 'center',\n  },\n  brand: {\n    marginBottom: 10,\n    color: '#64748b',\n    fontSize: 13,\n    fontWeight: 800,\n    letterSpacing: 1.4,\n    textTransform: 'uppercase',\n  },\n  title: {\n    margin: '0 0 16px',\n    color: '#0f172a',\n    fontSize: 'clamp(28px, 8vw, 40px)',\n    lineHeight: 1.1,\n  },\n  text: {\n    margin: '0 auto 24px',\n    color: '#475569',\n    fontSize: 17,\n    lineHeight: 1.6,\n  },\n  button: {\n    display: 'inline-flex',\n    alignItems: 'center',\n    justifyContent: 'center',\n    width: '100%',\n    minHeight: 50,\n    padding: '12px 18px',\n    boxSizing: 'border-box',\n    borderRadius: 10,\n    background: '#0f172a',\n    color: '#ffffff',\n    textDecoration: 'none',\n    fontWeight: 800,\n  },\n  note: {\n    margin: '14px 0 0',\n    color: '#64748b',\n    fontSize: 13,\n  },\n};\n''', encoding='utf-8')
+
+          main = Path('src/main.tsx')
+          text = main.read_text(encoding='utf-8')
+          import_anchor = "import { BookViewerPage } from './BookViewerPage.tsx'\n"
+          if import_anchor not in text:
+              raise SystemExit('main import anchor not found')
+          text = text.replace(import_anchor, import_anchor + "import { InviteCtaPage } from './InviteCtaPage.tsx'\n", 1)
+          route_anchor = "const root = path === '/login'\n  ? <AuthPage />\n"
+          route_new = "const root = path === '/login'\n  ? <AuthPage />\n  : path === '/nekem-is-kell'\n    ? <InviteCtaPage />\n"
+          if route_anchor not in text:
+              raise SystemExit('main route anchor not found')
+          main.write_text(text.replace(route_anchor, route_new, 1), encoding='utf-8')
+          PY
+
+      - name: Build
+        run: npm install && npm run build
+
+      - name: Commit invite message CTA
+        shell: bash
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add src/OwnerBookPage.tsx src/InviteCtaPage.tsx src/main.tsx
+          git commit -m "Add invitation message with MemoryBook CTA"
+          git push origin HEAD:main
