@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
@@ -2641,7 +2642,13 @@ async function initializeDatabase(): Promise<void> {
     [DEMO_BOOK_ID]
   );
 
-  console.log('Users, books, contributions, pages and owner page controls ready.');
+  const ownerNotificationsMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260908_owner_notifications.sql'),
+    'utf8'
+  );
+  await pool.query(ownerNotificationsMigration);
+
+  console.log('Users, books, contributions, pages, notifications and owner page controls ready.');
 }
 
 async function startServer(): Promise<void> {
