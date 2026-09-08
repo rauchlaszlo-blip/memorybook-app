@@ -1,0 +1,19 @@
+name: Mobile Guest Editor Smoke
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+
+jobs:
+  guest-editor-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test mobile guest editing flow
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install @playwright/test@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          npx playwright test tests/mobile-guest-smoke.spec.js --workers=1
