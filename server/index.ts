@@ -25,7 +25,9 @@ app.use(
   })
 );
 
-app.all('/api/auth/*splat', toNodeHandler(auth));
+if (auth) {
+  app.all('/api/auth/*splat', toNodeHandler(auth));
+}
 
 app.use(express.json({ limit: '5mb' }));
 
@@ -107,6 +109,11 @@ async function processAndSaveContributionPhoto(
   return result.secure_url;
 }
 app.get('/api/me', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
   try {
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
@@ -758,8 +765,10 @@ async function startServer(): Promise<void> {
   try {
     await initializeDatabase();
 
-    const { runMigrations } = await getMigrations(auth.options);
-    await runMigrations();
+    if (auth) {
+      const { runMigrations } = await getMigrations(auth.options);
+      await runMigrations();
+    }
 
     const port = Number(process.env.PORT) || 3001;
     app.listen(port, '0.0.0.0', () => {
