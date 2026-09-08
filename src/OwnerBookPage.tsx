@@ -12,6 +12,8 @@ type OwnerPage = {
   version: number;
   inviteStatus: 'empty' | 'invited' | 'draft' | 'submitted' | string;
   inviteToken?: string | null;
+  ownerVisibility?: 'active' | 'archived' | string;
+  submittedAt?: string | null;
   updatedAt?: string;
 };
 
@@ -122,6 +124,89 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
   };
 
+  const updateVisibility = async (
+    page: OwnerPage,
+    visibility: 'active' | 'archived'
+  ) => {
+    try {
+      setWorkingPageId(page.id);
+      setError(null);
+
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}/visibility`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ visibility }),
+        }
+      );
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.page) {
+        throw new Error(data?.error || 'OWNER_PAGE_VISIBILITY_UPDATE_FAILED');
+      }
+
+      setPages((current) =>
+        current.map((item) => (item.id === page.id ? data.page : item))
+      );
+    } catch (err) {
+      console.error(err);
+      setError('Nem sikerült módosítani az oldal állapotát.');
+    } finally {
+      setWorkingPageId(null);
+    }
+  };
+
+  const deleteSubmittedPage = async (page: OwnerPage) => {
+    const confirmed = window.confirm(
+      `Biztosan végleg törlöd a(z) ${page.pageNumber}. oldal beküldött tartalmát?\n\nA tartalom nem állítható vissza. Az oldal újra üres lesz, és később másnak is kiküldhető.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setWorkingPageId(page.id);
+      setError(null);
+
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        }
+      );
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.page) {
+        throw new Error(data?.error || 'OWNER_PAGE_DELETE_FAILED');
+      }
+
+      setPages((current) =>
+        current.map((item) => (item.id === page.id ? data.page : item))
+      );
+    } catch (err) {
+      console.error(err);
+      setError('Nem sikerült törölni a beküldött oldalt.');
+    } finally {
+      setWorkingPageId(null);
+    }
+  };
+
   return (
     <main style={styles.page}>
       <section style={styles.container}>
@@ -131,7 +216,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             <div style={styles.brand}>MemoryBook</div>
             <h1 style={styles.title}>{bookTitle}</h1>
             <p style={styles.subtitle}>
-              Minden meghívó egyetlen konkrét oldalhoz tartozik.
+              Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött
+              oldalakat megtarthatod, archiválhatod vagy végleg törölheted.
             </p>
           </div>
         </div>
@@ -144,24 +230,70 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             {pages.map((page) => {
               const hasInvite = Boolean(page.inviteToken);
               const isSubmitted = page.inviteStatus === 'submitted';
+              const isArchived = page.ownerVisibility === 'archived';
+              const isWorking = workingPageId === page.id;
 
               return (
-                <article key={page.id} style={styles.card}>
+                <article
+                  key={page.id}
+                  style={
+                    isArchived
+                      ? { ...styles.card, ...styles.archivedCard }
+                      : styles.card
+                  }
+                >
                   <div style={styles.cardTop}>
                     <strong style={styles.pageNumber}>Oldal {page.pageNumber}</strong>
-                    <span style={styles.status}>{statusLabel(page.inviteStatus)}</span>
+                    <span style={styles.status}>
+                      {displayStatusLabel(page)}
+                    </span>
                   </div>
 
-                  {!hasInvite ? (
+                  {isSubmitted ? (
+                    <div>
+                      <div style={styles.managementState}>
+                        {isArchived
+                          ? 'Elrejtve a könyvből, a tartalom megőrizve.'
+                          : 'Könyvben marad.'}
+                      </div>
+
+                      <div style={styles.managementActions}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateVisibility(
+                              page,
+                              isArchived ? 'active' : 'archived'
+                            )
+                          }
+                          disabled={isWorking}
+                          style={styles.secondaryButton}
+                        >
+                          {isWorking
+                            ? 'Folyamatban...'
+                            : isArchived
+                              ? 'Vissza a könyvbe'
+                              : 'Elrejtés / archiválás'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteSubmittedPage(page)}
+                          disabled={isWorking}
+                          style={styles.dangerButton}
+                        >
+                          Végleges törlés
+                        </button>
+                      </div>
+                    </div>
+                  ) : !hasInvite ? (
                     <button
                       type="button"
                       onClick={() => createInvite(page)}
-                      disabled={workingPageId === page.id || isSubmitted}
+                      disabled={isWorking}
                       style={styles.primaryButton}
                     >
-                      {workingPageId === page.id
-                        ? 'Készül...'
-                        : 'Meghívó létrehozása'}
+                      {isWorking ? 'Készül...' : 'Meghívó létrehozása'}
                     </button>
                   ) : (
                     <>
@@ -171,6 +303,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                       <button
                         type="button"
                         onClick={() => copyInvite(page)}
+                        disabled={isWorking}
                         style={styles.primaryButton}
                       >
                         {copiedPageId === page.id
@@ -202,6 +335,14 @@ function statusLabel(status: string) {
     default:
       return status;
   }
+}
+
+function displayStatusLabel(page: OwnerPage) {
+  if (page.inviteStatus === 'submitted' && page.ownerVisibility === 'archived') {
+    return 'Archiválva';
+  }
+
+  return statusLabel(page.inviteStatus);
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -239,8 +380,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 32,
   },
   subtitle: {
+    maxWidth: 760,
     margin: 0,
     color: '#64748b',
+    lineHeight: 1.5,
   },
   panel: {
     padding: 24,
@@ -264,6 +407,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 14,
     background: '#ffffff',
     boxShadow: '0 6px 20px rgba(15, 23, 42, 0.07)',
+  },
+  archivedCard: {
+    background: '#f8fafc',
+    border: '1px dashed #94a3b8',
   },
   cardTop: {
     display: 'flex',
@@ -295,6 +442,16 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  managementState: {
+    marginBottom: 12,
+    color: '#64748b',
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+  managementActions: {
+    display: 'grid',
+    gap: 8,
+  },
   primaryButton: {
     width: '100%',
     padding: '10px 12px',
@@ -302,6 +459,26 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: '#0f172a',
     color: '#ffffff',
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  secondaryButton: {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    background: '#ffffff',
+    color: '#334155',
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  dangerButton: {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    background: '#fff7f7',
+    color: '#b91c1c',
     fontWeight: 800,
     cursor: 'pointer',
   },
