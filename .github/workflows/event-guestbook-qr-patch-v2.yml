@@ -1,0 +1,33 @@
+name: Event Guestbook QR Patch V2
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/event-guestbook-qr-patch-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply QR patch
+        run: python3 scripts/patch-event-guestbook-qr.py
+      - name: Install QR dependency
+        run: npm install qrcode@1.5.4 @types/qrcode@1.5.5 --save
+      - name: Build
+        run: npm run build
+      - name: Commit
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add server/index.ts src/JoinPage.tsx src/EventGuestbookQrPage.tsx src/main.tsx src/OwnerBookPage.tsx package.json package-lock.json
+          git commit -m "Add event guestbook QR flow"
+          git push origin main
