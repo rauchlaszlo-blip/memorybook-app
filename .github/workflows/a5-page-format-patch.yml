@@ -1,0 +1,68 @@
+name: A5 Page Format Patch
+
+on:
+  push:
+    branches:
+      - mobile-guest-editor-smoke-2026-09-08
+    paths:
+      - .github/workflows/a5-page-format-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply A5 portrait page format
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          editor = Path('src/MemoryBookEditor.tsx')
+          text = editor.read_text(encoding='utf-8')
+          old = 'const CANVAS_HEIGHT = 1000;'
+          new = 'const CANVAS_HEIGHT = 1064;'
+          if old not in text:
+              raise SystemExit('MemoryBookEditor canvas height pattern not found')
+          editor.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          viewer = Path('src/BookViewerPage.tsx')
+          text = viewer.read_text(encoding='utf-8')
+          old = "aspectRatio: '3 / 4',"
+          new = "aspectRatio: '750 / 1064',"
+          if old not in text:
+              raise SystemExit('BookViewerPage aspect ratio pattern not found')
+          viewer.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          public = Path('src/PublicPage.tsx')
+          text = public.read_text(encoding='utf-8')
+          old_viewer = "    maxWidth: '100%',\n    margin: '0 auto',\n    background: '#ffffff',\n    boxShadow: '0 10px 30px rgba(0,0,0,.12)',\n"
+          new_viewer = "    maxWidth: '100%',\n    aspectRatio: '750 / 1064',\n    margin: '0 auto',\n    background: '#ffffff',\n    boxShadow: '0 10px 30px rgba(0,0,0,.12)',\n    overflow: 'hidden',\n"
+          if old_viewer not in text:
+              raise SystemExit('PublicPage viewer pattern not found')
+          text = text.replace(old_viewer, new_viewer, 1)
+          old_image = "    width: '100%',\n    height: 'auto',\n"
+          new_image = "    width: '100%',\n    height: '100%',\n    objectFit: 'contain',\n"
+          if old_image not in text:
+              raise SystemExit('PublicPage image pattern not found')
+          public.write_text(text.replace(old_image, new_image, 1), encoding='utf-8')
+          PY
+
+      - name: Build
+        run: npm ci && npm run build
+
+      - name: Commit A5 portrait format
+        shell: bash
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add src/MemoryBookEditor.tsx src/BookViewerPage.tsx src/PublicPage.tsx
+          git commit -m "Use A5 portrait aspect ratio for MemoryBook pages"
+          git push origin HEAD:main
