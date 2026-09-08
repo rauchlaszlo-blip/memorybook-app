@@ -13,6 +13,8 @@ type BookPageSummary = {
   id: string;
   pageNumber: number;
   version: number;
+  inviteStatus: string;
+  ownerVisibility?: string;
 };
 
 type BookViewerPageProps = {
@@ -41,7 +43,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setCurrentIndex(0);
 
         const response = await fetch(
-          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/pages`,
+          `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages`,
           { credentials: 'include' }
         );
 
@@ -55,9 +57,19 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         }
 
         const data = await response.json();
-        const ids = Array.isArray(data.pages)
-          ? data.pages.map((item: BookPageSummary) => String(item.id))
+        const visiblePages = Array.isArray(data.pages)
+          ? data.pages
+              .filter(
+                (item: BookPageSummary) =>
+                  item.inviteStatus === 'submitted' &&
+                  item.ownerVisibility !== 'archived'
+              )
+              .sort(
+                (a: BookPageSummary, b: BookPageSummary) =>
+                  a.pageNumber - b.pageNumber
+              )
           : [];
+        const ids = visiblePages.map((item: BookPageSummary) => String(item.id));
 
         setPageIds(ids);
         setBookTitle(data.book?.title || 'MemoryBook');
@@ -165,7 +177,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             <div style={styles.message}>Loading page...</div>
           ) : pageIds.length === 0 ? (
             <div style={styles.emptyPage}>
-              <div>This book has no pages yet.</div>
+              <div>This book has no submitted pages yet.</div>
             </div>
           ) : page?.previewImageUrl ? (
             <img
@@ -176,7 +188,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           ) : (
             <div style={styles.emptyPage}>
               <div>Page {currentIndex + 1}</div>
-              <div style={styles.emptyText}>This page is empty.</div>
+              <div style={styles.emptyText}>This page has no preview.</div>
             </div>
           )}
         </div>
