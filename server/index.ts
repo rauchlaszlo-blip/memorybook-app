@@ -1,10 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
 import { v2 as cloudinary } from 'cloudinary';
 import path from 'path';
 import crypto from 'crypto';
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
+import { getMigrations } from 'better-auth/db/migration';
+import { auth } from './auth';
+import { pool } from './db';
 
 dotenv.config();
 cloudinary.config({
@@ -15,12 +18,16 @@ cloudinary.config({
 
 const app = express();
 
-app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+app.all('/api/auth/*splat', toNodeHandler(auth));
+
+app.use(express.json({ limit: '5mb' }));
 
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
@@ -99,6 +106,27 @@ async function processAndSaveContributionPhoto(
 
   return result.secure_url;
 }
+app.get('/api/me', async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    res.status(200).json({
+      user: session.user,
+      session: session.session,
+    });
+  } catch (err) {
+    console.error('Session betoltesi hiba:', err);
+    res.status(500).json({ error: 'SESSION_LOAD_FAILED' });
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     const result = await pool.query('SELECT NOW() AS now');
@@ -551,17 +579,49 @@ async function initializeDatabase(): Promise<void> {
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,
       email TEXT UNIQUE,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      image_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS image_url TEXT
+  `);
+
   await pool.query(
-    `INSERT INTO users (id, display_name)
-     VALUES ($1, $2)
+    `INSERT INTO users (
+       id,
+       display_name,
+       email,
+       email_verified
+     )
+     VALUES ($1, $2, $3, FALSE)
      ON CONFLICT (id) DO NOTHING`,
-    ['user-demo-owner', 'MemoryBook Demo Owner']
+    [
+      'user-demo-owner',
+      'MemoryBook Demo Owner',
+      'demo-owner@memorybook.local',
+    ]
   );
+
+  await pool.query(`
+    UPDATE users
+    SET email = id || '@memorybook.local'
+    WHERE email IS NULL
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ALTER COLUMN email SET NOT NULL
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS books (
@@ -697,6 +757,9 @@ async function initializeDatabase(): Promise<void> {
 async function startServer(): Promise<void> {
   try {
     await initializeDatabase();
+
+    const { runMigrations } = await getMigrations(auth.options);
+    await runMigrations();
 
     const port = Number(process.env.PORT) || 3001;
     app.listen(port, '0.0.0.0', () => {
