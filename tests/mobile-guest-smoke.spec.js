@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+import { test, expect } from '@playwright/test';
 
 test('mobile guest editor is usable', async ({ browser }) => {
   const base = 'https://memorybook-app.onrender.com';
