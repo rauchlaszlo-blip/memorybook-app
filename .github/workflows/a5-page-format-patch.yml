@@ -56,7 +56,7 @@ jobs:
           PY
 
       - name: Build
-        run: npm ci && npm run build
+        run: npm install && npm run build
 
       - name: Commit A5 portrait format
         shell: bash
