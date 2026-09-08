@@ -76,7 +76,11 @@ test('standard book keeps page identity, order, dates and owner note', async ({ 
   await metaPanel.getByRole('textbox', { name: 'Saját megjegyzés' }).fill(note);
   await metaPanel.getByRole('button', { name: 'Megjegyzés mentése' }).click();
   await expect(metaPanel.getByRole('button', { name: 'Megjegyzés elmentve' })).toBeVisible();
+
   await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByText('1 / 2 oldal', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Következő oldal' }).click();
+  await expect(page.getByText('2 / 2 oldal', { exact: true })).toBeVisible();
   await expect(page.locator('[data-memory-metadata="true"]').getByRole('textbox', { name: 'Saját megjegyzés' })).toHaveValue(note);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
