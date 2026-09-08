@@ -1,0 +1,163 @@
+name: App language foundation check
+
+on:
+  push:
+    branches:
+      - i18n-app-language-foundation-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  app-language-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: i18n-app-language-foundation-2026-09-08
+
+      - name: Add language switcher to owner header
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/MyBooksPage.tsx')
+          text = path.read_text(encoding='utf-8')
+          import_marker = "import { NotificationMenu } from './NotificationMenu';"
+          import_line = "import { LanguageSwitcher } from './LanguageSwitcher';"
+          if import_line not in text:
+              if import_marker not in text:
+                  raise SystemExit('Notification import marker not found')
+              text = text.replace(import_marker, import_marker + "\n" + import_line, 1)
+          actions_marker = "          <div style={styles.headerActions}>\n            <button type=\"button\" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>\n            <NotificationMenu />\n          </div>"
+          actions_replacement = "          <div style={styles.headerActions}>\n            <LanguageSwitcher />\n            <button type=\"button\" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>\n            <NotificationMenu />\n          </div>"
+          if actions_replacement not in text:
+              if actions_marker not in text:
+                  raise SystemExit('Header actions marker not found')
+              text = text.replace(actions_marker, actions_replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Production build
+        run: npm run build
+
+      - name: Start preview
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/memorybook-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-preview.log
+          exit 1
+
+      - name: Run app language browser flow
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          const cors = {
+            'access-control-allow-origin': 'http://127.0.0.1:4173',
+            'access-control-allow-credentials': 'true',
+            'access-control-allow-methods': 'GET,OPTIONS',
+            'access-control-allow-headers': 'content-type',
+          };
+
+          async function mockOwnerApi(page) {
+            await page.route('http://127.0.0.1:3001/api/**', async (route) => {
+              const request = route.request();
+              if (request.method() === 'OPTIONS') {
+                return route.fulfill({ status: 204, headers: cors, body: '' });
+              }
+              const path = new URL(request.url()).pathname;
+              const body = path === '/api/me'
+                ? { user: { id: 'i18n-user', name: 'Language Test' } }
+                : path === '/api/my/books'
+                  ? { books: [] }
+                  : path === '/api/my/entitlements'
+                    ? { entitlements: [] }
+                    : path === '/api/my/notifications/unread-count'
+                      ? { unreadCount: 0 }
+                      : { notifications: [], unreadCount: 0 };
+              return route.fulfill({
+                status: 200,
+                headers: { ...cors, 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+            });
+          }
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            try {
+              const huContext = await browser.newContext({ locale: 'hu-HU', viewport: { width: 390, height: 844 } });
+              const huPage = await huContext.newPage();
+              await mockOwnerApi(huPage);
+              await huPage.goto('http://127.0.0.1:4173/my-books');
+              await huPage.waitForLoadState('networkidle');
+
+              const selector = huPage.getByRole('combobox', { name: 'Alkalmazás nyelve' });
+              await selector.waitFor({ state: 'visible' });
+              if (await selector.inputValue() !== 'hu') throw new Error('Hungarian browser locale was not detected');
+              if (await huPage.locator('html').getAttribute('lang') !== 'hu') throw new Error('Document lang was not set to hu');
+
+              await selector.selectOption('en');
+              if (await huPage.locator('html').getAttribute('lang') !== 'en') throw new Error('Document lang did not change to en');
+              const stored = await huPage.evaluate(() => localStorage.getItem('memorybook.appLanguage'));
+              if (stored !== 'en') throw new Error(`Stored app language should be en, got ${stored}`);
+
+              await huPage.reload();
+              await huPage.waitForLoadState('networkidle');
+              const remembered = huPage.getByRole('combobox', { name: 'Application language' });
+              if (await remembered.inputValue() !== 'en') throw new Error('Stored app language did not override browser locale after reload');
+              if (await huPage.locator('html').getAttribute('lang') !== 'en') throw new Error('Remembered document lang was not en');
+              await huContext.close();
+
+              const unsupportedContext = await browser.newContext({ locale: 'fr-FR' });
+              const unsupportedPage = await unsupportedContext.newPage();
+              await mockOwnerApi(unsupportedPage);
+              await unsupportedPage.goto('http://127.0.0.1:4173/my-books');
+              await unsupportedPage.waitForLoadState('networkidle');
+              const fallback = unsupportedPage.getByRole('combobox', { name: 'Application language' });
+              if (await fallback.inputValue() !== 'en') throw new Error('Unsupported browser locale did not fall back to en');
+              await unsupportedContext.close();
+
+              console.log('APP_LANGUAGE_BROWSER_PASS');
+            } finally {
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Commit checked source change and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/i18n-app-language-check.yml
+          git add src/MyBooksPage.tsx
+          git commit -m "Expose app language switcher"
+          git push origin HEAD:i18n-app-language-foundation-2026-09-08
+
+      - name: Show preview log on failure
+        if: failure()
+        run: cat /tmp/memorybook-preview.log || true
