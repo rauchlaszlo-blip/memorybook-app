@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { InviteSendDialog } from './InviteSendDialog.tsx';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -31,6 +32,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [workingPageId, setWorkingPageId] = useState<string | null>(null);
   const [copiedPageId, setCopiedPageId] = useState<string | null>(null);
+  const [inviteComposerPage, setInviteComposerPage] = useState<OwnerPage | null>(null);
 
   const origin = useMemo(() => window.location.origin, []);
 
@@ -92,18 +94,16 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         throw new Error(data?.error || 'PAGE_INVITE_CREATE_FAILED');
       }
 
+      const invitedPage: OwnerPage = {
+        ...page,
+        inviteToken: data.inviteToken,
+        inviteStatus: page.inviteStatus === 'empty' ? 'invited' : page.inviteStatus,
+      };
+
       setPages((current) =>
-        current.map((item) =>
-          item.id === page.id
-            ? {
-                ...item,
-                inviteToken: data.inviteToken,
-                inviteStatus:
-                  item.inviteStatus === 'empty' ? 'invited' : item.inviteStatus,
-              }
-            : item
-        )
+        current.map((item) => (item.id === page.id ? invitedPage : item))
       );
+      setInviteComposerPage(invitedPage);
     } catch (err) {
       console.error(err);
       setError('Nem sikerült létrehozni a meghívót.');
@@ -112,32 +112,13 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
   };
 
-  const copyInvite = async (page: OwnerPage) => {
-    if (!page.inviteToken) return;
-
-    const pageUrl = `${origin}/p/${page.inviteToken}`;
-    const ctaUrl = `${origin}/nekem-is-kell`;
-    const message = [
-      'Szia!',
-      '',
-      `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,
-      '',
-      'A saját oldalad itt éred el:',
-      pageUrl,
-      '',
-      'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',
-      '',
-      `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,
-    ].join('\n');
-
-    try {
-      await navigator.clipboard.writeText(message);
-      setCopiedPageId(page.id);
-      window.setTimeout(() => setCopiedPageId(null), 1800);
-    } catch (err) {
-      console.error(err);
-      window.prompt('Másold ki a meghívó üzenetet:', message);
+  const openInviteComposer = (page: OwnerPage) => {
+    if (!page.inviteToken) {
+      void createInvite(page);
+      return;
     }
+
+    setInviteComposerPage(page);
   };
 
   const updateVisibility = async (
@@ -396,31 +377,19 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                         </button>
                       </div>
                     </div>
-                  ) : !hasInvite ? (
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => createInvite(page)}
+                      onClick={() => openInviteComposer(page)}
                       disabled={isWorking}
                       style={styles.primaryButton}
                     >
-                      {isWorking ? 'Készül...' : 'Meghívó létrehozása'}
+                      {isWorking
+                        ? 'Készül...'
+                        : hasInvite
+                          ? 'Meghívás küldése'
+                          : 'Meghívás'}
                     </button>
-                  ) : (
-                    <>
-                      <div style={styles.inviteBox}>
-                        {origin}/p/{page.inviteToken}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyInvite(page)}
-                        disabled={isWorking}
-                        style={styles.primaryButton}
-                      >
-                        {copiedPageId === page.id
-                          ? 'Meghívó üzenet kimásolva'
-                          : 'Meghívó üzenet másolása'}
-                      </button>
-                    </>
                   )}
                 </article>
               );
@@ -428,6 +397,17 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
         )}
       </section>
+
+      {inviteComposerPage?.inviteToken && (
+        <InviteSendDialog
+          key={inviteComposerPage.inviteToken}
+          bookTitle={bookTitle}
+          pageNumber={inviteComposerPage.pageNumber}
+          pageUrl={`${origin}/p/${inviteComposerPage.inviteToken}`}
+          ctaUrl={`${origin}/nekem-is-kell`}
+          onClose={() => setInviteComposerPage(null)}
+        />
+      )}
     </main>
   );
 }
