@@ -11,6 +11,8 @@ import { OrganizerContributionsPage } from './OrganizerContributionsPage.tsx'
 import { BookViewerPage } from './BookViewerPage.tsx'
 import { InviteCtaPage } from './InviteCtaPage.tsx'
 import { EventGuestbookQrPage } from './EventGuestbookQrPage.tsx'
+import { PurchasePage } from './PurchasePage.tsx'
+import { GiftRedeemPage } from './GiftRedeemPage.tsx'
 
 const path = window.location.pathname
 const ownerBookMatch = path.match(/^\/my-books\/([^/]+)$/)
@@ -20,11 +22,16 @@ const joinMatch = path.match(/^\/join\/([^/]+)$/)
 const organizerMatch = path.match(/^\/organizer\/([^/]+)\/contributions$/)
 const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
 const eventQrMatch = path.match(/^\/my-books\/([^/]+)\/event-qr$/)
+const giftMatch = path.match(/^\/gift\/([^/]+)$/)
 
 const root = path === '/login'
   ? <AuthPage />
+  : path === '/purchase'
+    ? <PurchasePage />
   : path === '/nekem-is-kell'
     ? <InviteCtaPage />
+  : giftMatch
+    ? <GiftRedeemPage token={decodeURIComponent(giftMatch[1])} />
   : eventQrMatch
     ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
   : path === '/' || path === '/my-books'
