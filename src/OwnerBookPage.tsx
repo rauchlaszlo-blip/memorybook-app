@@ -28,6 +28,7 @@ type OwnerBookPageProps = {
 export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [eventInviteToken, setEventInviteToken] = useState<string | null>(null);
+  const [bookType, setBookType] = useState<'standard' | 'event'>('standard');
   const [pages, setPages] = useState<OwnerPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         const data = await response.json();
         setBookTitle(data.book?.title || 'MemoryBook');
         setEventInviteToken(data.book?.eventInviteToken || null);
+        setBookType(data.book?.bookType === 'event' ? 'event' : 'standard');
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
         console.error(err);
@@ -275,26 +277,30 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             <div style={styles.brand}>MemoryBook</div>
             <h1 style={styles.title}>{bookTitle}</h1>
             <p style={styles.subtitle}>
-              Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött
-              oldalakat megtarthatod, archiválhatod vagy végleg törölheted.
+              {bookType === 'event'
+                ? 'A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.'
+                : 'Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött oldalakat megtarthatod, archiválhatod vagy végleg törölheted.'}
             </p>
           </div>
         </div>
 
-      {eventInviteToken && (
+      {bookType === 'event' && eventInviteToken && (
         <section style={styles.eventPanel}>
           <div>
             <strong style={styles.eventPanelTitle}>Rendezvény vendégkönyv</strong>
             <div style={styles.eventPanelText}>Egy közös QR-kódot tehetsz ki a helyszínen. Minden vendég ugyanabba a vendégkönyvbe írhat.</div>
           </div>
-          <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>QR-kód megnyitása</a>
+          <div style={styles.eventActions}>
+            <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>QR-kód megnyitása</a>
+            <a href={`/organizer/${encodeURIComponent(bookId)}/contributions`} style={styles.eventSecondaryButton}>Beérkezett bejegyzések</a>
+          </div>
         </section>
       )}
 
         {loading && <div style={styles.panel}>Betöltés...</div>}
         {error && <div style={styles.error}>{error}</div>}
 
-        {!loading && (
+        {!loading && bookType === 'standard' && (
           <div style={styles.grid}>
             {pages.map((page) => {
               const hasInvite = Boolean(page.inviteToken);
@@ -497,7 +503,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   eventPanelTitle: { display: 'block', marginBottom: 4, color: '#0f172a', fontSize: 17 },
   eventPanelText: { maxWidth: 680, color: '#475569', fontSize: 14, lineHeight: 1.5 },
+  eventActions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   eventQrButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, whiteSpace: 'nowrap' },
+  eventSecondaryButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', textDecoration: 'none', fontWeight: 800, whiteSpace: 'nowrap' },
   panel: {
     padding: 24,
     borderRadius: 14,

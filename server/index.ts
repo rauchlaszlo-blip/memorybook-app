@@ -271,6 +271,7 @@ app.get('/api/my/books', async (req, res) => {
       `SELECT
          b.id,
          b.title,
+         b.book_type AS "bookType",
          b.created_at AS "createdAt",
          COUNT(DISTINCT p.id)::int AS "pageCount",
          COUNT(DISTINCT c.id)::int AS "contributionCount"
@@ -278,7 +279,7 @@ app.get('/api/my/books', async (req, res) => {
        LEFT JOIN pages p ON p.book_id = b.id
        LEFT JOIN contributions c ON c.book_id = b.id
        WHERE b.owner_user_id = $1
-       GROUP BY b.id, b.title, b.created_at
+       GROUP BY b.id, b.title, b.book_type, b.created_at
        ORDER BY b.created_at DESC`,
       [session.user.id]
     );
@@ -297,6 +298,7 @@ app.post('/api/my/books', async (req, res) => {
   }
 
   const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+  const bookType = req.body?.bookType === 'event' ? 'event' : 'standard';
 
   if (!title || title.length > 120) {
     res.status(400).json({ error: 'INVALID_BOOK_TITLE' });
@@ -318,18 +320,20 @@ app.post('/api/my/books', async (req, res) => {
     await client.query('BEGIN');
 
     const bookResult = await client.query(
-      `INSERT INTO books (id, owner_user_id, title, invite_token)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, title, created_at AS "createdAt"`,
-      [bookId, session.user.id, title, inviteToken]
+      `INSERT INTO books (id, owner_user_id, title, invite_token, book_type)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, title, book_type AS "bookType", created_at AS "createdAt"`,
+      [bookId, session.user.id, title, inviteToken, bookType]
     );
 
-    for (let pageNumber = 1; pageNumber <= DEFAULT_BOOK_PAGE_COUNT; pageNumber += 1) {
-      await client.query(
-        `INSERT INTO pages (id, book_id, page_number)
-         VALUES ($1, $2, $3)`,
-        [`page-${crypto.randomUUID()}`, bookId, pageNumber]
-      );
+    if (bookType === 'standard') {
+      for (let pageNumber = 1; pageNumber <= DEFAULT_BOOK_PAGE_COUNT; pageNumber += 1) {
+        await client.query(
+          `INSERT INTO pages (id, book_id, page_number)
+           VALUES ($1, $2, $3)`,
+          [`page-${crypto.randomUUID()}`, bookId, pageNumber]
+        );
+      }
     }
 
     await client.query('COMMIT');
@@ -338,7 +342,7 @@ app.post('/api/my/books', async (req, res) => {
       success: true,
       book: {
         ...bookResult.rows[0],
-        pageCount: DEFAULT_BOOK_PAGE_COUNT,
+        pageCount: bookType === 'standard' ? DEFAULT_BOOK_PAGE_COUNT : 0,
         contributionCount: 0,
       },
     });
@@ -366,7 +370,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
     }
 
     const bookResult = await pool.query(
-      `SELECT id, title, invite_token AS "eventInviteToken"
+      `SELECT id, title, book_type AS "bookType", invite_token AS "eventInviteToken"
        FROM books
        WHERE id = $1 AND owner_user_id = $2`,
       [req.params.bookId, session.user.id]
@@ -949,7 +953,7 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/invites/:token', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title
+      `SELECT id, title, book_type AS "bookType"
        FROM books
        WHERE invite_token = $1`,
       [req.params.token]
@@ -960,9 +964,15 @@ app.get('/api/invites/:token', async (req, res) => {
       return;
     }
 
+    if (result.rows[0].bookType !== 'event' && result.rows[0].id !== DEMO_BOOK_ID) {
+      res.status(404).json({ error: 'INVITE_NOT_FOUND' });
+      return;
+    }
+
     res.status(200).json({
       bookId: result.rows[0].id,
       title: result.rows[0].title,
+      bookType: result.rows[0].bookType,
     });
   } catch (err) {
     console.error('Legacy invite load error:', err);
@@ -973,7 +983,7 @@ app.get('/api/invites/:token', async (req, res) => {
 app.get('/api/books/:bookId/contributions', async (req, res) => {
   try {
     const bookResult = await pool.query(
-      `SELECT id, title, owner_user_id AS "ownerUserId"
+      `SELECT id, title, book_type AS "bookType", owner_user_id AS "ownerUserId"
        FROM books
        WHERE id = $1`,
       [req.params.bookId]
@@ -1004,6 +1014,7 @@ app.get('/api/books/:bookId/contributions', async (req, res) => {
          contributor_name AS "contributorName",
          memory_text AS "memoryText",
          photo_url AS "photoUrl",
+         owner_status AS "ownerStatus",
          created_at AS "createdAt"
        FROM contributions
        WHERE book_id = $1
@@ -1049,11 +1060,16 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
 
   try {
     const bookResult = await pool.query(
-      `SELECT id FROM books WHERE invite_token = $1`,
+      `SELECT id, book_type AS "bookType" FROM books WHERE invite_token = $1`,
       [req.params.token]
     );
 
     if (bookResult.rowCount === 0) {
+      res.status(404).json({ error: 'INVITE_NOT_FOUND' });
+      return;
+    }
+
+    if (bookResult.rows[0].bookType !== 'event' && bookResult.rows[0].id !== DEMO_BOOK_ID) {
       res.status(404).json({ error: 'INVITE_NOT_FOUND' });
       return;
     }
@@ -1078,6 +1094,7 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
          contributor_name AS "contributorName",
          memory_text AS "memoryText",
          photo_url AS "photoUrl",
+         owner_status AS "ownerStatus",
          created_at AS "createdAt"`,
       [
         contributionId,
@@ -1101,6 +1118,56 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
     }
 
     res.status(500).json({ error: 'CONTRIBUTION_SAVE_FAILED' });
+  }
+});
+
+app.patch('/api/my/books/:bookId/contributions/:contributionId', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const ownerStatus = req.body?.ownerStatus;
+  if (!['pending', 'kept', 'rejected'].includes(ownerStatus)) {
+    res.status(400).json({ error: 'INVALID_CONTRIBUTION_STATUS' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE contributions c
+       SET owner_status = $1
+       FROM books b
+       WHERE c.id = $2
+         AND c.book_id = $3
+         AND b.id = c.book_id
+         AND b.owner_user_id = $4
+         AND b.book_type = 'event'
+       RETURNING
+         c.id,
+         c.contributor_name AS "contributorName",
+         c.memory_text AS "memoryText",
+         c.photo_url AS "photoUrl",
+         c.owner_status AS "ownerStatus",
+         c.created_at AS "createdAt"`,
+      [ownerStatus, req.params.contributionId, req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'CONTRIBUTION_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json({ success: true, contribution: result.rows[0] });
+  } catch (err) {
+    console.error('Contribution moderation error:', err);
+    res.status(500).json({ error: 'CONTRIBUTION_MODERATION_FAILED' });
   }
 });
 
@@ -1466,6 +1533,7 @@ async function initializeDatabase(): Promise<void> {
   );
 
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS invite_token TEXT UNIQUE`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS book_type TEXT NOT NULL DEFAULT 'standard'`);
 
   await pool.query(
     `UPDATE books
@@ -1481,9 +1549,12 @@ async function initializeDatabase(): Promise<void> {
       contributor_name TEXT NOT NULL,
       memory_text TEXT NOT NULL,
       photo_url TEXT,
+      owner_status TEXT NOT NULL DEFAULT 'pending',
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await pool.query(`ALTER TABLE contributions ADD COLUMN IF NOT EXISTS owner_status TEXT NOT NULL DEFAULT 'pending'`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pages (
