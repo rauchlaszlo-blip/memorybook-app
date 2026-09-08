@@ -99,7 +99,15 @@ try {
   await page.goto(`${WEB}/login`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Anmelden oder registrieren' }).waitFor();
   await noOverflow(page, 'login mobile');
-  assert.equal(await page.evaluate(() => localStorage.getItem('memorybook-app-language')), 'de');
+  const languageSelect = page.locator('select').first();
+  assert.equal(await languageSelect.inputValue(), 'de', 'German browser locale must select German on first use');
+  assert.equal(await page.evaluate(() => document.documentElement.lang), 'de');
+  assert.equal(await page.evaluate(() => localStorage.getItem('memorybook-app-language')), null, 'automatic detection need not persist a manual preference');
+  await languageSelect.selectOption('en');
+  await page.getByRole('heading', { name: 'Sign in or register' }).waitFor();
+  await languageSelect.selectOption('de');
+  await page.getByRole('heading', { name: 'Anmelden oder registrieren' }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('memorybook-app-language')), 'de', 'manual language choice must persist');
 
   const unauthPurchase = await fetch(`${API}/api/purchases`, {
     method: 'POST',
@@ -452,7 +460,7 @@ try {
   await page.getByText('Behalten', { exact: false }).first().waitFor();
   await noOverflow(page, 'event organizer mobile');
 
-  // Explicit EN invite must not overwrite app-level DE preference.
+  // Reassigned invitation uses book language; app-level preference remains independent.
   const activeToken2 = reassigned.inviteToken;
   await page.goto(`${WEB}/p/${activeToken2}`, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: 'Seite einreichen' }).waitFor();
