@@ -12,17 +12,8 @@ type UserData = {
   email?: string;
 };
 
-type BookSummary = {
-  id: string;
-  title: string;
-  pageCount: number;
-  contributionCount: number;
-  createdAt: string;
-};
-
 export function MyBooksPage() {
   const [user, setUser] = useState<UserData | null>(null);
-  const [books, setBooks] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,40 +23,24 @@ export function MyBooksPage() {
         setLoading(true);
         setError(null);
 
-        const meResponse = await fetch(`${API_BASE}/api/me`, {
+        const response = await fetch(`${API_BASE}/api/me`, {
           credentials: 'include',
         });
 
-        if (meResponse.status === 401) {
+        if (response.status === 401) {
           window.location.href = '/login';
           return;
         }
 
-        if (!meResponse.ok) {
+        if (!response.ok) {
           throw new Error('SESSION_LOAD_FAILED');
         }
 
-        const meData = await meResponse.json();
-        setUser(meData.user ?? null);
-
-        const booksResponse = await fetch(`${API_BASE}/api/my/books`, {
-          credentials: 'include',
-        });
-
-        if (booksResponse.status === 401) {
-          window.location.href = '/login';
-          return;
-        }
-
-        if (!booksResponse.ok) {
-          throw new Error('BOOK_LIST_LOAD_FAILED');
-        }
-
-        const booksData = await booksResponse.json();
-        setBooks(Array.isArray(booksData.books) ? booksData.books : []);
+        const data = await response.json();
+        setUser(data.user ?? null);
       } catch (err) {
         console.error(err);
-        setError('Nem sikerült betölteni a könyveidet.');
+        setError('Nem sikerült betölteni a fiókodat.');
       } finally {
         setLoading(false);
       }
@@ -108,37 +83,13 @@ export function MyBooksPage() {
         {loading && <div style={styles.panel}>Betöltés...</div>}
         {error && <div style={styles.error}>{error}</div>}
 
-        {!loading && !error && books.length === 0 && (
+        {!loading && !error && (
           <div style={styles.emptyState}>
             <h2 style={styles.emptyTitle}>Még nincs emlékkönyved</h2>
             <p style={styles.emptyText}>
-              A fiókod működik. A következő fejlesztési lépésben innen lehet majd
-              új könyvet létrehozni.
+              A tulajdonosi fiókod működik. A következő lépésben ide kötjük az
+              új könyv létrehozását és a saját könyvek tényleges listáját.
             </p>
-          </div>
-        )}
-
-        {!loading && !error && books.length > 0 && (
-          <div style={styles.grid}>
-            {books.map((book) => (
-              <article key={book.id} style={styles.card}>
-                <h2 style={styles.bookTitle}>{book.title}</h2>
-                <div style={styles.meta}>
-                  {book.pageCount} oldal · {book.contributionCount} beküldés
-                </div>
-                <div style={styles.actions}>
-                  <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.primaryLink}>
-                    Könyv megnyitása
-                  </a>
-                  <a
-                    href={`/organizer/${encodeURIComponent(book.id)}/contributions`}
-                    style={styles.secondaryLink}
-                  >
-                    Beküldések
-                  </a>
-                </div>
-              </article>
-            ))}
           </div>
         )}
       </section>
@@ -215,53 +166,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#0f172a',
   },
   emptyText: {
-    maxWidth: 540,
+    maxWidth: 560,
     margin: '0 auto',
     color: '#64748b',
     lineHeight: 1.6,
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-    gap: 16,
-  },
-  card: {
-    padding: 20,
-    background: '#ffffff',
-    borderRadius: 14,
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-  },
-  bookTitle: {
-    margin: '0 0 8px',
-    color: '#0f172a',
-    fontSize: 21,
-  },
-  meta: {
-    color: '#64748b',
-    fontSize: 14,
-  },
-  actions: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 18,
-  },
-  primaryLink: {
-    textDecoration: 'none',
-    padding: '9px 12px',
-    borderRadius: 8,
-    background: '#0f172a',
-    color: '#ffffff',
-    fontWeight: 700,
-    fontSize: 14,
-  },
-  secondaryLink: {
-    textDecoration: 'none',
-    padding: '9px 12px',
-    borderRadius: 8,
-    border: '1px solid #cbd5e1',
-    color: '#334155',
-    fontWeight: 700,
-    fontSize: 14,
   },
 };
