@@ -1,0 +1,476 @@
+name: Invite language foundation check
+
+on:
+  push:
+    branches:
+      - invite-language-foundation-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  invite-language-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memorybook_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/memorybook_test
+      BETTER_AUTH_URL: http://127.0.0.1:3001
+      PORT: 3001
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: invite-language-foundation-2026-09-08
+
+      - name: Add invite language backend and UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          server = Path('server/index.ts')
+          text = server.read_text(encoding='utf-8')
+
+          old = '''         invite_recipient_email AS "inviteRecipientEmail",\n         invite_delivery_method AS "inviteDeliveryMethod",\n         CASE'''
+          new = '''         invite_recipient_email AS "inviteRecipientEmail",\n         invite_delivery_method AS "inviteDeliveryMethod",\n         invite_language AS "inviteLanguage",\n         CASE'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'invite_language AS "inviteLanguage"' not in text:
+              raise SystemExit('Owner page invite language select marker not found')
+
+          old = '''  const deliveryMethod =\n    req.body?.deliveryMethod === 'email'\n      ? 'email'\n      : req.body?.deliveryMethod === 'share'\n        ? 'share'\n        : null;\n\n  if (!deliveryMethod) {'''
+          new = '''  const deliveryMethod =\n    req.body?.deliveryMethod === 'email'\n      ? 'email'\n      : req.body?.deliveryMethod === 'share'\n        ? 'share'\n        : null;\n  const rawInviteLanguage = req.body?.inviteLanguage;\n  const inviteLanguage =\n    rawInviteLanguage === null || rawInviteLanguage === undefined || rawInviteLanguage === ''\n      ? null\n      : rawInviteLanguage === 'hu' || rawInviteLanguage === 'en'\n        ? rawInviteLanguage\n        : 'invalid';\n\n  if (inviteLanguage === 'invalid') {\n    res.status(400).json({ error: 'INVALID_INVITE_LANGUAGE' });\n    return;\n  }\n\n  if (!deliveryMethod) {'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "INVALID_INVITE_LANGUAGE" not in text:
+              raise SystemExit('Invite sent validation marker not found')
+
+          old = '''           invite_recipient_email = COALESCE(p.invite_recipient_email, NULLIF($5, '')),\n           invite_delivery_method = COALESCE(p.invite_delivery_method, $6),\n           updated_at = CURRENT_TIMESTAMP'''
+          new = '''           invite_recipient_email = COALESCE(p.invite_recipient_email, NULLIF($5, '')),\n           invite_delivery_method = COALESCE(p.invite_delivery_method, $6),\n           invite_language = $7,\n           updated_at = CURRENT_TIMESTAMP'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'invite_language = $7' not in text:
+              raise SystemExit('Invite sent update marker not found')
+
+          old = '''         p.invite_recipient_email AS "inviteRecipientEmail",\n         p.invite_delivery_method AS "inviteDeliveryMethod"`,\n      [\n        req.params.pageId,\n        req.params.bookId,\n        session.user.id,\n        recipientName,\n        recipientEmail,\n        deliveryMethod,\n      ]'''
+          new = '''         p.invite_recipient_email AS "inviteRecipientEmail",\n         p.invite_delivery_method AS "inviteDeliveryMethod",\n         p.invite_language AS "inviteLanguage"`,\n      [\n        req.params.pageId,\n        req.params.bookId,\n        session.user.id,\n        recipientName,\n        recipientEmail,\n        deliveryMethod,\n        inviteLanguage,\n      ]'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'p.invite_language AS "inviteLanguage"`' not in text:
+              raise SystemExit('Invite sent returning marker not found')
+
+          old = '''           invite_recipient_email = NULL,\n           invite_delivery_method = NULL,\n           submitted_at = NULL,'''
+          new = '''           invite_recipient_email = NULL,\n           invite_delivery_method = NULL,\n           invite_language = NULL,\n           submitted_at = NULL,'''
+          replaced = text.count(old)
+          if replaced:
+              text = text.replace(old, new)
+          elif text.count('invite_language = NULL') < 2:
+              raise SystemExit('Invite reset markers not found')
+
+          old = '''      inviteRecipientEmail: null,\n      inviteDeliveryMethod: null,\n      inviteValidDays: PAGE_INVITE_VALID_DAYS,'''
+          new = '''      inviteRecipientEmail: null,\n      inviteDeliveryMethod: null,\n      inviteLanguage: null,\n      inviteValidDays: PAGE_INVITE_VALID_DAYS,'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''         p.invite_created_at AS "inviteCreatedAt",\n         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",\n         p.submitted_at AS "submittedAt"'''
+          new = '''         p.invite_created_at AS "inviteCreatedAt",\n         p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",\n         p.invite_language AS "inviteLanguage",\n         COALESCE(p.invite_language, b.language) AS "language",\n         p.submitted_at AS "submittedAt"'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'COALESCE(p.invite_language, b.language) AS "language"' not in text:
+              raise SystemExit('Public invite effective language marker not found')
+
+          old = '''  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_delivery_method TEXT`);\n  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_note TEXT`);'''
+          new = '''  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_delivery_method TEXT`);\n  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_language TEXT`);\n  await pool.query(`UPDATE pages SET invite_language = NULL WHERE invite_language IS NOT NULL AND invite_language NOT IN ('hu', 'en')`);\n  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_note TEXT`);'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'ADD COLUMN IF NOT EXISTS invite_language TEXT' not in text:
+              raise SystemExit('Pages schema marker not found')
+
+          server.write_text(text, encoding='utf-8')
+
+          owner = Path('src/OwnerBookPage.tsx')
+          text = owner.read_text(encoding='utf-8')
+
+          old = '''  inviteRecipientEmail?: string | null;\n  inviteDeliveryMethod?: 'share' | 'email' | string | null;\n  ownerNote?: string | null;'''
+          new = '''  inviteRecipientEmail?: string | null;\n  inviteDeliveryMethod?: 'share' | 'email' | string | null;\n  inviteLanguage?: AppLanguage | null;\n  ownerNote?: string | null;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'inviteLanguage?: AppLanguage | null;' not in text:
+              raise SystemExit('Owner page type marker not found')
+
+          old = '''        inviteRecipientEmail: null,\n        inviteDeliveryMethod: null,\n        submittedAt: null,'''
+          new = '''        inviteRecipientEmail: null,\n        inviteDeliveryMethod: null,\n        inviteLanguage: null,\n        submittedAt: null,'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''      deliveryMethod: 'share' | 'email';\n    }\n  ) => {'''
+          new = '''      deliveryMethod: 'share' | 'email';\n      inviteLanguage: AppLanguage | null;\n    }\n  ) => {'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'inviteLanguage: AppLanguage | null;' not in text:
+              raise SystemExit('Owner sent metadata type marker not found')
+
+          old = '''      inviteRecipientEmail: data.inviteRecipientEmail || page.inviteRecipientEmail || null,\n      inviteDeliveryMethod: data.inviteDeliveryMethod || page.inviteDeliveryMethod || null,\n    };'''
+          new = '''      inviteRecipientEmail: data.inviteRecipientEmail || page.inviteRecipientEmail || null,\n      inviteDeliveryMethod: data.inviteDeliveryMethod || page.inviteDeliveryMethod || null,\n      inviteLanguage:\n        data.inviteLanguage === 'en'\n          ? 'en'\n          : data.inviteLanguage === 'hu'\n            ? 'hu'\n            : null,\n    };'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'data.inviteLanguage === \'en\'' not in text:
+              raise SystemExit('Owner updated page language marker not found')
+
+          old = '''          ctaUrl={`${origin}/nekem-is-kell`}\n          isResend={Boolean(inviteComposerPage.inviteSentAt)}'''
+          new = '''          ctaUrl={`${origin}/nekem-is-kell`}\n          bookLanguage={bookLanguage}\n          savedInviteLanguage={inviteComposerPage.inviteLanguage || null}\n          isResend={Boolean(inviteComposerPage.inviteSentAt)}'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'savedInviteLanguage=' not in text:
+              raise SystemExit('Invite dialog language props marker not found')
+
+          owner.write_text(text, encoding='utf-8')
+
+          dialog = Path('src/InviteSendDialog.tsx')
+          text = dialog.read_text(encoding='utf-8')
+
+          old = "import { useMemo, useState } from 'react';\n"
+          new = "import { useMemo, useState } from 'react';\nimport type { AppLanguage } from './i18n';\n"
+          if "type { AppLanguage }" not in text:
+              text = text.replace(old, new, 1)
+
+          old = '''  ctaUrl: string;\n  isResend?: boolean;'''
+          new = '''  ctaUrl: string;\n  bookLanguage: AppLanguage;\n  savedInviteLanguage?: AppLanguage | null;\n  isResend?: boolean;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''    deliveryMethod: 'share' | 'email';\n  }) => Promise<void>;'''
+          new = '''    deliveryMethod: 'share' | 'email';\n    inviteLanguage: AppLanguage | null;\n  }) => Promise<void>;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''type SendPlatform = 'share' | 'email';\n\nfunction buildMessage(bookTitle: string, pageUrl: string, ctaUrl: string) {\n  return [\n    'Szia!',\n    '',\n    `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,\n    '',\n    'A saját oldalad itt éred el:',\n    pageUrl,\n    '',\n    'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',\n    'A meghívó 14 napig használható.',\n    '',\n    `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,\n  ].join('\\n');\n}\n'''
+          new = '''type SendPlatform = 'share' | 'email';\ntype InviteLanguageChoice = 'inherit' | AppLanguage;\n\nfunction languageLabel(language: AppLanguage) {\n  return language === 'en' ? 'English' : 'Magyar';\n}\n\nfunction buildGreeting(language: AppLanguage, recipientName: string) {\n  const name = recipientName.trim();\n  if (language === 'en') return name ? `Hi, ${name}!` : 'Hi!';\n  return name ? `Szia, ${name}!` : 'Szia!';\n}\n\nfunction buildMessage(\n  bookTitle: string,\n  pageUrl: string,\n  ctaUrl: string,\n  language: AppLanguage,\n  recipientName = ''\n) {\n  if (language === 'en') {\n    return [\n      buildGreeting(language, recipientName),\n      '',\n      `I created a MemoryBook called “${bookTitle}”. I would like you to create your own page for it.`,\n      '',\n      'Open your page here:',\n      pageUrl,\n      '',\n      'This link belongs only to your page. When you are finished, submit it at the bottom of the page.',\n      'The invitation is valid for 14 days.',\n      '',\n      `👉 Create your own MemoryBook: ${ctaUrl}`,\n    ].join('\\n');\n  }\n\n  return [\n    buildGreeting(language, recipientName),\n    '',\n    `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,\n    '',\n    'A saját oldalad itt éred el:',\n    pageUrl,\n    '',\n    'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',\n    'A meghívó 14 napig használható.',\n    '',\n    `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,\n  ].join('\\n');\n}\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'type InviteLanguageChoice' not in text:
+              raise SystemExit('Invite message helper marker not found')
+
+          old = '''  pageUrl,\n  ctaUrl,\n  isResend = false,'''
+          new = '''  pageUrl,\n  ctaUrl,\n  bookLanguage,\n  savedInviteLanguage = null,\n  isResend = false,'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''  const [recipientName, setRecipientName] = useState(savedRecipientName || '');\n  const [email, setEmail] = useState(savedRecipientEmail || '');\n  const [message, setMessage] = useState(() => buildMessage(bookTitle, pageUrl, ctaUrl));\n  const [sendError, setSendError] = useState<string | null>(null);'''
+          new = '''  const [recipientName, setRecipientName] = useState(savedRecipientName || '');\n  const [email, setEmail] = useState(savedRecipientEmail || '');\n  const [inviteLanguageChoice, setInviteLanguageChoice] = useState<InviteLanguageChoice>(\n    savedInviteLanguage || 'inherit'\n  );\n  const effectiveInviteLanguage: AppLanguage =\n    inviteLanguageChoice === 'inherit' ? bookLanguage : inviteLanguageChoice;\n  const [message, setMessage] = useState(() =>\n    buildMessage(\n      bookTitle,\n      pageUrl,\n      ctaUrl,\n      savedInviteLanguage || bookLanguage,\n      savedRecipientName || ''\n    )\n  );\n  const [sendError, setSendError] = useState<string | null>(null);'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'inviteLanguageChoice' not in text:
+              raise SystemExit('Invite language state marker not found')
+
+          old = '''  const updateRecipientName = (value: string) => {\n    setRecipientName(value);\n    setMessage((current) => {\n      const greeting = value.trim() ? `Szia, ${value.trim()}!` : 'Szia!';\n      return current.replace(/^Szia(?:, [^!]+)?!/, greeting);\n    });\n  };'''
+          new = '''  const updateRecipientName = (value: string) => {\n    setRecipientName(value);\n    setMessage((current) =>\n      current.replace(/^[^\\n]*/, buildGreeting(effectiveInviteLanguage, value))\n    );\n  };\n\n  const updateInviteLanguage = (choice: InviteLanguageChoice) => {\n    setInviteLanguageChoice(choice);\n    const language = choice === 'inherit' ? bookLanguage : choice;\n    setMessage(buildMessage(bookTitle, pageUrl, ctaUrl, language, recipientName));\n  };'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'const updateInviteLanguage' not in text:
+              raise SystemExit('Invite language update marker not found')
+
+          old = '''      deliveryMethod: platform,\n    } as const;'''
+          new = '''      deliveryMethod: platform,\n      inviteLanguage: inviteLanguageChoice === 'inherit' ? null : inviteLanguageChoice,\n    } as const;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        const subject = `MemoryBook meghívás – ${bookTitle}`;'''
+          new = '''        const subject =\n          effectiveInviteLanguage === 'en'\n            ? `MemoryBook invitation – ${bookTitle}`\n            : `MemoryBook meghívás – ${bookTitle}`;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        title: `MemoryBook meghívás – ${bookTitle}`,\n        text: message,'''
+          new = '''        title:\n          effectiveInviteLanguage === 'en'\n            ? `MemoryBook invitation – ${bookTitle}`\n            : `MemoryBook meghívás – ${bookTitle}`,\n        text: message,'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        <div style={styles.stepLabel}>2. Személyre szabás</div>\n        <label style={styles.label}>'''
+          new = '''        <div style={styles.stepLabel}>2. Meghívó nyelve</div>\n        <label style={styles.label}>\n          Nyelv\n          <select\n            value={inviteLanguageChoice}\n            onChange={(event) => updateInviteLanguage(event.target.value as InviteLanguageChoice)}\n            style={styles.input}\n            aria-label="Meghívó nyelve"\n          >\n            <option value="inherit">Könyv nyelve ({languageLabel(bookLanguage)})</option>\n            <option value="hu">Magyar</option>\n            <option value="en">English</option>\n          </select>\n        </label>\n\n        <div style={styles.stepLabel}>3. Személyre szabás</div>\n        <label style={styles.label}>'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'aria-label="Meghívó nyelve"' not in text:
+              raise SystemExit('Invite language UI marker not found')
+
+          dialog.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Production build
+        run: npm run build
+
+      - name: Backend TypeScript check
+        run: npx tsc --noEmit --ignoreConfig --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowSyntheticDefaultImports --skipLibCheck --noImplicitAny false server/index.ts server/db.ts server/auth.ts
+
+      - name: Start backend
+        run: |
+          export BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+          npx tsx server/index.ts > /tmp/memorybook-backend.log 2>&1 &
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:3001/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-backend.log
+          exit 1
+
+      - name: Test invite language API
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const { Pool } = require('pg');
+          const crypto = require('crypto');
+
+          (async () => {
+            const base = 'http://127.0.0.1:3001';
+            const email = `invite-language-${crypto.randomUUID()}@example.test`;
+            const password = crypto.randomBytes(18).toString('base64url');
+            const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext();
+            try {
+              const signup = await context.request.post(`${base}/api/auth/sign-up/email`, {
+                headers: { Origin: base },
+                data: { name: 'Invite Language Owner', email, password },
+              });
+              if (!signup.ok()) throw new Error(`Signup failed: ${signup.status()} ${await signup.text()}`);
+
+              const user = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+              if (user.rowCount !== 1) throw new Error('User missing');
+              const userId = user.rows[0].id;
+              const purchaseId = `purchase-${crypto.randomUUID()}`;
+              const entitlementId = `entitlement-${crypto.randomUUID()}`;
+              await pool.query(
+                `INSERT INTO purchases (
+                   id, purchase_mode, book_type, included_pages, purchaser_user_id,
+                   purchaser_name, purchaser_email, billing_name, billing_email,
+                   billing_country, billing_postal_code, billing_city, billing_address,
+                   payment_provider, payment_status
+                 ) VALUES ($1, 'self', 'standard', 30, $2, 'Owner', $3, 'Owner', $3,
+                           'HU', '1000', 'Budapest', 'Test', 'paypal', 'paid')`,
+                [purchaseId, userId, email]
+              );
+              await pool.query(
+                `INSERT INTO book_entitlements (
+                   id, purchase_id, assigned_user_id, book_type, included_pages, status
+                 ) VALUES ($1, $2, $3, 'standard', 30, 'available')`,
+                [entitlementId, purchaseId, userId]
+              );
+
+              const createBook = await context.request.post(`${base}/api/my/books`, {
+                data: { title: 'English Parent Book', entitlementId, language: 'en' },
+              });
+              if (createBook.status() !== 201) throw new Error(`Book create failed: ${createBook.status()} ${await createBook.text()}`);
+              const book = (await createBook.json()).book;
+
+              const pagesResponse = await context.request.get(`${base}/api/my/books/${book.id}/pages`);
+              if (!pagesResponse.ok()) throw new Error(`Pages load failed: ${pagesResponse.status()}`);
+              const pagesData = await pagesResponse.json();
+              const page = pagesData.pages[0];
+              if (page.inviteLanguage !== null) throw new Error(`New page override should be null: ${JSON.stringify(page)}`);
+
+              const inviteCreate = await context.request.post(`${base}/api/my/books/${book.id}/pages/${page.id}/invite`);
+              if (!inviteCreate.ok()) throw new Error(`Invite create failed: ${inviteCreate.status()} ${await inviteCreate.text()}`);
+              const invite = await inviteCreate.json();
+
+              const inheritSent = await context.request.post(`${base}/api/my/books/${book.id}/pages/${page.id}/invite/sent`, {
+                data: { recipientName: 'Anna', recipientEmail: '', deliveryMethod: 'share', inviteLanguage: null },
+              });
+              if (!inheritSent.ok()) throw new Error(`Inherited sent failed: ${inheritSent.status()} ${await inheritSent.text()}`);
+              const inheritSentData = await inheritSent.json();
+              if (inheritSentData.inviteLanguage !== null) throw new Error(`Inherited override should stay null: ${JSON.stringify(inheritSentData)}`);
+
+              const inheritedGuest = await context.request.get(`${base}/api/page-invites/${invite.inviteToken}`);
+              if (!inheritedGuest.ok()) throw new Error(`Guest invite load failed: ${inheritedGuest.status()}`);
+              const inheritedGuestData = await inheritedGuest.json();
+              if (inheritedGuestData.language !== 'en' || inheritedGuestData.inviteLanguage !== null) {
+                throw new Error(`Book language inheritance failed: ${JSON.stringify(inheritedGuestData)}`);
+              }
+
+              const overrideSent = await context.request.post(`${base}/api/my/books/${book.id}/pages/${page.id}/invite/sent`, {
+                data: { recipientName: 'Anna', recipientEmail: '', deliveryMethod: 'share', inviteLanguage: 'hu' },
+              });
+              if (!overrideSent.ok()) throw new Error(`Override sent failed: ${overrideSent.status()} ${await overrideSent.text()}`);
+              const overrideData = await overrideSent.json();
+              if (overrideData.inviteLanguage !== 'hu') throw new Error(`Override not stored: ${JSON.stringify(overrideData)}`);
+
+              const overriddenGuest = await context.request.get(`${base}/api/page-invites/${invite.inviteToken}`);
+              const overriddenGuestData = await overriddenGuest.json();
+              if (overriddenGuestData.language !== 'hu' || overriddenGuestData.inviteLanguage !== 'hu') {
+                throw new Error(`Override not effective: ${JSON.stringify(overriddenGuestData)}`);
+              }
+
+              const invalid = await context.request.post(`${base}/api/my/books/${book.id}/pages/${page.id}/invite/sent`, {
+                data: { recipientName: 'Anna', recipientEmail: '', deliveryMethod: 'share', inviteLanguage: 'fr' },
+              });
+              if (invalid.status() !== 400) throw new Error(`Invalid invite language should be 400, got ${invalid.status()}`);
+
+              await pool.query(`UPDATE pages SET invite_created_at = CURRENT_TIMESTAMP - INTERVAL '15 days' WHERE id = $1`, [page.id]);
+              const reassign = await context.request.post(`${base}/api/my/books/${book.id}/pages/${page.id}/invite/reassign`);
+              if (!reassign.ok()) throw new Error(`Reassign failed: ${reassign.status()} ${await reassign.text()}`);
+              const reassignData = await reassign.json();
+              if (reassignData.inviteLanguage !== null) throw new Error(`Reassign override should reset: ${JSON.stringify(reassignData)}`);
+
+              const dbPage = await pool.query('SELECT invite_language FROM pages WHERE id = $1', [page.id]);
+              if (dbPage.rows[0]?.invite_language !== null) throw new Error(`DB invite override did not reset: ${JSON.stringify(dbPage.rows[0])}`);
+
+              const reassignedGuest = await context.request.get(`${base}/api/page-invites/${reassignData.inviteToken}`);
+              if (!reassignedGuest.ok()) throw new Error(`Reassigned guest load failed: ${reassignedGuest.status()}`);
+              const reassignedGuestData = await reassignedGuest.json();
+              if (reassignedGuestData.language !== 'en' || reassignedGuestData.inviteLanguage !== null) {
+                throw new Error(`Reassigned invite should inherit book language: ${JSON.stringify(reassignedGuestData)}`);
+              }
+
+              console.log('INVITE_LANGUAGE_API_PASS');
+            } finally {
+              await context.close();
+              await browser.close();
+              await pool.end();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Start frontend preview
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/memorybook-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-preview.log
+          exit 1
+
+      - name: Test invite language mobile UI
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+            await context.addInitScript(() => {
+              Object.defineProperty(navigator, 'share', { configurable: true, value: async () => {} });
+            });
+            const page = await context.newPage();
+            let sentBody = null;
+
+            await page.route('http://127.0.0.1:3001/api/**', async (route) => {
+              const req = route.request();
+              const path = new URL(req.url()).pathname;
+              const cors = {
+                'access-control-allow-origin': 'http://127.0.0.1:4173',
+                'access-control-allow-credentials': 'true',
+                'access-control-allow-methods': 'GET,POST,PATCH,OPTIONS',
+                'access-control-allow-headers': 'content-type',
+              };
+              if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
+              const json = (body, status = 200) => route.fulfill({ status, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+              if (path === '/api/my/books/book-ui/pages') {
+                return json({
+                  book: { id: 'book-ui', title: 'English Book', bookType: 'standard', language: 'en', eventInviteToken: null },
+                  pages: [{
+                    id: 'page-ui', pageNumber: 1, version: 1, inviteStatus: 'invited',
+                    inviteToken: 'token-ui', inviteCreatedAt: '2026-09-08T18:00:00Z', inviteSentAt: null,
+                    inviteExpiresAt: '2026-09-22T18:00:00Z', inviteRecipientName: null,
+                    inviteRecipientEmail: null, inviteDeliveryMethod: null, inviteLanguage: null,
+                    ownerVisibility: 'active', submittedAt: null, authorShareApproved: false,
+                    ownerShareApproved: false, publicShareToken: null,
+                  }],
+                });
+              }
+              if (path === '/api/my/books/book-ui/pages/page-ui/invite/sent' && req.method() === 'POST') {
+                sentBody = req.postDataJSON();
+                return json({
+                  success: true,
+                  inviteSentAt: '2026-09-08T19:00:00Z',
+                  inviteCreatedAt: '2026-09-08T18:00:00Z',
+                  inviteExpiresAt: '2026-09-22T18:00:00Z',
+                  inviteRecipientName: sentBody.recipientName,
+                  inviteRecipientEmail: sentBody.recipientEmail,
+                  inviteDeliveryMethod: sentBody.deliveryMethod,
+                  inviteLanguage: sentBody.inviteLanguage,
+                });
+              }
+              return json({ error: 'UNEXPECTED', path, method: req.method() }, 500);
+            });
+
+            try {
+              await page.goto('http://127.0.0.1:4173/my-books/book-ui');
+              await page.waitForLoadState('networkidle');
+              await page.getByRole('button', { name: 'Meghívás folytatása' }).click();
+
+              const languageSelect = page.getByLabel('Meghívó nyelve');
+              await languageSelect.waitFor({ state: 'visible' });
+              if (await languageSelect.inputValue() !== 'inherit') throw new Error('Invite should default to inherited language');
+
+              const message = page.getByLabel('Meghívó üzenet');
+              if (!((await message.inputValue()).startsWith('Hi!'))) throw new Error(`Inherited English message missing: ${await message.inputValue()}`);
+
+              await languageSelect.selectOption('hu');
+              if (!((await message.inputValue()).startsWith('Szia!'))) throw new Error(`Hungarian override message missing: ${await message.inputValue()}`);
+
+              await page.getByPlaceholder('pl. Rubinszky Gertrúd').fill('Anna');
+              await page.getByRole('button', { name: 'Címzett és app kiválasztása' }).click();
+              await page.waitForTimeout(150);
+
+              if (sentBody?.inviteLanguage !== 'hu') throw new Error(`Invite language metadata mismatch: ${JSON.stringify(sentBody)}`);
+              if (sentBody?.recipientName !== 'Anna' || sentBody?.deliveryMethod !== 'share') throw new Error(`Invite metadata mismatch: ${JSON.stringify(sentBody)}`);
+
+              console.log('INVITE_LANGUAGE_UI_PASS');
+            } finally {
+              await context.close();
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Commit checked source changes and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/invite-language-foundation-check.yml
+          git add server/index.ts src/OwnerBookPage.tsx src/InviteSendDialog.tsx
+          git commit -m "Add per-invite language foundation"
+          git push origin HEAD:invite-language-foundation-2026-09-08
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          cat /tmp/memorybook-backend.log || true
+          cat /tmp/memorybook-preview.log || true
