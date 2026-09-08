@@ -973,13 +973,29 @@ app.get('/api/invites/:token', async (req, res) => {
 app.get('/api/books/:bookId/contributions', async (req, res) => {
   try {
     const bookResult = await pool.query(
-      `SELECT id, title FROM books WHERE id = $1`,
+      `SELECT id, title, owner_user_id AS "ownerUserId"
+       FROM books
+       WHERE id = $1`,
       [req.params.bookId]
     );
 
     if (bookResult.rowCount === 0) {
       res.status(404).json({ error: 'BOOK_NOT_FOUND' });
       return;
+    }
+
+    if (req.params.bookId !== DEMO_BOOK_ID) {
+      const session = await getSession(req);
+
+      if (!session) {
+        res.status(401).json({ error: 'UNAUTHENTICATED' });
+        return;
+      }
+
+      if (session.user.id !== bookResult.rows[0].ownerUserId) {
+        res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+        return;
+      }
     }
 
     const contributionsResult = await pool.query(
@@ -995,8 +1011,10 @@ app.get('/api/books/:bookId/contributions', async (req, res) => {
       [req.params.bookId]
     );
 
+    const { ownerUserId: _ownerUserId, ...bookData } = bookResult.rows[0];
+
     res.status(200).json({
-      book: bookResult.rows[0],
+      book: bookData,
       contributions: contributionsResult.rows,
     });
   } catch (err) {
