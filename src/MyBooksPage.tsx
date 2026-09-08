@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { NotificationMenu } from './NotificationMenu';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -141,6 +142,7 @@ export function MyBooksPage() {
             {user && <div style={styles.userLine}>{user.name || user.email || 'Bejelentkezett felhasználó'}</div>}
           </div>
           <div style={styles.headerActions}>
+            <LanguageSwitcher />
             <button type="button" onClick={signOut} style={styles.secondaryButton}>Kijelentkezés</button>
             <NotificationMenu />
           </div>
