@@ -50,7 +50,7 @@ type PageSaveState = {
 type WorkerResult = 'drained' | 'network-error' | 'conflict';
 
 const CANVAS_WIDTH = 750;
-const CANVAS_HEIGHT = 1000;
+const CANVAS_HEIGHT = 1064;
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const MAX_IMAGE_INITIAL_DIM = 400;
 

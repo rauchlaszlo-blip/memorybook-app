@@ -115,14 +115,17 @@ const styles: Record<string, React.CSSProperties> = {
   viewer: {
     width: 750,
     maxWidth: '100%',
+    aspectRatio: '750 / 1064',
     margin: '0 auto',
     background: '#ffffff',
     boxShadow: '0 10px 30px rgba(0,0,0,.12)',
+    overflow: 'hidden',
   },
   image: {
     display: 'block',
     width: '100%',
-    height: 'auto',
+    height: '100%',
+    objectFit: 'contain',
   },
   message: {
     padding: 40,
