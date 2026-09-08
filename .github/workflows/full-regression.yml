@@ -87,6 +87,7 @@ jobs:
       - name: Run full regression
         run: |
           sed -i 's/memorybook-app-language/memorybook.appLanguage/g' scripts/full-regression.mjs
+          sed -i 's/save1\.version/save1.newVersion/g' scripts/full-regression.mjs
           node scripts/full-regression.mjs
 
       - name: Show logs on failure
