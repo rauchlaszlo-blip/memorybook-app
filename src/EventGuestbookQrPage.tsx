@@ -18,6 +18,7 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
         if (response.status === 401) { window.location.href = '/login'; return; }
         if (!response.ok) throw new Error('LOAD_FAILED');
         const data = await response.json();
+        if (data.book?.bookType !== 'event') throw new Error('NOT_EVENT_BOOK');
         setTitle(data.book?.title || 'MemoryBook vendégkönyv');
         setInviteToken(data.book?.eventInviteToken || null);
       } catch (err) {

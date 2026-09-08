@@ -18,6 +18,7 @@ type BookSummary = {
   title: string;
   pageCount: number;
   contributionCount: number;
+  bookType?: 'standard' | 'event' | string;
   createdAt: string;
 };
 
@@ -27,6 +28,7 @@ export function MyBooksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newBookTitle, setNewBookTitle] = useState('');
+  const [newBookType, setNewBookType] = useState<'standard' | 'event'>('standard');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -103,7 +105,7 @@ export function MyBooksPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, bookType: newBookType }),
       });
 
       if (response.status === 401) {
@@ -122,6 +124,7 @@ export function MyBooksPage() {
       }
 
       setNewBookTitle('');
+      setNewBookType('standard');
     } catch (err) {
       console.error(err);
       setCreateError('Nem sikerült létrehozni az emlékkönyvet.');
@@ -166,12 +169,23 @@ export function MyBooksPage() {
             <div>
               <h2 style={styles.createTitle}>Új emlékkönyv</h2>
               <p style={styles.createText}>
-                Az új könyv 30 üres oldallal indul. Később további oldalak
-                vásárolhatók hozzá.
+                Normál emlékkönyv: 30 oldallal indul és később bővíthető.
+                Rendezvény-vendégkönyv: QR-kóddal gyűjti a vendégek bejegyzéseit,
+                a végleges oldalak számáról később te döntesz.
               </p>
             </div>
 
             <form onSubmit={createBook} style={styles.createForm}>
+              <select
+                value={newBookType}
+                onChange={(event) => setNewBookType(event.target.value as 'standard' | 'event')}
+                disabled={creating}
+                style={styles.select}
+                aria-label="Könyv típusa"
+              >
+                <option value="standard">Normál emlékkönyv – 30 oldal</option>
+                <option value="event">Rendezvény-vendégkönyv – QR-kódos</option>
+              </select>
               <input
                 type="text"
                 value={newBookTitle}
@@ -212,28 +226,37 @@ export function MyBooksPage() {
             {books.map((book) => (
               <article key={book.id} style={styles.card}>
                 <h2 style={styles.bookTitle}>{book.title}</h2>
+                <div style={styles.typeBadge}>
+                  {book.bookType === 'event' ? 'Rendezvény-vendégkönyv' : 'Normál emlékkönyv'}
+                </div>
                 <div style={styles.meta}>
-                  {book.pageCount} oldal · {book.contributionCount} beküldés
+                  {book.bookType === 'event'
+                    ? `${book.contributionCount} bejegyzés`
+                    : `${book.pageCount} oldal`}
                 </div>
                 <div style={styles.actions}>
                   <a
                     href={`/my-books/${encodeURIComponent(book.id)}`}
                     style={styles.primaryLink}
                   >
-                    Oldalak és meghívók
+                    {book.bookType === 'event' ? 'Rendezvény kezelése' : 'Oldalak és meghívók'}
                   </a>
-                  <a
-                    href={`/book/${encodeURIComponent(book.id)}/view`}
-                    style={styles.secondaryLink}
-                  >
-                    Könyv megnyitása
-                  </a>
-                  <a
-                    href={`/organizer/${encodeURIComponent(book.id)}/contributions`}
-                    style={styles.secondaryLink}
-                  >
-                    Beküldések
-                  </a>
+                  {book.bookType !== 'event' && (
+                    <a
+                      href={`/book/${encodeURIComponent(book.id)}/view`}
+                      style={styles.secondaryLink}
+                    >
+                      Könyv megnyitása
+                    </a>
+                  )}
+                  {book.bookType === 'event' && (
+                    <a
+                      href={`/organizer/${encodeURIComponent(book.id)}/contributions`}
+                      style={styles.secondaryLink}
+                    >
+                      Beérkezett bejegyzések
+                    </a>
+                  )}
                 </div>
               </article>
             ))}
@@ -311,6 +334,16 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     gap: 10,
   },
+  select: {
+    flex: '1 1 240px',
+    minHeight: 46,
+    padding: '10px 12px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 9,
+    fontSize: 15,
+    background: '#ffffff',
+    boxSizing: 'border-box',
+  },
   input: {
     flex: '1 1 280px',
     minWidth: 0,
@@ -382,6 +415,16 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 8px',
     color: '#0f172a',
     fontSize: 21,
+  },
+  typeBadge: {
+    display: 'inline-block',
+    marginBottom: 7,
+    padding: '4px 8px',
+    borderRadius: 999,
+    background: '#e2e8f0',
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 800,
   },
   meta: {
     color: '#64748b',
