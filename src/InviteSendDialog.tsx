@@ -5,6 +5,9 @@ type InviteSendDialogProps = {
   pageNumber: number;
   pageUrl: string;
   ctaUrl: string;
+  isResend?: boolean;
+  expiresAt?: string | null;
+  onSent: () => Promise<void>;
   onClose: () => void;
 };
 
@@ -20,6 +23,7 @@ function buildMessage(bookTitle: string, pageUrl: string, ctaUrl: string) {
     pageUrl,
     '',
     'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',
+    'A meghívó 14 napig használható.',
     '',
     `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,
   ].join('\n');
@@ -30,6 +34,9 @@ export function InviteSendDialog({
   pageNumber,
   pageUrl,
   ctaUrl,
+  isResend = false,
+  expiresAt = null,
+  onSent,
   onClose,
 }: InviteSendDialogProps) {
   const [platform, setPlatform] = useState<SendPlatform>('share');
@@ -55,9 +62,16 @@ export function InviteSendDialog({
     setSendError(null);
 
     if (platform === 'email') {
-      const subject = `MemoryBook meghívás – ${bookTitle}`;
-      const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-      window.location.href = mailto;
+      try {
+        const subject = `MemoryBook meghívás – ${bookTitle}`;
+        const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        await onSent();
+        window.location.href = mailto;
+        onClose();
+      } catch (err) {
+        console.error(err);
+        setSendError('Nem sikerült rögzíteni a meghívás küldését. Próbáld újra.');
+      }
       return;
     }
 
@@ -73,6 +87,7 @@ export function InviteSendDialog({
         title: `MemoryBook meghívás – ${bookTitle}`,
         text: message,
       });
+      await onSent();
       onClose();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -93,9 +108,18 @@ export function InviteSendDialog({
         <div style={styles.dialogTop}>
           <div>
             <div style={styles.eyebrow}>Oldal {pageNumber}</div>
-            <h2 id="invite-send-title" style={styles.title}>Meghívás küldése</h2>
+            <h2 id="invite-send-title" style={styles.title}>{isResend ? 'Meghívó újraküldése' : 'Meghívás küldése'}</h2>
           </div>
           <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Bezárás">×</button>
+        </div>
+
+        {isResend && (
+          <div style={styles.resendWarning}>
+            Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.
+          </div>
+        )}
+        <div style={styles.expiryNote}>
+          A meghívó 14 napig használható{expiresAt ? `, lejár: ${new Date(expiresAt).toLocaleDateString('hu-HU')}` : ''}.
         </div>
 
         <div style={styles.stepLabel}>1. Küldési mód</div>
@@ -259,6 +283,8 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.45,
     resize: 'vertical',
   },
+  resendWarning: { marginBottom: 10, padding: 12, borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 13, lineHeight: 1.45, fontWeight: 700 },
+  expiryNote: { marginBottom: 12, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 12, lineHeight: 1.45 },
   note: { marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#64748b', fontSize: 12, lineHeight: 1.45 },
   error: { marginTop: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   actions: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: 10, marginTop: 16 },
