@@ -1,0 +1,157 @@
+name: Notification API behavior test
+
+on:
+  push:
+    branches:
+      - notifications-api-2026-09-08
+
+jobs:
+  notification-api-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memorybook_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d memorybook_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/memorybook_test
+      BETTER_AUTH_SECRET: notification-api-test-secret-2026-memorybook
+      BETTER_AUTH_URL: http://127.0.0.1:3001
+      PORT: 3001
+      PGPASSWORD: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start MemoryBook backend
+        run: |
+          npx tsx server/index.ts >/tmp/memorybook-server.log 2>&1 &
+          echo $! >/tmp/memorybook-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3001/api/health >/tmp/health.json; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/memorybook-server.log
+          exit 1
+
+      - name: Create authenticated owner
+        run: |
+          curl -fsS -c /tmp/cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"Notification Test Owner","email":"notification-owner@example.test","password":"TestPassword123!"}' \
+            http://127.0.0.1:3001/api/auth/sign-up/email \
+            >/tmp/signup.json
+          curl -fsS -b /tmp/cookies.txt http://127.0.0.1:3001/api/me >/tmp/me.json
+          node -e "const j=require('/tmp/me.json'); if(!j.user?.id) process.exit(1); console.log(j.user.id)" >/tmp/owner-id.txt
+
+      - name: Seed standard page and submit it
+        run: |
+          OWNER_ID=$(cat /tmp/owner-id.txt)
+          psql -h 127.0.0.1 -U postgres -d memorybook_test -v ON_ERROR_STOP=1 <<SQL
+          INSERT INTO books (id, owner_user_id, title, invite_token, book_type, page_capacity)
+          VALUES ('book-api-test', '$OWNER_ID', 'API Test Book', 'event-api-test', 'standard', 30);
+
+          INSERT INTO pages (
+            id, book_id, page_number, invite_token, invite_status,
+            invite_created_at, invite_recipient_name
+          )
+          VALUES (
+            'page-api-test', 'book-api-test', 1, 'page-api-token', 'draft',
+            CURRENT_TIMESTAMP, 'Anna'
+          );
+          SQL
+
+          curl -fsS \
+            -H 'Content-Type: application/json' \
+            -d '{"authorShareApproved":false}' \
+            http://127.0.0.1:3001/api/page-invites/page-api-token/submit \
+            >/tmp/submit.json
+
+      - name: Verify unread count and notification list
+        run: |
+          curl -fsS -b /tmp/cookies.txt \
+            http://127.0.0.1:3001/api/my/notifications/unread-count \
+            >/tmp/unread-before.json
+          curl -fsS -b /tmp/cookies.txt \
+            'http://127.0.0.1:3001/api/my/notifications?limit=10' \
+            >/tmp/notifications.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const count = JSON.parse(fs.readFileSync('/tmp/unread-before.json', 'utf8'));
+          const list = JSON.parse(fs.readFileSync('/tmp/notifications.json', 'utf8'));
+          if (count.unreadCount !== 1) throw new Error(`Expected unreadCount 1, got ${count.unreadCount}`);
+          if (list.unreadCount !== 1) throw new Error(`List unreadCount mismatch: ${list.unreadCount}`);
+          if (!Array.isArray(list.notifications) || list.notifications.length !== 1) throw new Error('Expected exactly one notification');
+          const n = list.notifications[0];
+          if (n.actorName !== 'Anna') throw new Error(`actorName mismatch: ${n.actorName}`);
+          if (n.pageNumber !== 1) throw new Error(`pageNumber mismatch: ${n.pageNumber}`);
+          if (n.bookId !== 'book-api-test') throw new Error(`bookId mismatch: ${n.bookId}`);
+          if (n.pageId !== 'page-api-test') throw new Error(`pageId mismatch: ${n.pageId}`);
+          if (n.targetPath !== '/my-books/book-api-test?page=page-api-test') throw new Error(`targetPath mismatch: ${n.targetPath}`);
+          if (n.readAt !== null) throw new Error('New notification should be unread');
+          fs.writeFileSync('/tmp/notification-id.txt', n.id);
+          NODE
+
+      - name: Verify unauthenticated access is rejected
+        run: |
+          STATUS=$(curl -sS -o /tmp/unauth.json -w '%{http_code}' \
+            http://127.0.0.1:3001/api/my/notifications/unread-count)
+          test "$STATUS" = "401"
+
+      - name: Mark notification read and verify counter
+        run: |
+          NOTIFICATION_ID=$(cat /tmp/notification-id.txt)
+          curl -fsS -X PATCH -b /tmp/cookies.txt \
+            http://127.0.0.1:3001/api/my/notifications/$NOTIFICATION_ID/read \
+            >/tmp/read-result.json
+          curl -fsS -b /tmp/cookies.txt \
+            http://127.0.0.1:3001/api/my/notifications/unread-count \
+            >/tmp/unread-after.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const marked = JSON.parse(fs.readFileSync('/tmp/read-result.json', 'utf8'));
+          const count = JSON.parse(fs.readFileSync('/tmp/unread-after.json', 'utf8'));
+          if (marked.success !== true) throw new Error('Read update did not report success');
+          if (!marked.notification?.readAt) throw new Error('readAt was not set');
+          if (marked.unreadCount !== 0) throw new Error(`PATCH unreadCount expected 0, got ${marked.unreadCount}`);
+          if (count.unreadCount !== 0) throw new Error(`Final unreadCount expected 0, got ${count.unreadCount}`);
+          NODE
+
+      - name: Verify read update is idempotent
+        run: |
+          NOTIFICATION_ID=$(cat /tmp/notification-id.txt)
+          curl -fsS -X PATCH -b /tmp/cookies.txt \
+            http://127.0.0.1:3001/api/my/notifications/$NOTIFICATION_ID/read \
+            >/tmp/read-again.json
+          node -e "const j=require('/tmp/read-again.json'); if(j.success!==true || j.unreadCount!==0) process.exit(1)"
+
+      - name: Show backend log on failure
+        if: failure()
+        run: cat /tmp/memorybook-server.log || true
