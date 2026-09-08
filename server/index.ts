@@ -386,6 +386,9 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          invite_token AS "inviteToken",
          owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
+         author_share_approved AS "authorShareApproved",
+         owner_share_approved AS "ownerShareApproved",
+         public_share_token AS "publicShareToken",
          updated_at AS "updatedAt"
        FROM pages
        WHERE book_id = $1
@@ -467,6 +470,115 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite', async (req, res) => {
   } catch (err) {
     console.error('Page invite create error:', err);
     res.status(500).json({ error: 'PAGE_INVITE_CREATE_FAILED' });
+  }
+});
+
+app.patch('/api/my/books/:bookId/pages/:pageId/sharing', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const approved = req.body?.approved;
+  if (typeof approved !== 'boolean') {
+    res.status(400).json({ error: 'INVALID_SHARE_APPROVAL' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const pageResult = await pool.query(
+      `SELECT
+         p.id,
+         p.invite_status AS "inviteStatus",
+         p.author_share_approved AS "authorShareApproved",
+         p.public_share_token AS "publicShareToken"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (pageResult.rowCount === 0) {
+      res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+      return;
+    }
+
+    if (pageResult.rows[0].inviteStatus !== 'submitted') {
+      res.status(409).json({ error: 'PAGE_NOT_SUBMITTED' });
+      return;
+    }
+
+    if (approved && !pageResult.rows[0].authorShareApproved) {
+      res.status(409).json({ error: 'AUTHOR_SHARE_APPROVAL_REQUIRED' });
+      return;
+    }
+
+    const token = pageResult.rows[0].publicShareToken || `public-${crypto.randomUUID()}`;
+
+    const result = await pool.query(
+      `UPDATE pages
+       SET owner_share_approved = $1,
+           public_share_token = COALESCE(public_share_token, $2),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 AND book_id = $4
+       RETURNING
+         id,
+         page_number AS "pageNumber",
+         version,
+         invite_status AS "inviteStatus",
+         invite_token AS "inviteToken",
+         owner_visibility AS "ownerVisibility",
+         submitted_at AS "submittedAt",
+         author_share_approved AS "authorShareApproved",
+         owner_share_approved AS "ownerShareApproved",
+         public_share_token AS "publicShareToken",
+         updated_at AS "updatedAt"`,
+      [approved, token, req.params.pageId, req.params.bookId]
+    );
+
+    res.status(200).json({ success: true, page: result.rows[0] });
+  } catch (err) {
+    console.error('Owner page sharing update error:', err);
+    res.status(500).json({ error: 'OWNER_PAGE_SHARING_UPDATE_FAILED' });
+  }
+});
+
+app.get('/api/public-pages/:token', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         b.title AS "bookTitle",
+         p.id,
+         p.page_number AS "pageNumber",
+         p.preview_image_url AS "previewImageUrl",
+         p.submitted_at AS "submittedAt"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.public_share_token = $1
+         AND p.invite_status = 'submitted'
+         AND p.owner_visibility = 'active'
+         AND p.author_share_approved = TRUE
+         AND p.owner_share_approved = TRUE`,
+      [req.params.token]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'PUBLIC_PAGE_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Public page load error:', err);
+    res.status(500).json({ error: 'PUBLIC_PAGE_LOAD_FAILED' });
   }
 });
 
@@ -589,6 +701,9 @@ app.delete('/api/my/books/:bookId/pages/:pageId', async (req, res) => {
            invite_created_at = NULL,
            submitted_at = NULL,
            owner_visibility = 'active',
+           author_share_approved = FALSE,
+           owner_share_approved = FALSE,
+           public_share_token = NULL,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND book_id = $2
        RETURNING
@@ -746,6 +861,7 @@ app.put('/api/page-invites/:token', async (req, res) => {
 });
 
 app.post('/api/page-invites/:token/submit', async (req, res) => {
+  const authorShareApproved = req.body?.authorShareApproved === true;
   const client = await pool.connect();
 
   try {
@@ -786,13 +902,15 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
        SET invite_status = 'submitted',
            owner_visibility = 'active',
            submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP),
+           author_share_approved = $2,
+           owner_share_approved = FALSE,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING
          id,
          page_number AS "pageNumber",
          submitted_at AS "submittedAt"`,
-      [pageResult.rows[0].id]
+      [pageResult.rows[0].id, authorShareApproved]
     );
 
     await client.query('COMMIT');
@@ -1333,6 +1451,9 @@ async function initializeDatabase(): Promise<void> {
       invite_created_at TIMESTAMPTZ,
       submitted_at TIMESTAMPTZ,
       owner_visibility TEXT NOT NULL DEFAULT 'active',
+      author_share_approved BOOLEAN NOT NULL DEFAULT FALSE,
+      owner_share_approved BOOLEAN NOT NULL DEFAULT FALSE,
+      public_share_token TEXT UNIQUE,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -1343,6 +1464,9 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_share_token TEXT`);
 
   await pool.query(
     `UPDATE pages SET book_id = $1 WHERE book_id IS NULL`,
@@ -1378,6 +1502,12 @@ async function initializeDatabase(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS pages_invite_token_unique
     ON pages(invite_token)
     WHERE invite_token IS NOT NULL
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS pages_public_share_token_unique
+    ON pages(public_share_token)
+    WHERE public_share_token IS NOT NULL
   `);
 
   await pool.query(
