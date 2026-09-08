@@ -56,7 +56,7 @@ async function acceptance() {
     throw new Error(`French invite language should be rejected: ${r.response.status} ${JSON.stringify(r.data)}`);
   }
 
-  await pool.query("INSERT INTO users (id, display_name) VALUES ('de-user', 'Deutsch Test') ON CONFLICT (id) DO NOTHING");
+  await pool.query("INSERT INTO users (id, display_name, email) VALUES ('de-user', 'Deutsch Test', 'de-user@example.test') ON CONFLICT (id) DO NOTHING");
   await pool.query("INSERT INTO books (id, owner_user_id, title, invite_token, book_type, language) VALUES ('de-book', 'de-user', 'Deutsches Buch', 'de-book-token', 'standard', 'de') ON CONFLICT (id) DO UPDATE SET language='de'");
   await pool.query("INSERT INTO pages (id, book_id, page_number, invite_status, invite_token, invite_language) VALUES ('de-page', 'de-book', 1, 'invited', 'de-page-token', 'de') ON CONFLICT (id) DO UPDATE SET invite_language='de'");
 
