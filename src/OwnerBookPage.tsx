@@ -27,6 +27,7 @@ type OwnerBookPageProps = {
 
 export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [bookTitle, setBookTitle] = useState('MemoryBook');
+  const [eventInviteToken, setEventInviteToken] = useState<string | null>(null);
   const [pages, setPages] = useState<OwnerPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
 
         const data = await response.json();
         setBookTitle(data.book?.title || 'MemoryBook');
+        setEventInviteToken(data.book?.eventInviteToken || null);
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
         console.error(err);
@@ -279,6 +281,16 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
         </div>
 
+      {eventInviteToken && (
+        <section style={styles.eventPanel}>
+          <div>
+            <strong style={styles.eventPanelTitle}>Rendezvény vendégkönyv</strong>
+            <div style={styles.eventPanelText}>Egy közös QR-kódot tehetsz ki a helyszínen. Minden vendég ugyanabba a vendégkönyvbe írhat.</div>
+          </div>
+          <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>QR-kód megnyitása</a>
+        </section>
+      )}
+
         {loading && <div style={styles.panel}>Betöltés...</div>}
         {error && <div style={styles.error}>{error}</div>}
 
@@ -480,6 +492,12 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5,
     fontSize: 14,
   },
+  eventPanel: {
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 16, padding: 16, borderRadius: 14, background: '#e2e8f0',
+  },
+  eventPanelTitle: { display: 'block', marginBottom: 4, color: '#0f172a', fontSize: 17 },
+  eventPanelText: { maxWidth: 680, color: '#475569', fontSize: 14, lineHeight: 1.5 },
+  eventQrButton: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, whiteSpace: 'nowrap' },
   panel: {
     padding: 24,
     borderRadius: 14,

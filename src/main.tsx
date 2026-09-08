@@ -10,6 +10,7 @@ import { JoinPage } from './JoinPage.tsx'
 import { OrganizerContributionsPage } from './OrganizerContributionsPage.tsx'
 import { BookViewerPage } from './BookViewerPage.tsx'
 import { InviteCtaPage } from './InviteCtaPage.tsx'
+import { EventGuestbookQrPage } from './EventGuestbookQrPage.tsx'
 
 const path = window.location.pathname
 const ownerBookMatch = path.match(/^\/my-books\/([^/]+)$/)
@@ -18,11 +19,14 @@ const publicPageMatch = path.match(/^\/share\/([^/]+)$/)
 const joinMatch = path.match(/^\/join\/([^/]+)$/)
 const organizerMatch = path.match(/^\/organizer\/([^/]+)\/contributions$/)
 const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
+const eventQrMatch = path.match(/^\/my-books\/([^/]+)\/event-qr$/)
 
 const root = path === '/login'
   ? <AuthPage />
   : path === '/nekem-is-kell'
     ? <InviteCtaPage />
+  : eventQrMatch
+    ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
   : path === '/' || path === '/my-books'
     ? <MyBooksPage />
     : ownerBookMatch

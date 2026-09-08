@@ -10,15 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.5",
+    "better-auth": "^1.7.3",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fabric": "^7.4.0",
     "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "better-auth": "^1.7.3"
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

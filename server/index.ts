@@ -366,7 +366,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
     }
 
     const bookResult = await pool.query(
-      `SELECT id, title
+      `SELECT id, title, invite_token AS "eventInviteToken"
        FROM books
        WHERE id = $1 AND owner_user_id = $2`,
       [req.params.bookId, session.user.id]
