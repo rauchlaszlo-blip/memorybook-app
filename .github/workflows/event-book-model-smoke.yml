@@ -16,3 +16,4 @@ jobs:
           npx playwright install chromium >/dev/null 2>&1
       - name: Run event book model test
         run: npx playwright test tests/event-book-model.spec.js --workers=1
+# rerun 2
