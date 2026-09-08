@@ -11,6 +11,7 @@ import {
 } from './MemoryBookEditor';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://' + window.location.hostname + ':3001' : '';
+const DEMO_BOOK_ID = 'book-12b';
 const PAGE_IDS = ['page-1', 'page-2'];
 
 type WebMcpStatus = 'checking' | 'available' | 'unavailable' | 'error';
@@ -65,7 +66,7 @@ function App() {
   useEffect(() => {
     const loadPageOrder = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/pages`);
+        const response = await fetch(`${API_BASE}/api/books/${encodeURIComponent(DEMO_BOOK_ID)}/pages`);
 
         if (!response.ok) {
           throw new Error(`PAGE_LIST_LOAD_FAILED_${response.status}`);
@@ -993,7 +994,7 @@ function App() {
                 const activePageId = currentPageIdRef.current;
 
                 const response = await fetch(
-                  `${API_BASE}/api/pages/reorder`,
+                  `${API_BASE}/api/books/${encodeURIComponent(DEMO_BOOK_ID)}/pages/reorder`,
                   {
                     method: 'PUT',
                     headers: {
