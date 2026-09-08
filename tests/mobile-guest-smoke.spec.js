@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-test('mobile guest editor is usable', async ({ browser }) => {
+test('mobile A5 guest editor and finished book are usable', async ({ browser }) => {
   const base = 'https://memorybook-app.onrender.com';
   const stamp = Date.now();
   const email = `guest-mobile-${stamp}@example.com`;
   const password = `Test-${stamp}-Mb9!`;
+  const a5Ratio = 1064 / 750;
 
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -16,12 +17,12 @@ test('mobile guest editor is usable', async ({ browser }) => {
 
   const signUp = await api.post(`${base}/api/auth/sign-up/email`, {
     headers: { Origin: base },
-    data: { name: 'Mobile Guest Test', email, password },
+    data: { name: 'Mobile A5 Test', email, password },
   });
   expect([200, 201]).toContain(signUp.status());
 
   const createBook = await api.post(`${base}/api/my/books`, {
-    data: { title: `Mobile Guest ${stamp}` },
+    data: { title: `Mobile A5 ${stamp}` },
   });
   expect(createBook.status()).toBe(201);
   const bookId = (await createBook.json()).book.id;
@@ -43,7 +44,7 @@ test('mobile guest editor is usable', async ({ browser }) => {
   const frameBox = await frame.boundingBox();
   expect(frameBox).not.toBeNull();
   expect(frameBox.width).toBeLessThanOrEqual(366.5);
-  expect(Math.abs(frameBox.height / frameBox.width - 4 / 3)).toBeLessThan(0.03);
+  expect(Math.abs(frameBox.height / frameBox.width - a5Ratio)).toBeLessThan(0.03);
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -79,11 +80,21 @@ test('mobile guest editor is usable', async ({ browser }) => {
   await submitButton.click();
   await expect(page.getByText('Az oldalad elküldve. Köszönjük!')).toBeVisible({ timeout: 10000 });
 
-  console.log('PASS: responsive 3:4 guest canvas');
+  await page.goto(`${base}/book/${bookId}/view`, { waitUntil: 'networkidle' });
+  await expect(page.getByText('1 / 1 oldal')).toBeVisible();
+  const bookImage = page.getByRole('img', { name: '1. oldal' });
+  await expect(bookImage).toBeVisible();
+  const viewer = bookImage.locator('..');
+  const viewerBox = await viewer.boundingBox();
+  expect(viewerBox).not.toBeNull();
+  expect(Math.abs(viewerBox.height / viewerBox.width - a5Ratio)).toBeLessThan(0.03);
+
+  console.log('PASS: guest editor uses A5-like 750x1064 ratio');
   console.log('PASS: no horizontal overflow at 390x844');
-  console.log('PASS: editor controls >= 44px and submit >= 48px');
+  console.log('PASS: editor controls remain touch friendly');
   console.log('PASS: add-text autosaves through live API');
   console.log('PASS: browser submit closes guest page');
+  console.log('PASS: finished book uses same A5-like ratio');
 
   await context.close();
 });
