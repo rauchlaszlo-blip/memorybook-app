@@ -115,15 +115,28 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const copyInvite = async (page: OwnerPage) => {
     if (!page.inviteToken) return;
 
-    const url = `${origin}/p/${page.inviteToken}`;
+    const pageUrl = `${origin}/p/${page.inviteToken}`;
+    const ctaUrl = `${origin}/nekem-is-kell`;
+    const message = [
+      'Szia!',
+      '',
+      `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,
+      '',
+      'A saját oldalad itt éred el:',
+      pageUrl,
+      '',
+      'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',
+      '',
+      `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,
+    ].join('\n');
 
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(message);
       setCopiedPageId(page.id);
       window.setTimeout(() => setCopiedPageId(null), 1800);
     } catch (err) {
       console.error(err);
-      window.prompt('Másold ki a meghívó linket:', url);
+      window.prompt('Másold ki a meghívó üzenetet:', message);
     }
   };
 
@@ -404,8 +417,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                         style={styles.primaryButton}
                       >
                         {copiedPageId === page.id
-                          ? 'Link kimásolva'
-                          : 'Meghívó link másolása'}
+                          ? 'Meghívó üzenet kimásolva'
+                          : 'Meghívó üzenet másolása'}
                       </button>
                     </>
                   )}

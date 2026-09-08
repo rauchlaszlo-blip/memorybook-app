@@ -9,6 +9,7 @@ import { PublicPage } from './PublicPage.tsx'
 import { JoinPage } from './JoinPage.tsx'
 import { OrganizerContributionsPage } from './OrganizerContributionsPage.tsx'
 import { BookViewerPage } from './BookViewerPage.tsx'
+import { InviteCtaPage } from './InviteCtaPage.tsx'
 
 const path = window.location.pathname
 const ownerBookMatch = path.match(/^\/my-books\/([^/]+)$/)
@@ -20,6 +21,8 @@ const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
 
 const root = path === '/login'
   ? <AuthPage />
+  : path === '/nekem-is-kell'
+    ? <InviteCtaPage />
   : path === '/' || path === '/my-books'
     ? <MyBooksPage />
     : ownerBookMatch
