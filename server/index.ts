@@ -1089,13 +1089,29 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
 app.get('/api/books/:bookId/pages', async (req, res) => {
   try {
     const bookResult = await pool.query(
-      `SELECT id, title FROM books WHERE id = $1`,
+      `SELECT id, title, owner_user_id AS "ownerUserId"
+       FROM books
+       WHERE id = $1`,
       [req.params.bookId]
     );
 
     if (bookResult.rowCount === 0) {
       res.status(404).json({ error: 'BOOK_NOT_FOUND' });
       return;
+    }
+
+    if (req.params.bookId !== DEMO_BOOK_ID) {
+      const session = await getSession(req);
+
+      if (!session) {
+        res.status(401).json({ error: 'UNAUTHENTICATED' });
+        return;
+      }
+
+      if (session.user.id !== bookResult.rows[0].ownerUserId) {
+        res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+        return;
+      }
     }
 
     const result = await pool.query(
@@ -1111,8 +1127,10 @@ app.get('/api/books/:bookId/pages', async (req, res) => {
       [req.params.bookId]
     );
 
+    const { ownerUserId: _ownerUserId, ...bookData } = bookResult.rows[0];
+
     res.status(200).json({
-      book: bookResult.rows[0],
+      book: bookData,
       pages: result.rows,
     });
   } catch (err) {
@@ -1239,10 +1257,15 @@ app.get('/api/pages/:id', async (req, res) => {
 
     const row = result.rows[0];
 
-    if (row.ownerVisibility === 'archived' && row.bookId !== DEMO_BOOK_ID) {
+    if (row.bookId !== DEMO_BOOK_ID) {
       const session = await getSession(req);
 
-      if (!session || session.user.id !== row.ownerUserId) {
+      if (!session) {
+        res.status(401).json({ error: 'UNAUTHENTICATED' });
+        return;
+      }
+
+      if (session.user.id !== row.ownerUserId) {
         res.status(404).json({ error: 'PAGE_NOT_FOUND' });
         return;
       }
