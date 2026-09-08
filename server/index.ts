@@ -51,6 +51,17 @@ async function deletePreviewSafely(
   return;
 }
 
+async function deletePagePreviewAsset(pageId: string): Promise<void> {
+  try {
+    await cloudinary.uploader.destroy(`memorybook/previews/page-${pageId}`, {
+      resource_type: 'image',
+      invalidate: true,
+    });
+  } catch (err) {
+    console.error('Page preview delete warning:', err);
+  }
+}
+
 async function processAndSavePreview(
   pageId: string,
   dataUrl: string
@@ -373,6 +384,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
          version,
          invite_status AS "inviteStatus",
          invite_token AS "inviteToken",
+         owner_visibility AS "ownerVisibility",
          submitted_at AS "submittedAt",
          updated_at AS "updatedAt"
        FROM pages
@@ -455,6 +467,152 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite', async (req, res) => {
   } catch (err) {
     console.error('Page invite create error:', err);
     res.status(500).json({ error: 'PAGE_INVITE_CREATE_FAILED' });
+  }
+});
+
+app.patch('/api/my/books/:bookId/pages/:pageId/visibility', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const visibility = req.body?.visibility;
+
+  if (!['active', 'archived'].includes(visibility)) {
+    res.status(400).json({ error: 'INVALID_PAGE_VISIBILITY' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const pageResult = await pool.query(
+      `SELECT p.id, p.invite_status AS "inviteStatus"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (pageResult.rowCount === 0) {
+      res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+      return;
+    }
+
+    if (pageResult.rows[0].inviteStatus !== 'submitted') {
+      res.status(409).json({ error: 'PAGE_NOT_SUBMITTED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE pages
+       SET owner_visibility = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND book_id = $3
+       RETURNING
+         id,
+         page_number AS "pageNumber",
+         version,
+         invite_status AS "inviteStatus",
+         invite_token AS "inviteToken",
+         owner_visibility AS "ownerVisibility",
+         submitted_at AS "submittedAt",
+         updated_at AS "updatedAt"`,
+      [visibility, req.params.pageId, req.params.bookId]
+    );
+
+    res.status(200).json({ success: true, page: result.rows[0] });
+  } catch (err) {
+    console.error('Owner page visibility update error:', err);
+    res.status(500).json({ error: 'OWNER_PAGE_VISIBILITY_UPDATE_FAILED' });
+  }
+});
+
+app.delete('/api/my/books/:bookId/pages/:pageId', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const session = await getSession(req).catch(() => null);
+
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const pageResult = await client.query(
+      `SELECT
+         p.id,
+         p.page_number AS "pageNumber",
+         p.invite_status AS "inviteStatus"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3
+       FOR UPDATE OF p`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (pageResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+      return;
+    }
+
+    if (pageResult.rows[0].inviteStatus !== 'submitted') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_NOT_SUBMITTED' });
+      return;
+    }
+
+    const result = await client.query(
+      `UPDATE pages
+       SET canvas_json = '{}'::jsonb,
+           preview_image_url = NULL,
+           version = version + 1,
+           invite_token = NULL,
+           invite_status = 'empty',
+           invite_created_at = NULL,
+           submitted_at = NULL,
+           owner_visibility = 'active',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND book_id = $2
+       RETURNING
+         id,
+         page_number AS "pageNumber",
+         version,
+         invite_status AS "inviteStatus",
+         invite_token AS "inviteToken",
+         owner_visibility AS "ownerVisibility",
+         submitted_at AS "submittedAt",
+         updated_at AS "updatedAt"`,
+      [req.params.pageId, req.params.bookId]
+    );
+
+    await client.query('COMMIT');
+    deletePagePreviewAsset(req.params.pageId).catch(() => {});
+
+    res.status(200).json({ success: true, page: result.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Owner page delete error:', err);
+    res.status(500).json({ error: 'OWNER_PAGE_DELETE_FAILED' });
+  } finally {
+    client.release();
   }
 });
 
@@ -626,6 +784,7 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
     const result = await client.query(
       `UPDATE pages
        SET invite_status = 'submitted',
+           owner_visibility = 'active',
            submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
@@ -823,6 +982,7 @@ app.get('/api/books/:bookId/pages', async (req, res) => {
          updated_at AS "updatedAt"
        FROM pages
        WHERE book_id = $1
+         AND owner_visibility = 'active'
        ORDER BY page_number ASC, id ASC`,
       [req.params.bookId]
     );
@@ -933,14 +1093,18 @@ app.get('/api/pages/:id', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
-         id,
-         page_number AS "pageNumber",
-         canvas_json AS "canvasData",
-         preview_image_url AS "previewImageUrl",
-         version,
-         updated_at AS "updatedAt"
-       FROM pages
-       WHERE id = $1`,
+         p.id,
+         p.page_number AS "pageNumber",
+         p.canvas_json AS "canvasData",
+         p.preview_image_url AS "previewImageUrl",
+         p.version,
+         p.owner_visibility AS "ownerVisibility",
+         p.updated_at AS "updatedAt",
+         p.book_id AS "bookId",
+         b.owner_user_id AS "ownerUserId"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1`,
       [req.params.id]
     );
 
@@ -949,7 +1113,19 @@ app.get('/api/pages/:id', async (req, res) => {
       return;
     }
 
-    res.status(200).json(result.rows[0]);
+    const row = result.rows[0];
+
+    if (row.ownerVisibility === 'archived' && row.bookId !== DEMO_BOOK_ID) {
+      const session = await getSession(req);
+
+      if (!session || session.user.id !== row.ownerUserId) {
+        res.status(404).json({ error: 'PAGE_NOT_FOUND' });
+        return;
+      }
+    }
+
+    const { bookId: _bookId, ownerUserId: _ownerUserId, ownerVisibility: _ownerVisibility, ...pageData } = row;
+    res.status(200).json(pageData);
   } catch (err) {
     console.error('Page load error:', err);
     res.status(500).json({ error: 'PAGE_LOAD_FAILED' });
@@ -1156,6 +1332,7 @@ async function initializeDatabase(): Promise<void> {
       invite_status TEXT NOT NULL DEFAULT 'empty',
       invite_created_at TIMESTAMPTZ,
       submitted_at TIMESTAMPTZ,
+      owner_visibility TEXT NOT NULL DEFAULT 'active',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -1165,6 +1342,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'empty'`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS invite_created_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_visibility TEXT NOT NULL DEFAULT 'active'`);
 
   await pool.query(
     `UPDATE pages SET book_id = $1 WHERE book_id IS NULL`,
@@ -1209,7 +1387,7 @@ async function initializeDatabase(): Promise<void> {
     [DEMO_BOOK_ID]
   );
 
-  console.log('Users, books, contributions, pages and page invites ready.');
+  console.log('Users, books, contributions, pages and owner page controls ready.');
 }
 
 async function startServer(): Promise<void> {
