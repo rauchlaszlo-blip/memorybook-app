@@ -58,10 +58,20 @@ jobs:
               const request = route.request();
               const url = new URL(request.url());
               const path = url.pathname;
+              const cors = {
+                'access-control-allow-origin': 'http://127.0.0.1:4173',
+                'access-control-allow-credentials': 'true',
+                'access-control-allow-methods': 'GET,POST,PATCH,OPTIONS',
+                'access-control-allow-headers': 'content-type',
+              };
+
+              if (request.method() === 'OPTIONS') {
+                return route.fulfill({ status: 204, headers: cors, body: '' });
+              }
 
               const json = (body, status = 200) => route.fulfill({
                 status,
-                contentType: 'application/json',
+                headers: { ...cors, 'content-type': 'application/json' },
                 body: JSON.stringify(body),
               });
 
@@ -103,7 +113,11 @@ jobs:
               }
               if (path === '/api/my/notifications/notification-ui-test/read' && request.method() === 'PATCH') {
                 unreadCount = 0;
-                return json({ success: true, notification: { id: 'notification-ui-test', readAt: '2026-09-08T18:01:00Z' }, unreadCount });
+                return json({
+                  success: true,
+                  notification: { id: 'notification-ui-test', readAt: '2026-09-08T18:01:00Z' },
+                  unreadCount,
+                });
               }
               if (path === '/api/my/books/book-ui-test/pages') {
                 return json({
