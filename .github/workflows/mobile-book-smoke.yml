@@ -1,0 +1,121 @@
+name: Mobile Finished Book Smoke
+
+on:
+  push:
+    branches:
+      - mobile-book-smoke-2026-09-08
+
+jobs:
+  mobile-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test mobile finished book view
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install @playwright/test@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+          cat > mobile.spec.js <<'EOF'
+          const { test, expect } = require('@playwright/test');
+
+          test('mobile finished book layout', async ({ browser }) => {
+            const base = 'https://memorybook-app.onrender.com';
+            const stamp = Date.now();
+            const email = `memorybook-mobile-${stamp}@example.com`;
+            const password = `Mobile-${stamp}-Aa9!`;
+            const title = `Mobile Book ${stamp}`;
+
+            const context = await browser.newContext({
+              viewport: { width: 390, height: 844 },
+              isMobile: true,
+              hasTouch: true,
+            });
+            const page = await context.newPage();
+            const api = context.request;
+
+            const signUp = await api.post(`${base}/api/auth/sign-up/email`, {
+              headers: { Origin: base },
+              data: {
+                name: 'MemoryBook Mobile Test',
+                email,
+                password,
+              },
+            });
+            expect([200, 201]).toContain(signUp.status());
+
+            const createBook = await api.post(`${base}/api/my/books`, {
+              data: { title },
+            });
+            expect(createBook.status()).toBe(201);
+            const bookId = (await createBook.json()).book.id;
+
+            const pagesResponse = await api.get(`${base}/api/my/books/${bookId}/pages`);
+            expect(pagesResponse.ok()).toBeTruthy();
+            const firstPage = (await pagesResponse.json()).pages[0];
+
+            const inviteResponse = await api.post(
+              `${base}/api/my/books/${bookId}/pages/${firstPage.id}/invite`
+            );
+            expect(inviteResponse.ok()).toBeTruthy();
+            const inviteToken = (await inviteResponse.json()).inviteToken;
+
+            const inviteLoad = await api.get(`${base}/api/page-invites/${inviteToken}`);
+            expect(inviteLoad.ok()).toBeTruthy();
+            const inviteData = await inviteLoad.json();
+
+            const save = await api.put(`${base}/api/page-invites/${inviteToken}`, {
+              data: {
+                canvasData: { version: '7.4.0', objects: [] },
+                expectedVersion: inviteData.version,
+              },
+            });
+            expect(save.ok()).toBeTruthy();
+
+            const submit = await api.post(`${base}/api/page-invites/${inviteToken}/submit`, {
+              data: { authorShareApproved: false },
+            });
+            expect(submit.ok()).toBeTruthy();
+
+            await page.goto(`${base}/book/${bookId}/view`, { waitUntil: 'networkidle' });
+
+            await expect(page.getByText('1 / 1 oldal')).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Előző oldal' })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Következő oldal' })).toBeVisible();
+            await expect(page.getByText(bookId)).toHaveCount(0);
+
+            const previewText = page.getByText('Ehhez az oldalhoz nincs előnézeti kép.');
+            await expect(previewText).toBeVisible();
+            const viewer = previewText.locator('..').locator('..');
+            const viewerBox = await viewer.boundingBox();
+            expect(viewerBox).not.toBeNull();
+            expect(viewerBox.width).toBeLessThanOrEqual(366.5);
+            expect(Math.abs(viewerBox.height / viewerBox.width - 4 / 3)).toBeLessThan(0.03);
+
+            for (const label of ['Előző oldal', 'Következő oldal']) {
+              const box = await page.getByRole('button', { name: label }).boundingBox();
+              expect(box).not.toBeNull();
+              expect(box.height).toBeGreaterThanOrEqual(44);
+            }
+
+            const overflow = await page.evaluate(() => ({
+              scrollWidth: document.documentElement.scrollWidth,
+              innerWidth: window.innerWidth,
+            }));
+            expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
+
+            const cleanup = await api.delete(
+              `${base}/api/my/books/${bookId}/pages/${firstPage.id}`
+            );
+            expect(cleanup.ok()).toBeTruthy();
+
+            console.log('PASS: 390x844 mobile viewport');
+            console.log('PASS: no horizontal overflow');
+            console.log('PASS: finished page keeps 3:4 aspect ratio');
+            console.log('PASS: navigation buttons are at least 44px high');
+            console.log('PASS: technical book id is hidden from reader view');
+
+            await context.close();
+          });
+          EOF
+          npx playwright test mobile.spec.js --workers=1
