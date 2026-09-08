@@ -33,8 +33,14 @@ export function OrganizerContributionsPage({
     const loadContributions = async () => {
       try {
         const response = await fetch(
-          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/contributions`
+          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/contributions`,
+          { credentials: 'include' }
         );
+
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error('CONTRIBUTIONS_LOAD_FAILED');
