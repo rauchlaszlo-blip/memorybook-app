@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   edit-build-commit:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,8 +18,12 @@ jobs:
           ref: notifications-api-2026-09-08
 
       - name: Insert notification API routes
+        env:
+          ROUTES_B64: CgphcHAuZ2V0KCcvYXBpL215L25vdGlmaWNhdGlvbnMnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICBpZiAoIWF1dGgpIHsKICAgIHJlcy5zdGF0dXMoNTAzKS5qc29uKHsgZXJyb3I6ICdBVVRIX05PVF9DT05GSUdVUkVEJyB9KTsKICAgIHJldHVybjsKICB9CgogIHRyeSB7CiAgICBjb25zdCBzZXNzaW9uID0gYXdhaXQgZ2V0U2Vzc2lvbihyZXEpOwogICAgaWYgKCFzZXNzaW9uKSB7CiAgICAgIHJlcy5zdGF0dXMoNDAxKS5qc29uKHsgZXJyb3I6ICdVTkFVVEhFTlRJQ0FURUQnIH0pOwogICAgICByZXR1cm47CiAgICB9CgogICAgY29uc3QgcmVxdWVzdGVkTGltaXQgPSBOdW1iZXIocmVxLnF1ZXJ5LmxpbWl0ID8/IDUwKTsKICAgIGNvbnN0IGxpbWl0ID0gTnVtYmVyLmlzSW50ZWdlcihyZXF1ZXN0ZWRMaW1pdCkKICAgICAgPyBNYXRoLm1pbigxMDAsIE1hdGgubWF4KDEsIHJlcXVlc3RlZExpbWl0KSkKICAgICAgOiA1MDsKCiAgICBjb25zdCBbbm90aWZpY2F0aW9uc1Jlc3VsdCwgdW5yZWFkUmVzdWx0XSA9IGF3YWl0IFByb21pc2UuYWxsKFsKICAgICAgcG9vbC5xdWVyeSgKICAgICAgICBgU0VMRUNUCiAgICAgICAgICAgbi5pZCwKICAgICAgICAgICBuLnR5cGUsCiAgICAgICAgICAgbi5ib29rX2lkIEFTICJib29rSWQiLAogICAgICAgICAgIGIudGl0bGUgQVMgImJvb2tUaXRsZSIsCiAgICAgICAgICAgbi5zb3VyY2VfcGFnZV9pZCBBUyAicGFnZUlkIiwKICAgICAgICAgICBuLmFjdG9yX25hbWUgQVMgImFjdG9yTmFtZSIsCiAgICAgICAgICAgbi5wYWdlX251bWJlciBBUyAicGFnZU51bWJlciIsCiAgICAgICAgICAgbi5yZWFkX2F0IEFTICJyZWFkQXQiLAogICAgICAgICAgIG4uY3JlYXRlZF9hdCBBUyAiY3JlYXRlZEF0IiwKICAgICAgICAgICAnL215LWJvb2tzLycgfHwgbi5ib29rX2lkIHx8ICc/cGFnZT0nIHx8IG4uc291cmNlX3BhZ2VfaWQgQVMgInRhcmdldFBhdGgiCiAgICAgICAgIEZST00gbm90aWZpY2F0aW9ucyBuCiAgICAgICAgIEpPSU4gYm9va3MgYiBPTiBiLmlkID0gbi5ib29rX2lkCiAgICAgICAgIFdIRVJFIG4ucmVjaXBpZW50X3VzZXJfaWQgPSAkMQogICAgICAgICBPUkRFUiBCWSBuLmNyZWF0ZWRfYXQgREVTQywgbi5pZCBERVNDCiAgICAgICAgIExJTUlUICQyYCwKICAgICAgICBbc2Vzc2lvbi51c2VyLmlkLCBsaW1pdF0KICAgICAgKSwKICAgICAgcG9vbC5xdWVyeSgKICAgICAgICBgU0VMRUNUIENPVU5UKCopOjppbnQgQVMgY291bnQKICAgICAgICAgRlJPTSBub3RpZmljYXRpb25zCiAgICAgICAgIFdIRVJFIHJlY2lwaWVudF91c2VyX2lkID0gJDEKICAgICAgICAgICBBTkQgcmVhZF9hdCBJUyBOVUxMYCwKICAgICAgICBbc2Vzc2lvbi51c2VyLmlkXQogICAgICApLAogICAgXSk7CgogICAgcmVzLnN0YXR1cygyMDApLmpzb24oewogICAgICBub3RpZmljYXRpb25zOiBub3RpZmljYXRpb25zUmVzdWx0LnJvd3MsCiAgICAgIHVucmVhZENvdW50OiBOdW1iZXIodW5yZWFkUmVzdWx0LnJvd3NbMF0/LmNvdW50IHx8IDApLAogICAgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBjb25zb2xlLmVycm9yKCdOb3RpZmljYXRpb24gbGlzdCBlcnJvcjonLCBlcnIpOwogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogJ05PVElGSUNBVElPTl9MSVNUX0ZBSUxFRCcgfSk7CiAgfQp9KTsKCmFwcC5nZXQoJy9hcGkvbXkvbm90aWZpY2F0aW9ucy91bnJlYWQtY291bnQnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICBpZiAoIWF1dGgpIHsKICAgIHJlcy5zdGF0dXMoNTAzKS5qc29uKHsgZXJyb3I6ICdBVVRIX05PVF9DT05GSUdVUkVEJyB9KTsKICAgIHJldHVybjsKICB9CgogIHRyeSB7CiAgICBjb25zdCBzZXNzaW9uID0gYXdhaXQgZ2V0U2Vzc2lvbihyZXEpOwogICAgaWYgKCFzZXNzaW9uKSB7CiAgICAgIHJlcy5zdGF0dXMoNDAxKS5qc29uKHsgZXJyb3I6ICdVTkFVVEhFTlRJQ0FURUQnIH0pOwogICAgICByZXR1cm47CiAgICB9CgogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgcG9vbC5xdWVyeSgKICAgICAgYFNFTEVDVCBDT1VOVCgqKTo6aW50IEFTIGNvdW50CiAgICAgICBGUk9NIG5vdGlmaWNhdGlvbnMKICAgICAgIFdIRVJFIHJlY2lwaWVudF91c2VyX2lkID0gJDEKICAgICAgICAgQU5EIHJlYWRfYXQgSVMgTlVMTGAsCiAgICAgIFtzZXNzaW9uLnVzZXIuaWRdCiAgICApOwoKICAgIHJlcy5zdGF0dXMoMjAwKS5qc29uKHsgdW5yZWFkQ291bnQ6IE51bWJlcihyZXN1bHQucm93c1swXT8uY291bnQgfHwgMCkgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBjb25zb2xlLmVycm9yKCdOb3RpZmljYXRpb24gdW5yZWFkIGNvdW50IGVycm9yOicsIGVycik7CiAgICByZXMuc3RhdHVzKDUwMCkuanNvbih7IGVycm9yOiAnTk9USUZJQ0FUSU9OX1VOUkVBRF9DT1VOVF9GQUlMRUQnIH0pOwogIH0KfSk7CgphcHAucGF0Y2goJy9hcGkvbXkvbm90aWZpY2F0aW9ucy86bm90aWZpY2F0aW9uSWQvcmVhZCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghYXV0aCkgewogICAgcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ0FVVEhfTk9UX0NPTkZJR1VSRUQnIH0pOwogICAgcmV0dXJuOwogIH0KCiAgdHJ5IHsKICAgIGNvbnN0IHNlc3Npb24gPSBhd2FpdCBnZXRTZXNzaW9uKHJlcSk7CiAgICBpZiAoIXNlc3Npb24pIHsKICAgICAgcmVzLnN0YXR1cyg0MDEpLmpzb24oeyBlcnJvcjogJ1VOQVVUSEVOVElDQVRFRCcgfSk7CiAgICAgIHJldHVybjsKICAgIH0KCiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KAogICAgICBgVVBEQVRFIG5vdGlmaWNhdGlvbnMKICAgICAgIFNFVCByZWFkX2F0ID0gQ09BTEVTQ0UocmVhZF9hdCwgQ1VSUkVOVF9USU1FU1RBTVApCiAgICAgICBXSEVSRSBpZCA9ICQxCiAgICAgICAgIEFORCByZWNpcGllbnRfdXNlcl9pZCA9ICQyCiAgICAgICBSRVRVUk5JTkcgaWQsIHJlYWRfYXQgQVMgInJlYWRBdCJgLAogICAgICBbcmVxLnBhcmFtcy5ub3RpZmljYXRpb25JZCwgc2Vzc2lvbi51c2VyLmlkXQogICAgKTsKCiAgICBpZiAocmVzdWx0LnJvd0NvdW50ID09PSAwKSB7CiAgICAgIHJlcy5zdGF0dXMoNDA0KS5qc29uKHsgZXJyb3I6ICdOT1RJRklDQVRJT05fTk9UX0ZPVU5EJyB9KTsKICAgICAgcmV0dXJuOwogICAgfQoKICAgIGNvbnN0IHVucmVhZFJlc3VsdCA9IGF3YWl0IHBvb2wucXVlcnkoCiAgICAgIGBTRUxFQ1QgQ09VTlQoKik6OmludCBBUyBjb3VudAogICAgICAgRlJPTSBub3RpZmljYXRpb25zCiAgICAgICBXSEVSRSByZWNpcGllbnRfdXNlcl9pZCA9ICQxCiAgICAgICAgIEFORCByZWFkX2F0IElTIE5VTExgLAogICAgICBbc2Vzc2lvbi51c2VyLmlkXQogICAgKTsKCiAgICByZXMuc3RhdHVzKDIwMCkuanNvbih7CiAgICAgIHN1Y2Nlc3M6IHRydWUsCiAgICAgIG5vdGlmaWNhdGlvbjogcmVzdWx0LnJvd3NbMF0sCiAgICAgIHVucmVhZENvdW50OiBOdW1iZXIodW5yZWFkUmVzdWx0LnJvd3NbMF0/LmNvdW50IHx8IDApLAogICAgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBjb25zb2xlLmVycm9yKCdOb3RpZmljYXRpb24gcmVhZC1zdGF0ZSBlcnJvcjonLCBlcnIpOwogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogJ05PVElGSUNBVElPTl9SRUFEX1NUQVRFX0ZBSUxFRCcgfSk7CiAgfQp9KTsK
         run: |
           python - <<'PY'
+          import base64
+          import os
           from pathlib import Path
 
           path = Path('server/index.ts')
@@ -30,141 +33,7 @@ jobs:
               raise SystemExit('Notification API routes already exist')
           if marker not in text:
               raise SystemExit('Insertion marker not found')
-
-          routes = r'''
-
-app.get('/api/my/notifications', async (req, res) => {
-  if (!auth) {
-    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
-    return;
-  }
-
-  try {
-    const session = await getSession(req);
-    if (!session) {
-      res.status(401).json({ error: 'UNAUTHENTICATED' });
-      return;
-    }
-
-    const requestedLimit = Number(req.query.limit ?? 50);
-    const limit = Number.isInteger(requestedLimit)
-      ? Math.min(100, Math.max(1, requestedLimit))
-      : 50;
-
-    const [notificationsResult, unreadResult] = await Promise.all([
-      pool.query(
-        `SELECT
-           n.id,
-           n.type,
-           n.book_id AS "bookId",
-           b.title AS "bookTitle",
-           n.source_page_id AS "pageId",
-           n.actor_name AS "actorName",
-           n.page_number AS "pageNumber",
-           n.read_at AS "readAt",
-           n.created_at AS "createdAt",
-           '/my-books/' || n.book_id || '?page=' || n.source_page_id AS "targetPath"
-         FROM notifications n
-         JOIN books b ON b.id = n.book_id
-         WHERE n.recipient_user_id = $1
-         ORDER BY n.created_at DESC, n.id DESC
-         LIMIT $2`,
-        [session.user.id, limit]
-      ),
-      pool.query(
-        `SELECT COUNT(*)::int AS count
-         FROM notifications
-         WHERE recipient_user_id = $1
-           AND read_at IS NULL`,
-        [session.user.id]
-      ),
-    ]);
-
-    res.status(200).json({
-      notifications: notificationsResult.rows,
-      unreadCount: Number(unreadResult.rows[0]?.count || 0),
-    });
-  } catch (err) {
-    console.error('Notification list error:', err);
-    res.status(500).json({ error: 'NOTIFICATION_LIST_FAILED' });
-  }
-});
-
-app.get('/api/my/notifications/unread-count', async (req, res) => {
-  if (!auth) {
-    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
-    return;
-  }
-
-  try {
-    const session = await getSession(req);
-    if (!session) {
-      res.status(401).json({ error: 'UNAUTHENTICATED' });
-      return;
-    }
-
-    const result = await pool.query(
-      `SELECT COUNT(*)::int AS count
-       FROM notifications
-       WHERE recipient_user_id = $1
-         AND read_at IS NULL`,
-      [session.user.id]
-    );
-
-    res.status(200).json({ unreadCount: Number(result.rows[0]?.count || 0) });
-  } catch (err) {
-    console.error('Notification unread count error:', err);
-    res.status(500).json({ error: 'NOTIFICATION_UNREAD_COUNT_FAILED' });
-  }
-});
-
-app.patch('/api/my/notifications/:notificationId/read', async (req, res) => {
-  if (!auth) {
-    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
-    return;
-  }
-
-  try {
-    const session = await getSession(req);
-    if (!session) {
-      res.status(401).json({ error: 'UNAUTHENTICATED' });
-      return;
-    }
-
-    const result = await pool.query(
-      `UPDATE notifications
-       SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
-       WHERE id = $1
-         AND recipient_user_id = $2
-       RETURNING id, read_at AS "readAt"`,
-      [req.params.notificationId, session.user.id]
-    );
-
-    if (result.rowCount === 0) {
-      res.status(404).json({ error: 'NOTIFICATION_NOT_FOUND' });
-      return;
-    }
-
-    const unreadResult = await pool.query(
-      `SELECT COUNT(*)::int AS count
-       FROM notifications
-       WHERE recipient_user_id = $1
-         AND read_at IS NULL`,
-      [session.user.id]
-    );
-
-    res.status(200).json({
-      success: true,
-      notification: result.rows[0],
-      unreadCount: Number(unreadResult.rows[0]?.count || 0),
-    });
-  } catch (err) {
-    console.error('Notification read-state error:', err);
-    res.status(500).json({ error: 'NOTIFICATION_READ_STATE_FAILED' });
-  }
-});
-'''
-
+          routes = base64.b64decode(os.environ['ROUTES_B64']).decode('utf-8')
           path.write_text(text.replace(marker, routes + marker, 1), encoding='utf-8')
           PY
 
