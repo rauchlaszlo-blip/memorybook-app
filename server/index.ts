@@ -278,8 +278,22 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
   }
 });
 
-app.get('/api/pages', async (_req, res) => {
+app.get('/api/books/:bookId/pages', async (req, res) => {
+  const { bookId } = req.params;
+
   try {
+    const bookResult = await pool.query(
+      `SELECT id, title
+       FROM books
+       WHERE id = $1`,
+      [bookId]
+    );
+
+    if (bookResult.rowCount === 0) {
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+
     const result = await pool.query(
       `SELECT
          id,
@@ -287,10 +301,16 @@ app.get('/api/pages', async (_req, res) => {
          version,
          updated_at AS "updatedAt"
        FROM pages
-       ORDER BY page_number ASC, id ASC`
+       WHERE book_id = $1
+       ORDER BY page_number ASC, id ASC`,
+      [bookId]
     );
 
     res.status(200).json({
+      book: {
+        id: bookResult.rows[0].id,
+        title: bookResult.rows[0].title,
+      },
       pages: result.rows,
     });
   } catch (err) {
@@ -298,7 +318,8 @@ app.get('/api/pages', async (_req, res) => {
     res.status(500).json({ error: 'PAGE_LIST_LOAD_FAILED' });
   }
 });
-app.put('/api/pages/reorder', async (req, res) => {
+app.put('/api/books/:bookId/pages/reorder', async (req, res) => {
+  const { bookId } = req.params;
   const { pageIds } = req.body;
 
   if (
@@ -322,11 +343,27 @@ app.put('/api/pages/reorder', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const bookResult = await client.query(
+      `SELECT id
+       FROM books
+       WHERE id = $1
+       FOR UPDATE`,
+      [bookId]
+    );
+
+    if (bookResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+
     const existingResult = await client.query(
       `SELECT id
        FROM pages
+       WHERE book_id = $1
        ORDER BY page_number ASC, id ASC
-       FOR UPDATE`
+       FOR UPDATE`,
+      [bookId]
     );
 
     const existingIds = existingResult.rows.map((row) => String(row.id));
@@ -345,8 +382,9 @@ app.put('/api/pages/reorder', async (req, res) => {
         `UPDATE pages
          SET page_number = $1,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [index + 1, pageIds[index]]
+         WHERE id = $2
+           AND book_id = $3`,
+        [index + 1, pageIds[index], bookId]
       );
     }
 
