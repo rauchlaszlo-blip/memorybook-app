@@ -1,0 +1,27 @@
+name: Event Device Limit Build
+on:
+  push:
+    branches:
+      - event-device-limit-2026-09-08
+    paths:
+      - .github/workflows/event-device-limit-build.yml
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply event device limit patch
+        run: python3 scripts/patch-event-device-limit.py
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Commit application changes
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add server/index.ts src/OwnerBookPage.tsx src/JoinPage.tsx src/EventBookSettings.tsx
+          git commit -m "Add per-event device submission limit" || exit 0
+          git push origin HEAD:event-device-limit-2026-09-08
