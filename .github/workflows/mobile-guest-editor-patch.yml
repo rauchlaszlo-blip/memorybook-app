@@ -1,0 +1,113 @@
+name: Patch Guest Editor Mobile
+
+on:
+  push:
+    branches:
+      - mobile-book-smoke-2026-09-08
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply responsive guest editor patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/MemoryBookEditor.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit('Expected MemoryBookEditor pattern not found:\n' + old[:240])
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "  const canvasHostRef = useRef<HTMLDivElement | null>(null);\n  const fabricRef = useRef<fabric.Canvas | null>(null);",
+              "  const canvasHostRef = useRef<HTMLDivElement | null>(null);\n  const canvasViewportRef = useRef<HTMLDivElement | null>(null);\n  const fabricRef = useRef<fabric.Canvas | null>(null);"
+          )
+
+          replace_once(
+              "  const [canRedo, setCanRedo] = useState(false);",
+              "  const [canRedo, setCanRedo] = useState(false);\n  const [canvasScale, setCanvasScale] = useState(1);"
+          )
+
+          marker = "  const getPageState = useCallback(\n"
+          effect = """  useEffect(() => {\n    const viewport = canvasViewportRef.current;\n    if (!viewport) return;\n\n    const updateScale = () => {\n      const availableWidth = viewport.clientWidth || CANVAS_WIDTH;\n      setCanvasScale(Math.min(1, availableWidth / CANVAS_WIDTH));\n    };\n\n    updateScale();\n    const observer =\n      typeof ResizeObserver !== 'undefined'\n        ? new ResizeObserver(updateScale)\n        : null;\n    observer?.observe(viewport);\n    window.addEventListener('resize', updateScale);\n\n    return () => {\n      observer?.disconnect();\n      window.removeEventListener('resize', updateScale);\n    };\n  }, []);\n\n"""
+          if marker not in text:
+              raise SystemExit('getPageState marker not found')
+          text = text.replace(marker, effect + marker, 1)
+
+          replace_once(
+              "      <div\n        style={{\n          maxWidth: 850,",
+              "      <style>{`\n        .memorybook-editor-toolbar button,\n        .memorybook-editor-toolbar label {\n          min-height: 44px;\n          box-sizing: border-box;\n          font-size: 14px;\n          font-weight: 700;\n        }\n        .memorybook-editor-toolbar button {\n          padding: 9px 12px;\n        }\n        .memorybook-editor-toolbar input[type='range'] {\n          min-width: 120px;\n          height: 44px;\n        }\n      `}</style>\n\n      <div\n        className=\"memorybook-editor-toolbar\"\n        style={{\n          maxWidth: 850,"
+          )
+
+          replace_once(
+              "        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>",
+              "        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>"
+          )
+
+          old_canvas = """      <div\n        style={{\n          width: CANVAS_WIDTH,\n          maxWidth: '100%',\n          margin: '0 auto',\n          background: '#fff',\n          border: '1px solid #cbd5e1',\n          boxShadow: '0 10px 30px rgba(0,0,0,.12)',\n          overflow: 'auto',\n        }}\n      >\n        <div\n          ref={canvasHostRef}\n          style={{\n            width: CANVAS_WIDTH,\n            height: CANVAS_HEIGHT,\n          }}\n        />\n      </div>"""
+          new_canvas = """      <div\n        ref={canvasViewportRef}\n        style={{\n          width: '100%',\n          maxWidth: CANVAS_WIDTH,\n          margin: '0 auto',\n        }}\n      >\n        <div\n          data-testid=\"memorybook-canvas-frame\"\n          style={{\n            width: CANVAS_WIDTH * canvasScale,\n            height: CANVAS_HEIGHT * canvasScale,\n            margin: '0 auto',\n            background: '#fff',\n            border: '1px solid #cbd5e1',\n            boxShadow: '0 10px 30px rgba(0,0,0,.12)',\n            overflow: 'hidden',\n            touchAction: isDrawing || isErasing ? 'none' : 'manipulation',\n          }}\n        >\n          <div\n            ref={canvasHostRef}\n            style={{\n              width: CANVAS_WIDTH,\n              height: CANVAS_HEIGHT,\n              transform: `scale(${canvasScale})`,\n              transformOrigin: 'top left',\n            }}\n          />\n        </div>\n      </div>"""
+          replace_once(old_canvas, new_canvas)
+
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('src/PageInviteEditorPage.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_page(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit('Expected PageInviteEditorPage pattern not found:\n' + old[:240])
+              text = text.replace(old, new, 1)
+
+          replace_page(
+              "    fontSize: 26,",
+              "    fontSize: 'clamp(22px, 7vw, 28px)',"
+          )
+          replace_page(
+              "    gap: 10,\n    padding: 12,",
+              "    gap: 12,\n    padding: 12,"
+          )
+          replace_page(
+              "            type=\"checkbox\"\n            checked={authorShareApproved}",
+              "            type=\"checkbox\"\n            aria-label=\"Nyilvános megosztás engedélyezése\"\n            checked={authorShareApproved}\n            style={{ width: 20, height: 20, flex: '0 0 auto' }}"
+          )
+          replace_page(
+              "    alignItems: 'center',\n    gap: 10,",
+              "    alignItems: 'stretch',\n    flexDirection: 'column',\n    gap: 10,"
+          )
+          replace_page(
+              "    padding: '11px 16px',\n    border: 0,",
+              "    minHeight: 48,\n    width: '100%',\n    padding: '12px 16px',\n    border: 0,"
+          )
+          replace_page(
+              "    fontWeight: 800,\n    cursor: 'pointer',\n  },\n  submitWarning:",
+              "    fontWeight: 800,\n    cursor: 'pointer',\n    touchAction: 'manipulation',\n  },\n  submitWarning:"
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Build
+        run: npm install && npm run build
+
+      - name: Commit mobile guest editor
+        shell: bash
+        run: |
+          git config user.name "rauchlaszlo-blip"
+          git config user.email "rauchlaszlo@gmail.com"
+          git add src/MemoryBookEditor.tsx src/PageInviteEditorPage.tsx
+          git commit -m "Improve guest editor mobile usability"
+          git push origin HEAD:main
