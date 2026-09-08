@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://' + window.location.hostname + ':3001' : '';
-const PAGE_IDS = ['page-1', 'page-2'];
 
 type PageData = {
   id: string;
   pageNumber: number;
   previewImageUrl?: string | null;
+  version: number;
+};
+
+type BookPageSummary = {
+  id: string;
+  pageNumber: number;
   version: number;
 };
 
@@ -16,17 +21,59 @@ type BookViewerPageProps = {
 
 export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [pageIds, setPageIds] = useState<string[]>([]);
+  const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [page, setPage] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const currentPageId = PAGE_IDS[currentIndex];
+  const currentPageId = pageIds[currentIndex];
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentIndex]);
 
   useEffect(() => {
+    const loadBookPages = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setCurrentIndex(0);
+
+        const response = await fetch(
+          `${API_BASE}/api/books/${encodeURIComponent(bookId)}/pages`
+        );
+
+        if (!response.ok) {
+          throw new Error('BOOK_PAGES_LOAD_FAILED');
+        }
+
+        const data = await response.json();
+        const ids = Array.isArray(data.pages)
+          ? data.pages.map((item: BookPageSummary) => String(item.id))
+          : [];
+
+        setPageIds(ids);
+        setBookTitle(data.book?.title || 'MemoryBook');
+        setPage(null);
+      } catch (err) {
+        console.error(err);
+        setError('This book could not be loaded.');
+        setPageIds([]);
+        setPage(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBookPages();
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!currentPageId) {
+      return;
+    }
+
     const loadPage = async () => {
       try {
         setLoading(true);
@@ -45,6 +92,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
       } catch (err) {
         console.error(err);
         setError('This page could not be loaded.');
+        setPage(null);
       } finally {
         setLoading(false);
       }
@@ -62,24 +110,29 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             onClick={() =>
               setCurrentIndex((index) => Math.max(0, index - 1))
             }
-            disabled={currentIndex === 0}
+            disabled={currentIndex === 0 || pageIds.length === 0}
             style={styles.button}
           >
             Previous
           </button>
 
           <div style={styles.pageNumber}>
-            Page {currentIndex + 1} / {PAGE_IDS.length}
+            {pageIds.length > 0
+              ? `Page ${currentIndex + 1} / ${pageIds.length}`
+              : 'No pages'}
           </div>
 
           <button
             type="button"
             onClick={() =>
               setCurrentIndex((index) =>
-                Math.min(PAGE_IDS.length - 1, index + 1)
+                Math.min(pageIds.length - 1, index + 1)
               )
             }
-            disabled={currentIndex === PAGE_IDS.length - 1}
+            disabled={
+              pageIds.length === 0 ||
+              currentIndex === pageIds.length - 1
+            }
             style={styles.button}
           >
             Next
@@ -87,7 +140,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         </div>
 
         <div style={styles.eyebrow}>MemoryBook</div>
-        <h1 style={styles.title}>12.B – Our Last Year</h1>
+        <h1 style={styles.title}>{bookTitle}</h1>
 
         <div style={styles.meta}>
           Read-only book view · {bookId}
@@ -98,9 +151,13 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         <div style={styles.viewer}>
           {loading ? (
             <div style={styles.message}>Loading page...</div>
+          ) : pageIds.length === 0 ? (
+            <div style={styles.emptyPage}>
+              <div>This book has no pages yet.</div>
+            </div>
           ) : page?.previewImageUrl ? (
             <img
-              src={`${API_BASE}${page.previewImageUrl}`}
+              src={page.previewImageUrl}
               alt={`Page ${page.pageNumber}`}
               style={styles.image}
             />
