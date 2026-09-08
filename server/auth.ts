@@ -16,7 +16,8 @@ const googleEnabled =
   Boolean(process.env.GOOGLE_CLIENT_ID) &&
   Boolean(process.env.GOOGLE_CLIENT_SECRET);
 
-export const auth = betterAuth({
+export const auth = process.env.BETTER_AUTH_SECRET
+  ? betterAuth({
   database: pool,
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -57,4 +58,5 @@ export const auth = betterAuth({
         },
       }
     : {},
-});
+  })
+  : null;
