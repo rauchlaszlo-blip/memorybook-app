@@ -14,6 +14,9 @@ type OwnerPage = {
   inviteToken?: string | null;
   ownerVisibility?: 'active' | 'archived' | string;
   submittedAt?: string | null;
+  authorShareApproved?: boolean;
+  ownerShareApproved?: boolean;
+  publicShareToken?: string | null;
   updatedAt?: string;
 };
 
@@ -166,6 +169,66 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
   };
 
+  const updateSharing = async (page: OwnerPage, approved: boolean) => {
+    try {
+      setWorkingPageId(page.id);
+      setError(null);
+
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/pages/${encodeURIComponent(page.id)}/sharing`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ approved }),
+        }
+      );
+
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.page) {
+        if (data?.error === 'AUTHOR_SHARE_APPROVAL_REQUIRED') {
+          throw new Error('AUTHOR_SHARE_APPROVAL_REQUIRED');
+        }
+        throw new Error(data?.error || 'OWNER_PAGE_SHARING_UPDATE_FAILED');
+      }
+
+      setPages((current) =>
+        current.map((item) => (item.id === page.id ? data.page : item))
+      );
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error && err.message === 'AUTHOR_SHARE_APPROVAL_REQUIRED'
+          ? 'A szerző nem járult hozzá a nyilvános megosztáshoz.'
+          : 'Nem sikerült módosítani a nyilvános megosztást.'
+      );
+    } finally {
+      setWorkingPageId(null);
+    }
+  };
+
+  const copyPublicLink = async (page: OwnerPage) => {
+    if (!page.publicShareToken) return;
+    const url = `${origin}/share/${page.publicShareToken}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedPageId(page.id);
+      window.setTimeout(() => setCopiedPageId(null), 1800);
+    } catch (err) {
+      console.error(err);
+      window.prompt('Másold ki a nyilvános linket:', url);
+    }
+  };
+
   const deleteSubmittedPage = async (page: OwnerPage) => {
     const confirmed = window.confirm(
       `Biztosan végleg törlöd a(z) ${page.pageNumber}. oldal beküldött tartalmát?\n\nA tartalom nem állítható vissza. Az oldal újra üres lesz, és később másnak is kiküldhető.`
@@ -257,7 +320,41 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           : 'Könyvben marad.'}
                       </div>
 
+                      <div style={styles.shareState}>
+                        Szerző jóváhagyása: <strong>{page.authorShareApproved ? 'igen' : 'nem'}</strong>
+                        <br />
+                        Tulajdonosi jóváhagyás: <strong>{page.ownerShareApproved ? 'igen' : 'nem'}</strong>
+                      </div>
+
                       <div style={styles.managementActions}>
+                        {page.authorShareApproved && (
+                          <button
+                            type="button"
+                            onClick={() => updateSharing(page, !page.ownerShareApproved)}
+                            disabled={isWorking}
+                            style={styles.secondaryButton}
+                          >
+                            {page.ownerShareApproved
+                              ? 'Nyilvános megosztás visszavonása'
+                              : 'Nyilvános megosztás jóváhagyása'}
+                          </button>
+                        )}
+
+                        {page.authorShareApproved &&
+                          page.ownerShareApproved &&
+                          page.publicShareToken && (
+                            <button
+                              type="button"
+                              onClick={() => copyPublicLink(page)}
+                              disabled={isWorking}
+                              style={styles.primaryButton}
+                            >
+                              {copiedPageId === page.id
+                                ? 'Nyilvános link kimásolva'
+                                : 'Nyilvános link másolása'}
+                            </button>
+                          )}
+
                         <button
                           type="button"
                           onClick={() =>
@@ -447,6 +544,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     fontSize: 13,
     lineHeight: 1.45,
+  },
+  shareState: {
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 8,
+    background: '#f8fafc',
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 1.5,
   },
   managementActions: {
     display: 'grid',
