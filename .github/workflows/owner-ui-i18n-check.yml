@@ -74,7 +74,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src
-          git rm .github/workflows/owner-ui-i18n-check.yml scripts/apply-owner-ui-i18n.py scripts/test-owner-ui-i18n.mjs
+          git rm -f .github/workflows/owner-ui-i18n-check.yml scripts/apply-owner-ui-i18n.py scripts/test-owner-ui-i18n.mjs
           git commit -m "Localize owner UI in Hungarian English and German"
           git push origin owner-ui-i18n-2026-09-08
 
