@@ -419,6 +419,7 @@ app.get('/api/my/books', async (req, res) => {
          b.id,
          b.title,
          b.book_type AS "bookType",
+         b.language,
          b.created_at AS "createdAt",
          COUNT(DISTINCT p.id)::int AS "pageCount",
          COUNT(DISTINCT c.id)::int AS "contributionCount"
@@ -426,7 +427,7 @@ app.get('/api/my/books', async (req, res) => {
        LEFT JOIN pages p ON p.book_id = b.id
        LEFT JOIN contributions c ON c.book_id = b.id
        WHERE b.owner_user_id = $1
-       GROUP BY b.id, b.title, b.book_type, b.created_at
+       GROUP BY b.id, b.title, b.book_type, b.language, b.created_at
        ORDER BY b.created_at DESC`,
       [session.user.id]
     );
@@ -737,6 +738,18 @@ app.post('/api/my/books', async (req, res) => {
   const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
   const entitlementId =
     typeof req.body?.entitlementId === 'string' ? req.body.entitlementId.trim() : '';
+  const requestedLanguage = req.body?.language;
+
+  if (
+    requestedLanguage !== undefined &&
+    requestedLanguage !== 'hu' &&
+    requestedLanguage !== 'en'
+  ) {
+    res.status(400).json({ error: 'INVALID_BOOK_LANGUAGE' });
+    return;
+  }
+
+  const language = requestedLanguage === 'en' ? 'en' : 'hu';
 
   if (!title || title.length > 120) {
     res.status(400).json({ error: 'INVALID_BOOK_TITLE' });
@@ -793,15 +806,16 @@ app.post('/api/my/books', async (req, res) => {
         : 0;
 
     const bookResult = await client.query(
-      `INSERT INTO books (id, owner_user_id, title, invite_token, book_type, page_capacity)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO books (id, owner_user_id, title, invite_token, book_type, page_capacity, language)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING
          id,
          title,
          book_type AS "bookType",
          page_capacity AS "pageCapacity",
+         language,
          created_at AS "createdAt"`,
-      [bookId, session.user.id, title, inviteToken, bookType, includedPages]
+      [bookId, session.user.id, title, inviteToken, bookType, includedPages, language]
     );
 
     if (bookType === 'standard') {
@@ -841,6 +855,47 @@ app.post('/api/my/books', async (req, res) => {
     res.status(500).json({ error: 'BOOK_CREATE_FAILED' });
   } finally {
     client.release();
+  }
+});
+
+app.patch('/api/my/books/:bookId/language', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const language = req.body?.language;
+  if (language !== 'hu' && language !== 'en') {
+    res.status(400).json({ error: 'INVALID_BOOK_LANGUAGE' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE books
+       SET language = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+         AND owner_user_id = $3
+       RETURNING id, language`,
+      [language, req.params.bookId, session.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+
+    res.status(200).json({ success: true, book: result.rows[0] });
+  } catch (err) {
+    console.error('Book language update error:', err);
+    res.status(500).json({ error: 'BOOK_LANGUAGE_UPDATE_FAILED' });
   }
 });
 
@@ -939,7 +994,7 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
     }
 
     const bookResult = await pool.query(
-      `SELECT id, title, book_type AS "bookType", invite_token AS "eventInviteToken"
+      `SELECT id, title, book_type AS "bookType", language, invite_token AS "eventInviteToken"
        FROM books
        WHERE id = $1 AND owner_user_id = $2`,
       [req.params.bookId, session.user.id]
@@ -2617,6 +2672,9 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_device_limit INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);
+  await pool.query(`UPDATE books SET language = 'hu' WHERE language NOT IN ('hu', 'en') OR language IS NULL`);
+  await pool.query(`UPDATE books SET language = 'en' WHERE id = $1`, [DEMO_BOOK_ID]);
   await pool.query(`UPDATE books SET page_capacity = 0 WHERE book_type = 'event' AND page_capacity <> 0`);
 
   await pool.query(`
