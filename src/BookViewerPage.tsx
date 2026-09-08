@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://' + window.location.hostname + ':3001' : '';
+const API_BASE =
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1'
+    ? 'http://' + window.location.hostname + ':3001'
+    : '';
 
 type PageData = {
   id: string;
@@ -76,7 +80,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setPage(null);
       } catch (err) {
         console.error(err);
-        setError('This book could not be loaded.');
+        setError('A könyvet nem sikerült betölteni.');
         setPageIds([]);
         setPage(null);
       } finally {
@@ -115,7 +119,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         setPage(data);
       } catch (err) {
         console.error(err);
-        setError('This page could not be loaded.');
+        setError('Az oldalt nem sikerült betölteni.');
         setPage(null);
       } finally {
         setLoading(false);
@@ -128,6 +132,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   return (
     <main style={styles.page}>
       <section style={styles.container}>
+        <a href="/my-books" style={styles.backLink}>
+          ← Saját könyveim
+        </a>
+
+        <div style={styles.eyebrow}>MemoryBook</div>
+        <h1 style={styles.title}>{bookTitle}</h1>
+        <div style={styles.meta}>Csak olvasható könyvnézet</div>
+
         <div style={styles.topBar}>
           <button
             type="button"
@@ -136,14 +148,15 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             }
             disabled={currentIndex === 0 || pageIds.length === 0}
             style={styles.button}
+            aria-label="Előző oldal"
           >
-            Previous
+            ← Előző
           </button>
 
           <div style={styles.pageNumber}>
             {pageIds.length > 0
-              ? `Page ${currentIndex + 1} / ${pageIds.length}`
-              : 'No pages'}
+              ? `${currentIndex + 1} / ${pageIds.length} oldal`
+              : 'Nincs oldal'}
           </div>
 
           <button
@@ -158,37 +171,31 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               currentIndex === pageIds.length - 1
             }
             style={styles.button}
+            aria-label="Következő oldal"
           >
-            Next
+            Következő →
           </button>
-        </div>
-
-        <div style={styles.eyebrow}>MemoryBook</div>
-        <h1 style={styles.title}>{bookTitle}</h1>
-
-        <div style={styles.meta}>
-          Read-only book view · {bookId}
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
 
         <div style={styles.viewer}>
           {loading ? (
-            <div style={styles.message}>Loading page...</div>
+            <div style={styles.message}>Oldal betöltése...</div>
           ) : pageIds.length === 0 ? (
             <div style={styles.emptyPage}>
-              <div>This book has no submitted pages yet.</div>
+              <div>Még nincs beküldött oldal ebben a könyvben.</div>
             </div>
           ) : page?.previewImageUrl ? (
             <img
               src={page.previewImageUrl}
-              alt={`Page ${page.pageNumber}`}
+              alt={`${page.pageNumber}. oldal`}
               style={styles.image}
             />
           ) : (
             <div style={styles.emptyPage}>
-              <div>Page {currentIndex + 1}</div>
-              <div style={styles.emptyText}>This page has no preview.</div>
+              <div>{currentIndex + 1}. oldal</div>
+              <div style={styles.emptyText}>Ehhez az oldalhoz nincs előnézeti kép.</div>
             </div>
           )}
         </div>
@@ -201,84 +208,115 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
     background: '#e2e8f0',
-    padding: '24px 20px 40px',
+    padding: '12px 12px 28px',
     fontFamily: 'Arial, sans-serif',
+    boxSizing: 'border-box',
   },
   container: {
+    width: '100%',
     maxWidth: 850,
     margin: '0 auto',
   },
-  topBar: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 1000,
-    maxWidth: 750,
-    margin: '0 auto 24px',
-    padding: '10px 14px',
-    background: '#e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  button: {
-    padding: '10px 18px',
-    border: '1px solid #cbd5e1',
-    borderRadius: 8,
-    background: 'white',
-    color: '#0f172a',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  pageNumber: {
-    color: '#334155',
+  backLink: {
+    display: 'inline-block',
+    margin: '2px 0 12px',
+    color: '#475569',
+    textDecoration: 'none',
+    fontSize: 14,
     fontWeight: 700,
   },
   eyebrow: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     color: '#64748b',
   },
   title: {
-    margin: '8px 0 6px',
+    margin: '6px 0 4px',
     color: '#0f172a',
+    fontSize: 'clamp(24px, 7vw, 34px)',
+    lineHeight: 1.15,
+    overflowWrap: 'anywhere',
   },
   meta: {
-    marginBottom: 20,
+    marginBottom: 12,
     color: '#64748b',
+    fontSize: 13,
+  },
+  topBar: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 1000,
+    width: '100%',
+    maxWidth: 750,
+    margin: '0 auto 12px',
+    padding: '8px 0',
+    background: '#e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    boxSizing: 'border-box',
+  },
+  button: {
+    minHeight: 44,
+    minWidth: 92,
+    padding: '8px 10px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 10,
+    background: 'white',
+    color: '#0f172a',
     fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+  },
+  pageNumber: {
+    flex: 1,
+    minWidth: 0,
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: 700,
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
   },
   viewer: {
-    width: 750,
-    maxWidth: '100%',
-    minHeight: 1000,
+    width: '100%',
+    maxWidth: 750,
+    aspectRatio: '3 / 4',
     margin: '0 auto',
     background: 'white',
-    boxShadow: '0 12px 35px rgba(15, 23, 42, 0.15)',
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.14)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   image: {
     display: 'block',
     width: '100%',
-    height: 'auto',
+    height: '100%',
+    objectFit: 'contain',
   },
   message: {
+    padding: 20,
     color: '#64748b',
-    fontSize: 18,
+    fontSize: 16,
+    textAlign: 'center',
   },
   emptyPage: {
     width: '100%',
-    minHeight: 1000,
+    height: '100%',
+    padding: 24,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
+    boxSizing: 'border-box',
     color: '#94a3b8',
-    fontSize: 22,
+    fontSize: 18,
+    textAlign: 'center',
   },
   emptyText: {
     marginTop: 8,
@@ -286,7 +324,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   error: {
     maxWidth: 750,
-    margin: '0 auto 16px',
+    margin: '0 auto 12px',
     padding: 12,
     background: '#fef2f2',
     color: '#991b1b',
