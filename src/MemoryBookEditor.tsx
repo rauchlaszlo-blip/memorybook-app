@@ -74,6 +74,7 @@ export const MemoryBookEditor = forwardRef<
     'saved' | 'saving' | 'unsaved' | 'conflict'
   >('saved');
   const [hasSelection, setHasSelection] = useState(false);
+  const [selectedTextFontSize, setSelectedTextFontSize] = useState<number | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [canvasScale, setCanvasScale] = useState(1);
@@ -436,17 +437,20 @@ export const MemoryBookEditor = forwardRef<
       handlersRef.current.pushToHistory()
     );
 
-    canvas.on('selection:created', () =>
-      setHasSelection(
-        (fabricRef.current?.getActiveObjects().length ?? 0) > 0
-      )
-    );
-    canvas.on('selection:updated', () =>
-      setHasSelection(
-        (fabricRef.current?.getActiveObjects().length ?? 0) > 0
-      )
-    );
-    canvas.on('selection:cleared', () => setHasSelection(false));
+    const syncSelectionState = () => {
+      const activeObjects = canvas.getActiveObjects();
+      const activeObject = canvas.getActiveObject();
+      setHasSelection(activeObjects.length > 0);
+      setSelectedTextFontSize(
+        activeObject instanceof fabric.IText
+          ? Math.round(activeObject.fontSize || 22)
+          : null
+      );
+    };
+
+    canvas.on('selection:created', syncSelectionState);
+    canvas.on('selection:updated', syncSelectionState);
+    canvas.on('selection:cleared', syncSelectionState);
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -693,6 +697,29 @@ export const MemoryBookEditor = forwardRef<
     canvas.renderAll();
   };
 
+  const handleSelectedTextFontSize = (fontSize: number) => {
+    const canvas = fabricRef.current;
+    const object = canvas?.getActiveObject();
+    if (!canvas || !(object instanceof fabric.IText)) return;
+
+    object.set({ fontSize });
+    object.setCoords();
+    canvas.requestRenderAll();
+    setSelectedTextFontSize(fontSize);
+    handleStructuralMutation();
+  };
+
+  const handleMoveSelectedText = () => {
+    const canvas = fabricRef.current;
+    const object = canvas?.getActiveObject();
+    if (!canvas || !(object instanceof fabric.IText)) return;
+
+    if (object.isEditing) object.exitEditing();
+    canvas.setActiveObject(object);
+    object.setCoords();
+    canvas.requestRenderAll();
+  };
+
   const handleBringForward = () => {
     const canvas = fabricRef.current;
     const obj = canvas?.getActiveObject();
@@ -896,6 +923,34 @@ export const MemoryBookEditor = forwardRef<
             </>
           )}
 
+          {selectedTextFontSize !== null && (
+            <>
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '0 8px',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  background: '#fff',
+                }}
+              >
+                <span>{copy.textSize}</span>
+                <input
+                  type="range"
+                  aria-label={copy.textSize}
+                  min="12"
+                  max="72"
+                  value={selectedTextFontSize}
+                  onChange={(event) => handleSelectedTextFontSize(Number(event.target.value))}
+                />
+                <span>{selectedTextFontSize}</span>
+              </label>
+              <button onClick={handleMoveSelectedText}>{copy.moveText}</button>
+            </>
+          )}
+
           {hasSelection && (
             <>
               <button onClick={handleBringForward}>{copy.bringForward}</button>
@@ -923,18 +978,6 @@ export const MemoryBookEditor = forwardRef<
                   : copy.unsaved}
           </strong>
 
-          <button
-            onClick={() =>
-              enqueueSave(currentPageIdRef.current).catch(() => {})
-            }
-            disabled={
-              saveStatus === 'saved' ||
-              saveStatus === 'saving' ||
-              saveStatus === 'conflict'
-            }
-          >
-            {copy.saveNow}
-          </button>
         </div>
       </div>
 
