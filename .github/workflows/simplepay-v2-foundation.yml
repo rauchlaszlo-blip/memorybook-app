@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -142,4 +144,4 @@ jobs:
           EOF
           npx tsx /tmp/simplepay-selftest.ts
       - name: Verify scoped diff
-        run: git diff --check ${{ github.event.before }} ${{ github.sha }}
+        run: git diff --check origin/main...HEAD
