@@ -91,3 +91,28 @@ AFTER UPDATE OF invite_status, submitted_at ON pages
 FOR EACH ROW
 WHEN (NEW.invite_status = 'submitted')
 EXECUTE FUNCTION create_standard_page_submission_notification();
+
+-- One-time cleanup of the obsolete email/password test account used before
+-- Google OAuth was activated. The guards intentionally target only the known
+-- test user, its test book, and its two unpaid draft purchases.
+DO $$
+DECLARE
+  old_user_id TEXT := 'ZhIE1JihhmFq0FcEWSLbsIRROuC0zm8g';
+BEGIN
+  DELETE FROM books
+  WHERE id = 'book-974f42e2-0fa7-40dc-8e51-629125d11b7c'
+    AND owner_user_id = old_user_id;
+
+  DELETE FROM purchases
+  WHERE id IN (
+    'purchase-2be4732e-b2f0-4810-a518-efb9c40a0ac6',
+    'purchase-0de374a2-c0ee-43b3-beff-67266ae5b13e'
+  )
+    AND purchaser_user_id = old_user_id
+    AND payment_status = 'draft';
+
+  DELETE FROM users
+  WHERE id = old_user_id
+    AND email = 'rauchlaszlo@gmail.com';
+END;
+$$;
