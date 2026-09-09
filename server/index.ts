@@ -517,7 +517,31 @@ app.get('/api/my/billing-profile', async (req, res) => {
       return;
     }
 
-    const result = await pool.query(
+    const personalPurchaseResult = await pool.query(
+      `SELECT
+         billing_name AS "billingName",
+         billing_email AS "billingEmail",
+         billing_country AS "billingCountry",
+         billing_postal_code AS "billingPostalCode",
+         billing_city AS "billingCity",
+         billing_address AS "billingAddress",
+         billing_tax_number AS "billingTaxNumber",
+         billing_company_name AS "billingCompanyName",
+         created_at AS "updatedAt"
+       FROM purchases
+       WHERE purchaser_user_id = $1
+         AND purchase_mode IN ('self', 'gift')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [session.user.id]
+    );
+
+    if (personalPurchaseResult.rowCount > 0) {
+      res.status(200).json({ billingProfile: personalPurchaseResult.rows[0] });
+      return;
+    }
+
+    const profileResult = await pool.query(
       `SELECT
          billing_name AS "billingName",
          billing_email AS "billingEmail",
@@ -533,7 +557,7 @@ app.get('/api/my/billing-profile', async (req, res) => {
       [session.user.id]
     );
 
-    res.status(200).json({ billingProfile: result.rows[0] || null });
+    res.status(200).json({ billingProfile: profileResult.rows[0] || null });
   } catch (err) {
     console.error('Billing profile load error:', err);
     res.status(500).json({ error: 'BILLING_PROFILE_LOAD_FAILED' });

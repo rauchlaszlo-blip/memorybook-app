@@ -98,6 +98,53 @@ function countryLabel(code: string, language: string): string {
   }
 }
 
+function parseCompanyLookupAddress(rawAddress: string, country: string): {
+  postalCode?: string;
+  city?: string;
+  address?: string;
+} {
+  const normalized = rawAddress.replace(/\r/g, '').trim();
+  if (!normalized) return {};
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (isHungarianCountry(country)) {
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(/^(\d{4})\s+(.+)$/);
+      if (!match) continue;
+      const street = lines.filter((_, lineIndex) => lineIndex !== index).join(', ').trim();
+      return {
+        postalCode: match[1],
+        city: match[2].replace(/[;,]+$/, '').trim(),
+        address: street || undefined,
+      };
+    }
+
+    const postalThenStreet = normalized.match(/^(\d{4})\s+([^,;]+)[,;]\s*(.+)$/);
+    if (postalThenStreet) {
+      return {
+        postalCode: postalThenStreet[1],
+        city: postalThenStreet[2].trim(),
+        address: postalThenStreet[3].trim(),
+      };
+    }
+
+    const streetThenPostal = normalized.match(/^(.+?)[,;]\s*(\d{4})\s+([^,;]+)$/);
+    if (streetThenPostal) {
+      return {
+        postalCode: streetThenPostal[2],
+        city: streetThenPostal[3].trim(),
+        address: streetThenPostal[1].trim(),
+      };
+    }
+  }
+
+  return { address: lines.join(', ') };
+}
+
 export function PurchasePage() {
   const language = usePublicUiLanguage();
   const t = useCallback((key: string) => publicText(language, key), [language]);
@@ -117,7 +164,7 @@ export function PurchasePage() {
   const [purchaserEmail, setPurchaserEmail] = useState('');
   const [billingName, setBillingName] = useState('');
   const [billingEmail, setBillingEmail] = useState('');
-  const [billingCountry, setBillingCountry] = useState('Magyarország');
+  const [billingCountry, setBillingCountry] = useState('HU');
   const [billingPostalCode, setBillingPostalCode] = useState('');
   const [billingCity, setBillingCity] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
@@ -155,7 +202,7 @@ export function PurchasePage() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || mode === 'organization') return;
 
     let active = true;
     fetch(`${API_BASE}/api/my/billing-profile`, { credentials: 'include' })
@@ -177,7 +224,7 @@ export function PurchasePage() {
       .catch(() => {});
 
     return () => { active = false; };
-  }, [user]);
+  }, [user, mode]);
 
   useEffect(() => {
     const postalCode = billingPostalCode.trim();
@@ -229,8 +276,15 @@ export function PurchasePage() {
             return;
           }
           const companyName = String(data?.companyName || '').trim();
-          if (companyName) {
-            setBillingCompanyName(companyName);
+          const companyAddress = String(data?.address || '').trim();
+          if (companyName) setBillingCompanyName(companyName);
+          if (companyAddress) {
+            const parsedAddress = parseCompanyLookupAddress(companyAddress, billingCountry);
+            if (parsedAddress.postalCode) setBillingPostalCode(parsedAddress.postalCode);
+            if (parsedAddress.city) setBillingCity(parsedAddress.city);
+            if (parsedAddress.address) setBillingAddress(parsedAddress.address);
+          }
+          if (companyName || companyAddress) {
             setCompanyLookupStatus('found');
           } else {
             setCompanyLookupStatus('not-found');
@@ -559,7 +613,7 @@ export function PurchasePage() {
               <label style={styles.label}>{t('Cégnév')}
                 <input value={billingCompanyName} onChange={(event) => setBillingCompanyName(event.target.value)} style={styles.input} required />
                 {companyLookupStatus === 'loading' && <span style={styles.fieldHint}>{t('Cégadat ellenőrzése...')}</span>}
-                {companyLookupStatus === 'found' && <span style={styles.fieldHint}>{t('A cégnév automatikusan kitöltve a VIES adatai alapján.')}</span>}
+                {companyLookupStatus === 'found' && <span style={styles.fieldHint}>{t('A cég neve és a rendelkezésre álló címadatok automatikusan kitöltve a VIES adatai alapján.')}</span>}
                 {companyLookupStatus === 'not-found' && <span style={styles.fieldHint}>{t('Az adószám érvényes, de a VIES nem adott vissza cégnevet. Add meg kézzel.')}</span>}
                 {companyLookupStatus === 'invalid' && <span style={styles.fieldError}>{t('Ez az adószám nem érvényes a VIES rendszerben, vagy nem közösségi adószám.')}</span>}
                 {companyLookupStatus === 'error' && <span style={styles.fieldHint}>{t('A cégadat most nem kérdezhető le. A cégnév kézzel is megadható.')}</span>}
