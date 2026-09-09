@@ -1,0 +1,46 @@
+name: Remove purchase internal warnings
+on:
+  push:
+    branches: [remove-purchase-internal-warnings]
+permissions:
+  contents: write
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remove-purchase-internal-warnings
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Remove internal purchase warnings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/PurchasePage.tsx')
+          text = p.read_text(encoding='utf-8')
+
+          lead = "        <p style={styles.lead}>{t('A PayPal és a SimplePay fizetési folyamata technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>\n"
+          if lead not in text:
+              raise SystemExit('Lead warning not found')
+          text = text.replace(lead, '', 1)
+
+          warnings = """          {provider === 'paypal' && paymentCapabilities && !paypalReady && (\n            <div style={styles.notice}>{t('A PayPal sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>\n          )}\n          {provider === 'simplepay' && paymentCapabilities && !simplePayReady && (\n            <div style={styles.notice}>{t('A SimplePay sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>\n          )}\n\n"""
+          if warnings not in text:
+              raise SystemExit('Provider warnings not found')
+          text = text.replace(warnings, '', 1)
+
+          p.write_text(text, encoding='utf-8')
+          PY
+      - run: npm ci
+      - run: npm run build
+      - name: Commit verified change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/PurchasePage.tsx
+          git commit -m "Hide internal payment warnings from purchase page"
+          git push origin HEAD:remove-purchase-internal-warnings
