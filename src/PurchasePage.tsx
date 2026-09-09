@@ -8,6 +8,15 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
   : '';
 
 type UserData = { id: string; name?: string; email?: string };
+type BillingProfile = {
+  billingName?: string;
+  billingEmail?: string;
+  billingCountry?: string;
+  billingPostalCode?: string;
+  billingCity?: string;
+  billingAddress?: string;
+  billingTaxNumber?: string | null;
+};
 type Mode = 'self' | 'gift';
 type BookType = 'standard' | 'event';
 type Provider = 'paypal' | 'simplepay';
@@ -81,6 +90,54 @@ export function PurchasePage() {
       .then((data) => setPaymentCapabilities(data || null))
       .catch(() => setPaymentCapabilities(null));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let active = true;
+    fetch(`${API_BASE}/api/my/billing-profile`, { credentials: 'include' })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!active) return;
+        const profile = (data?.billingProfile || null) as BillingProfile | null;
+        if (!profile) return;
+
+        setBillingName(profile.billingName || user.name || '');
+        setBillingEmail(profile.billingEmail || user.email || '');
+        setBillingCountry(profile.billingCountry || 'Magyarország');
+        setBillingPostalCode(profile.billingPostalCode || '');
+        setBillingCity(profile.billingCity || '');
+        setBillingAddress(profile.billingAddress || '');
+        setBillingTaxNumber(profile.billingTaxNumber || '');
+      })
+      .catch(() => {});
+
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
+    const normalizedCountry = billingCountry.trim().toLocaleLowerCase('hu-HU');
+    const isHungary = normalizedCountry === 'magyarország' || normalizedCountry === 'hungary' || normalizedCountry === 'hu';
+    const postalCode = billingPostalCode.trim();
+    if (!isHungary || !/^\d{4}$/.test(postalCode)) return;
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      fetch(`${API_BASE}/api/postal-lookup/HU/${encodeURIComponent(postalCode)}`)
+        .then(async (response) => response.ok ? response.json() : null)
+        .then((data) => {
+          if (!active) return;
+          const city = String(data?.city || '').trim();
+          if (city) setBillingCity(city);
+        })
+        .catch(() => {});
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [billingCountry, billingPostalCode]);
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -358,7 +415,12 @@ export function PurchasePage() {
           </label>
           <div style={styles.twoCols}>
             <label style={styles.label}>{t('Irányítószám')}
-              <input value={billingPostalCode} onChange={(event) => setBillingPostalCode(event.target.value)} style={styles.input} />
+              <input
+                value={billingPostalCode}
+                inputMode={billingCountry.trim().toLocaleLowerCase('hu-HU') === 'magyarország' ? 'numeric' : undefined}
+                onChange={(event) => setBillingPostalCode(event.target.value)}
+                style={styles.input}
+              />
             </label>
             <label style={styles.label}>{t('Település')}
               <input value={billingCity} onChange={(event) => setBillingCity(event.target.value)} style={styles.input} />

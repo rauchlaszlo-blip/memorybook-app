@@ -63,6 +63,7 @@ const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
 const DEFAULT_BOOK_PAGE_COUNT = 30;
 const PAGE_INVITE_VALID_DAYS = 14;
 const DEMO_BOOK_ID = 'book-12b';
+const postalLookupCache = new Map<string, string>();
 
 async function getSession(req: any) {
   if (!auth) return null;
@@ -367,6 +368,55 @@ app.get('/api/auth-capabilities', (_req, res) => {
   });
 });
 
+app.get('/api/postal-lookup/:country/:postalCode', async (req, res) => {
+  const country = String(req.params.country || '').trim().toUpperCase();
+  const postalCode = String(req.params.postalCode || '').trim();
+
+  if (country !== 'HU' || !/^\d{4}$/.test(postalCode)) {
+    res.status(400).json({ error: 'INVALID_POSTAL_LOOKUP' });
+    return;
+  }
+
+  const cacheKey = `${country}:${postalCode}`;
+  const cachedCity = postalLookupCache.get(cacheKey);
+  if (cachedCity) {
+    res.status(200).json({ country, postalCode, city: cachedCity });
+    return;
+  }
+
+  try {
+    const response = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(postalCode)}`);
+    if (response.status === 404) {
+      res.status(404).json({ error: 'POSTAL_CODE_NOT_FOUND' });
+      return;
+    }
+    if (!response.ok) {
+      res.status(502).json({ error: 'POSTAL_LOOKUP_FAILED' });
+      return;
+    }
+
+    const data: any = await response.json();
+    const cities = Array.from(
+      new Set(
+        (Array.isArray(data?.places) ? data.places : [])
+          .map((place: any) => String(place?.['place name'] || '').trim())
+          .filter(Boolean)
+      )
+    ) as string[];
+    const city = cities[0] || '';
+    if (!city) {
+      res.status(404).json({ error: 'POSTAL_CODE_NOT_FOUND' });
+      return;
+    }
+
+    postalLookupCache.set(cacheKey, city);
+    res.status(200).json({ country, postalCode, city });
+  } catch (err) {
+    console.error('Postal lookup error:', err);
+    res.status(502).json({ error: 'POSTAL_LOOKUP_FAILED' });
+  }
+});
+
 app.get('/api/invoicing-capabilities', (_req, res) => {
   res.status(200).json(getInvoicingCapabilities());
 });
@@ -402,6 +452,42 @@ app.get('/api/me', async (req, res) => {
   } catch (err) {
     console.error('Session load error:', err);
     res.status(500).json({ error: 'SESSION_LOAD_FAILED' });
+  }
+});
+
+
+app.get('/api/my/billing-profile', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         billing_name AS "billingName",
+         billing_email AS "billingEmail",
+         billing_country AS "billingCountry",
+         billing_postal_code AS "billingPostalCode",
+         billing_city AS "billingCity",
+         billing_address AS "billingAddress",
+         billing_tax_number AS "billingTaxNumber",
+         updated_at AS "updatedAt"
+       FROM billing_profiles
+       WHERE user_id = $1`,
+      [session.user.id]
+    );
+
+    res.status(200).json({ billingProfile: result.rows[0] || null });
+  } catch (err) {
+    console.error('Billing profile load error:', err);
+    res.status(500).json({ error: 'BILLING_PROFILE_LOAD_FAILED' });
   }
 });
 
@@ -650,6 +736,42 @@ app.post('/api/purchases', async (req, res) => {
   const includedPages = bookType === 'standard' ? DEFAULT_BOOK_PAGE_COUNT : 0;
 
   try {
+    if (session) {
+      await pool.query(
+        `INSERT INTO billing_profiles (
+           user_id,
+           billing_name,
+           billing_email,
+           billing_country,
+           billing_postal_code,
+           billing_city,
+           billing_address,
+           billing_tax_number,
+           updated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id) DO UPDATE SET
+           billing_name = EXCLUDED.billing_name,
+           billing_email = EXCLUDED.billing_email,
+           billing_country = EXCLUDED.billing_country,
+           billing_postal_code = EXCLUDED.billing_postal_code,
+           billing_city = EXCLUDED.billing_city,
+           billing_address = EXCLUDED.billing_address,
+           billing_tax_number = EXCLUDED.billing_tax_number,
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+          session.user.id,
+          billingName,
+          billingEmail,
+          billingCountry,
+          billingPostalCode,
+          billingCity,
+          billingAddress,
+          billingTaxNumber,
+        ]
+      );
+    }
+
     const result = await pool.query(
       `INSERT INTO purchases (
          id,
@@ -3036,6 +3158,12 @@ async function initializeDatabase(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  const billingProfilesMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260909_billing_profiles.sql'),
+    'utf8'
+  );
+  await pool.query(billingProfilesMigration);
 
   const invoicingMigration = await fs.readFile(
     path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),
