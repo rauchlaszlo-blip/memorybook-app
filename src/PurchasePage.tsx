@@ -374,7 +374,6 @@ export function PurchasePage() {
         </div>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
-        <p style={styles.lead}>{t('A PayPal és a SimplePay fizetési folyamata technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>
 
         <div style={styles.switcher}>
           <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
@@ -402,13 +401,6 @@ export function PurchasePage() {
               <option value="paypal">PayPal</option>
             </select>
           </label>
-
-          {provider === 'paypal' && paymentCapabilities && !paypalReady && (
-            <div style={styles.notice}>{t('A PayPal sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
-          )}
-          {provider === 'simplepay' && paymentCapabilities && !simplePayReady && (
-            <div style={styles.notice}>{t('A SimplePay sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
-          )}
 
 
           <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>
