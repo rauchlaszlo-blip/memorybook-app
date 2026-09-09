@@ -85,7 +85,7 @@ const translations: Record<string, Translation> = {
   'Adószám (ha szükséges)': { en: 'Tax number (if required)', de: 'Steuernummer (falls erforderlich)' },
   'Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.': { en: 'For a gift purchase, the book is not created in the payer’s account. After successful payment, a redeemable link is generated and can be forwarded.', de: 'Bei einem Geschenkkauf wird das Buch nicht im Konto des Zahlenden erstellt. Nach erfolgreicher Zahlung wird ein weiterleitbarer Einlösungslink erzeugt.' },
   'Mentés...': { en: 'Saving...', de: 'Speichern...' },
-  'Vásárlási adatok mentése': { en: 'Save purchase details', de: 'Kaufdaten speichern' },
+  'Fizetés': { en: 'Payment', de: 'Zahlung' },
   'Vásárlási alap rögzítve.': { en: 'Purchase draft saved.', de: 'Kaufentwurf gespeichert.' },
   'Azonosító: {id}': { en: 'ID: {id}', de: 'Kennung: {id}' },
   'Még nem történt fizetés, ezért könyvjogosultság sem keletkezett. A következő lépésben ehhez kötjük a PayPal és SimplePay fizetést.': { en: 'No payment has been made yet, so no book entitlement has been created. PayPal and SimplePay payments will be connected to this in the next step.', de: 'Es wurde noch keine Zahlung durchgeführt, daher ist noch keine Buchberechtigung entstanden. Im nächsten Schritt werden PayPal- und SimplePay-Zahlungen daran angebunden.' },

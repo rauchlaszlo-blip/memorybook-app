@@ -387,7 +387,7 @@ export function PurchasePage() {
                 ? t('Tovább a SimplePay fizetéshez')
                 : provider === 'paypal' && paypalReady
                   ? t('Tovább a PayPal fizetéshez')
-                  : t('Vásárlási adatok mentése')}
+                  : t('Fizetés')}
           </button>
         </form>
 
