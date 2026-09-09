@@ -111,8 +111,6 @@ async function ensurePurchasePaymentAccess(req: any, purchaseId: string): Promis
   }
 
   const purchase = result.rows[0];
-  if (purchase.purchaseMode === 'gift') return;
-
   const session = await getSession(req).catch(() => null);
   if (!session) {
     throw new PayPalPurchaseError('UNAUTHENTICATED', 401);
@@ -478,6 +476,7 @@ app.get('/api/my/billing-profile', async (req, res) => {
          billing_city AS "billingCity",
          billing_address AS "billingAddress",
          billing_tax_number AS "billingTaxNumber",
+         billing_company_name AS "billingCompanyName",
          updated_at AS "updatedAt"
        FROM billing_profiles
        WHERE user_id = $1`,
@@ -678,26 +677,22 @@ app.post('/api/purchases', async (req, res) => {
         : null;
 
   const session = await getSession(req).catch(() => null);
-  if (purchaseMode !== 'gift' && !session) {
-    res.status(401).json({ error: 'ACCOUNT_REQUIRED_FOR_SELF_PURCHASE' });
+  if (!session) {
+    res.status(401).json({ error: 'ACCOUNT_REQUIRED_FOR_PURCHASE' });
     return;
   }
 
-  const purchaserName =
-    purchaseMode !== 'gift'
-      ? String(session?.user?.name || req.body?.purchaserName || '').trim()
-      : String(req.body?.purchaserName || '').trim();
-  const purchaserEmail =
-    purchaseMode !== 'gift'
-      ? String(session?.user?.email || req.body?.purchaserEmail || '').trim().toLowerCase()
-      : String(req.body?.purchaserEmail || '').trim().toLowerCase();
-  const billingName = String(req.body?.billingName || '').trim();
+  const purchaserName = String(session.user?.name || req.body?.purchaserName || '').trim();
+  const purchaserEmail = String(session.user?.email || req.body?.purchaserEmail || '').trim().toLowerCase();
+  const billingName = String(req.body?.billingName || session.user?.name || '').trim();
   const billingEmail = String(req.body?.billingEmail || '').trim().toLowerCase();
   const billingCountry = String(req.body?.billingCountry || '').trim();
   const billingPostalCode = String(req.body?.billingPostalCode || '').trim();
   const billingCity = String(req.body?.billingCity || '').trim();
   const billingAddress = String(req.body?.billingAddress || '').trim();
-  const billingTaxNumber = String(req.body?.billingTaxNumber || '').trim();
+  const billingTaxNumber = String(req.body?.billingTaxNumber || '').trim().toUpperCase();
+  const billingCompanyName = String(req.body?.billingCompanyName || '').trim();
+  const purchaseBillingName = purchaseMode === 'organization' ? billingCompanyName : billingName;
 
   if (!paymentProvider) {
     res.status(400).json({ error: 'INVALID_PAYMENT_PROVIDER' });
@@ -707,15 +702,22 @@ app.post('/api/purchases', async (req, res) => {
   const requiredValues = [
     purchaserName,
     purchaserEmail,
-    billingName,
     billingEmail,
     billingCountry,
     billingPostalCode,
     billingCity,
     billingAddress,
+    purchaseMode === 'organization' ? billingCompanyName : billingName,
+    purchaseMode === 'organization' ? billingTaxNumber : 'not-required',
   ];
   if (requiredValues.some((value) => !value)) {
     res.status(400).json({ error: 'INCOMPLETE_PURCHASE_IDENTITY' });
+    return;
+  }
+  const normalizedBillingCountry = billingCountry.trim().toLocaleLowerCase('hu-HU');
+  const isHungarianBilling = ['hu', 'hungary', 'magyarország', 'ungarn'].includes(normalizedBillingCountry);
+  if (purchaseMode === 'organization' && isHungarianBilling && !/^\d{8}-\d-\d{2}$/.test(billingTaxNumber)) {
+    res.status(400).json({ error: 'INVALID_HUNGARIAN_TAX_NUMBER' });
     return;
   }
   if (!purchaserEmail.includes('@') || !billingEmail.includes('@')) {
@@ -752,9 +754,10 @@ app.post('/api/purchases', async (req, res) => {
            billing_city,
            billing_address,
            billing_tax_number,
+           billing_company_name,
            updated_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), CURRENT_TIMESTAMP)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, ''), CURRENT_TIMESTAMP)
          ON CONFLICT (user_id) DO UPDATE SET
            billing_name = EXCLUDED.billing_name,
            billing_email = EXCLUDED.billing_email,
@@ -763,6 +766,7 @@ app.post('/api/purchases', async (req, res) => {
            billing_city = EXCLUDED.billing_city,
            billing_address = EXCLUDED.billing_address,
            billing_tax_number = EXCLUDED.billing_tax_number,
+           billing_company_name = EXCLUDED.billing_company_name,
            updated_at = CURRENT_TIMESTAMP`,
         [
           session.user.id,
@@ -773,6 +777,7 @@ app.post('/api/purchases', async (req, res) => {
           billingCity,
           billingAddress,
           billingTaxNumber,
+          billingCompanyName,
         ]
       );
     }
@@ -793,10 +798,11 @@ app.post('/api/purchases', async (req, res) => {
          billing_city,
          billing_address,
          billing_tax_number,
+         billing_company_name,
          payment_provider,
          payment_status
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), $15, 'draft')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), NULLIF($15, ''), $16, 'draft')
        RETURNING
          id,
          purchase_mode AS "purchaseMode",
@@ -813,13 +819,14 @@ app.post('/api/purchases', async (req, res) => {
         session?.user?.id || null,
         purchaserName,
         purchaserEmail,
-        billingName,
+        purchaseBillingName,
         billingEmail,
         billingCountry,
         billingPostalCode,
         billingCity,
         billingAddress,
         billingTaxNumber,
+        billingCompanyName,
         paymentProvider,
       ]
     );
@@ -3175,6 +3182,18 @@ async function initializeDatabase(): Promise<void> {
     'utf8'
   );
   await pool.query(organizationPurchaseModeMigration);
+
+  const companyBillingMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260909_company_billing.sql'),
+    'utf8'
+  );
+  await pool.query(companyBillingMigration);
+
+  const testBookGrantMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260909_grant_test_book_rauch.sql'),
+    'utf8'
+  );
+  await pool.query(testBookGrantMigration);
 
   const invoicingMigration = await fs.readFile(
     path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),

@@ -16,6 +16,7 @@ type BillingProfile = {
   billingCity?: string;
   billingAddress?: string;
   billingTaxNumber?: string | null;
+  billingCompanyName?: string | null;
 };
 type Mode = 'self' | 'gift' | 'organization';
 type BookType = 'standard' | 'event';
@@ -45,6 +46,34 @@ type PaymentSuccess = {
   giftRedeemPath?: string | null;
 };
 
+const EU_COUNTRY_ALIASES = new Set([
+  'AT','AUSTRIA','AUSZTRIA','ÖSTERREICH','BE','BELGIUM','BELGIEN','BELGIQUE','BELGIUM','BG','BULGARIA','BULGÁRIA','CY','CYPRUS','CIPRUS','CZ','CZECHIA','CZECH REPUBLIC','CSEHORSZÁG','TSCHECHIEN','DE','GERMANY','NÉMETORSZÁG','DEUTSCHLAND','DK','DENMARK','DÁNIA','DÄNEMARK','EE','ESTONIA','ÉSZTORSZÁG','ESTLAND','EL','GR','GREECE','GÖRÖGORSZÁG','GRIECHENLAND','ES','SPAIN','SPANYOLORSZÁG','SPANIEN','FI','FINLAND','FINNORSZÁG','FR','FRANCE','FRANCIAORSZÁG','FRANKREICH','HR','CROATIA','HORVÁTORSZÁG','KROATIEN','HU','HUNGARY','MAGYARORSZÁG','UNGARN','IE','IRELAND','ÍRORSZÁG','IRLAND','IT','ITALY','OLASZORSZÁG','ITALIEN','LT','LITHUANIA','LITVÁNIA','LITAUEN','LU','LUXEMBOURG','LUXEMBURG','LV','LATVIA','LETTORSZÁG','LETTLAND','MT','MALTA','NL','NETHERLANDS','HOLLANDIA','NIEDERLANDE','PL','POLAND','LENGYELORSZÁG','POLEN','PT','PORTUGAL','PORTUGÁLIA','RO','ROMANIA','ROMÁNIA','RUMÄNIEN','SE','SWEDEN','SVÉDORSZÁG','SCHWEDEN','SI','SLOVENIA','SZLOVÉNIA','SLOWENIEN','SK','SLOVAKIA','SZLOVÁKIA','SLOWAKEI'
+]);
+
+function normalizedCountry(value: string): string {
+  return value.trim().toLocaleUpperCase('hu-HU');
+}
+
+function isHungarianCountry(value: string): boolean {
+  return ['HU', 'HUNGARY', 'MAGYARORSZÁG', 'UNGARN'].includes(normalizedCountry(value));
+}
+
+function isEuCountry(value: string): boolean {
+  return EU_COUNTRY_ALIASES.has(normalizedCountry(value));
+}
+
+function companyTaxLabel(country: string): string {
+  if (isHungarianCountry(country)) return 'Adószám';
+  if (isEuCountry(country)) return 'Közösségi adószám / VAT ID';
+  return 'Adóazonosító / Tax ID';
+}
+
+function companyTaxPlaceholder(country: string): string {
+  if (isHungarianCountry(country)) return '12345678-2-42';
+  if (isEuCountry(country)) return 'DE123456789';
+  return '';
+}
+
 export function PurchasePage() {
   const language = usePublicUiLanguage();
   const t = useCallback((key: string) => publicText(language, key), [language]);
@@ -69,6 +98,7 @@ export function PurchasePage() {
   const [billingCity, setBillingCity] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [billingTaxNumber, setBillingTaxNumber] = useState('');
+  const [billingCompanyName, setBillingCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -115,6 +145,7 @@ export function PurchasePage() {
         setBillingCity(profile.billingCity || '');
         setBillingAddress(profile.billingAddress || '');
         setBillingTaxNumber(profile.billingTaxNumber || '');
+        setBillingCompanyName(profile.billingCompanyName || '');
       })
       .catch(() => {});
 
@@ -270,7 +301,7 @@ export function PurchasePage() {
     setNotice(null);
     setPurchaseId(null);
     setPaymentSuccess(null);
-    if (mode !== 'gift' && !user) {
+    if (!user) {
       const returnTo = `/purchase?mode=${mode}`;
       window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
       return;
@@ -285,8 +316,8 @@ export function PurchasePage() {
           purchaseMode: mode,
           bookType,
           paymentProvider: provider,
-          purchaserName: mode === 'gift' ? billingName : purchaserName,
-          purchaserEmail: mode === 'gift' ? billingEmail : purchaserEmail,
+          purchaserName,
+          purchaserEmail,
           billingName,
           billingEmail,
           billingCountry,
@@ -294,6 +325,7 @@ export function PurchasePage() {
           billingCity,
           billingAddress,
           billingTaxNumber,
+          billingCompanyName,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -388,10 +420,18 @@ export function PurchasePage() {
           <button type="button" onClick={() => setMode('organization')} style={{ ...styles.switchButton, ...(mode === 'organization' ? styles.active : {}) }}>{t('Cég / szervezet')}</button>
         </div>
 
-        {mode !== 'gift' && !user && (
+        {!user && (
           <div style={styles.notice}>
-            {t('A vásárláshoz előbb be kell lépned vagy regisztrálnod.')}
-            <a href={`/login?returnTo=${encodeURIComponent(`/purchase?mode=${mode}`)}`} style={styles.inlineLink}> {t('Belépés / regisztráció')}</a>
+            {t('A vásárláshoz jelentkezz be Google-fiókkal.')}
+            <a href={`/login?returnTo=${encodeURIComponent(`/purchase?mode=${mode}`)}`} style={styles.inlineLink}> {t('Belépés Google-fiókkal')}</a>
+          </div>
+        )}
+
+        {user && (
+          <div style={styles.accountInfo}>
+            <strong>{t(mode === 'organization' ? 'Kapcsolattartó' : 'Vásárló')}</strong>
+            <span>{user.name || purchaserName}</span>
+            <span>{user.email || purchaserEmail}</span>
           </div>
         )}
 
@@ -413,38 +453,66 @@ export function PurchasePage() {
 
           <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>
           <label style={styles.label}>{t('Ország')}
-            <input value={billingCountry} onChange={(event) => setBillingCountry(event.target.value)} style={styles.input} />
+            <input
+              value={billingCountry}
+              onChange={(event) => setBillingCountry(event.target.value)}
+              placeholder={t('pl. Magyarország, DE, US')}
+              style={styles.input}
+            />
           </label>
+
+          {mode === 'organization' && (
+            <>
+              <label style={styles.label}>{t(companyTaxLabel(billingCountry))}
+                <input
+                  value={billingTaxNumber}
+                  onChange={(event) => setBillingTaxNumber(event.target.value.toUpperCase())}
+                  placeholder={companyTaxPlaceholder(billingCountry)}
+                  pattern={isHungarianCountry(billingCountry) ? '[0-9]{8}-[0-9]-[0-9]{2}' : undefined}
+                  title={isHungarianCountry(billingCountry) ? t('A magyar adószám formátuma: 12345678-2-42.') : undefined}
+                  style={styles.input}
+                  required
+                />
+              </label>
+              <label style={styles.label}>{t('Cégnév')}
+                <input value={billingCompanyName} onChange={(event) => setBillingCompanyName(event.target.value)} style={styles.input} required />
+              </label>
+            </>
+          )}
+
           <div style={styles.twoCols}>
             <label style={styles.label}>{t('Irányítószám')}
               <input
                 value={billingPostalCode}
-                inputMode={billingCountry.trim().toLocaleLowerCase('hu-HU') === 'magyarország' ? 'numeric' : undefined}
+                inputMode={isHungarianCountry(billingCountry) ? 'numeric' : undefined}
                 onChange={(event) => setBillingPostalCode(event.target.value)}
                 style={styles.input}
+                required
               />
             </label>
             <label style={styles.label}>{t('Település')}
-              <input value={billingCity} onChange={(event) => setBillingCity(event.target.value)} style={styles.input} />
+              <input value={billingCity} onChange={(event) => setBillingCity(event.target.value)} style={styles.input} required />
             </label>
           </div>
           <label style={styles.label}>{t('Cím')}
-            <input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} style={styles.input} />
+            <input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} style={styles.input} required />
           </label>
-          <label style={styles.label}>{t('Adószám (ha szükséges)')}
-            <input value={billingTaxNumber} onChange={(event) => setBillingTaxNumber(event.target.value)} style={styles.input} />
-          </label>
-          <label style={styles.label}>{t('Név')}
-            <input value={billingName} onChange={(event) => setBillingName(event.target.value)} style={styles.input} />
-          </label>
-          <label style={styles.label}>{t('E-mail')}
-            <input type="email" value={billingEmail} onChange={(event) => setBillingEmail(event.target.value)} style={styles.input} />
-          </label>
+
+          {mode !== 'organization' && (
+            <>
+              <label style={styles.label}>{t('Számlázási név')}
+                <input value={billingName} onChange={(event) => setBillingName(event.target.value)} style={styles.input} required />
+              </label>
+              <label style={styles.label}>{t('Számlázási e-mail')}
+                <input type="email" value={billingEmail} onChange={(event) => setBillingEmail(event.target.value)} style={styles.input} required />
+              </label>
+            </>
+          )}
 
           {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
-          <button type="submit" disabled={loading || (mode !== 'gift' && !user)} style={styles.primaryButton}>
+          <button type="submit" disabled={loading || !user} style={styles.primaryButton}>
             {loading
               ? t('Folyamatban...')
               : provider === 'simplepay' && simplePayReady
@@ -491,6 +559,7 @@ const styles: Record<string, React.CSSProperties> = {
   switchButton: { minHeight: 38, padding: '2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
+  accountInfo: { display: 'flex', flexWrap: 'wrap', gap: '2px 8px', marginBottom: 6, padding: '6px 8px', borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 12, overflowWrap: 'anywhere' },
   inlineLink: { color: '#166534', fontWeight: 800 },
   form: { display: 'flex', flexDirection: 'column', gap: 6 },
   label: { display: 'flex', flexDirection: 'column', gap: 3, color: '#334155', fontSize: 13, fontWeight: 700, minWidth: 0 },
