@@ -118,6 +118,7 @@ export function InviteSendDialog({
   const f = (key: string, values: Record<string, string | number>) => ownerFormat(uiLanguage, key, values);
   const hasSavedIdentity = Boolean(savedRecipientName || savedRecipientEmail);
   const identityLocked = isResend && hasSavedIdentity;
+  const lockedRecipientLabel = savedRecipientName || savedRecipientEmail || '';
   const [platform, setPlatform] = useState<SendPlatform>(
     savedDeliveryMethod === 'email' ? 'email' : 'share'
   );
@@ -176,6 +177,13 @@ export function InviteSendDialog({
       inviteLanguage: inviteLanguageChoice === 'inherit' ? null : inviteLanguageChoice,
     } as const;
 
+    if (identityLocked && lockedRecipientLabel) {
+      const confirmed = window.confirm(
+        f('Ez az aktív meghívó {name} részére van lefoglalva. Csak ugyanennek a személynek küldd újra. Folytatod?', { name: lockedRecipientLabel })
+      );
+      if (!confirmed) return;
+    }
+
     if (platform === 'email') {
       try {
         const subject = buildInviteTitle(effectiveInviteLanguage, bookTitle);
@@ -185,7 +193,11 @@ export function InviteSendDialog({
         onClose();
       } catch (err) {
         console.error(err);
-        setSendError(t('Nem sikerült rögzíteni a meghívás küldését. Próbáld újra.'));
+        setSendError(
+          err instanceof Error && err.message === 'PAGE_INVITE_RECIPIENT_LOCKED'
+            ? t('A meghívó címzettje nem módosítható a 14 napos időablak alatt.')
+            : t('Nem sikerült rögzíteni a meghívás küldését. Próbáld újra.')
+        );
       }
       return;
     }
@@ -205,7 +217,11 @@ export function InviteSendDialog({
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error(err);
-      setSendError(t('Nem sikerült megnyitni a megosztást. Próbáld újra vagy válaszd az E-mailt.'));
+      setSendError(
+        err instanceof Error && err.message === 'PAGE_INVITE_RECIPIENT_LOCKED'
+          ? t('A meghívó címzettje nem módosítható a 14 napos időablak alatt.')
+          : t('Nem sikerült megnyitni a megosztást. Próbáld újra vagy válaszd az E-mailt.')
+      );
     }
   };
 
@@ -228,7 +244,9 @@ export function InviteSendDialog({
 
         {isResend && (
           <div style={styles.resendWarning}>
-            {t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
+            {lockedRecipientLabel
+              ? f('Ez az oldal jelenleg {name} részére van lefoglalva. A 14 napos időablak alatt csak neki küldhető újra.', { name: lockedRecipientLabel })
+              : t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
           </div>
         )}
         <div style={styles.expiryNote}>
@@ -307,6 +325,7 @@ export function InviteSendDialog({
             onChange={(event) => setMessage(event.target.value)}
             style={styles.textarea}
             rows={11}
+            readOnly={identityLocked}
           />
         </label>
 

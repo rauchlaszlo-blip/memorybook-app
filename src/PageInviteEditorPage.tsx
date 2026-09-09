@@ -17,6 +17,7 @@ type InvitePageData = PageData & {
   bookId: string;
   bookTitle: string;
   inviteStatus: string;
+  inviteRecipientName?: string | null;
   language: AppLanguage;
 };
 
@@ -204,6 +205,9 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{page.bookTitle}</h1>
         <div style={styles.subtitle}>{copy.pageLabel(page.pageNumber)}</div>
+        {page.inviteRecipientName && (
+          <div style={styles.recipientBanner}>{copy.recipientNotice(page.inviteRecipientName)}</div>
+        )}
         <p style={styles.note}>{copy.instructions}</p>
         <label style={styles.shareConsent}>
           <input
@@ -253,6 +257,16 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 14,
     background: '#ffffff',
     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+  },
+  recipientBanner: {
+    margin: '12px 0',
+    padding: '10px 12px',
+    borderRadius: 10,
+    background: '#fff7ed',
+    color: '#9a3412',
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1.4,
   },
   brand: {
     color: '#64748b',
