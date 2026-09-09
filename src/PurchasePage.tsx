@@ -488,7 +488,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: { margin: '3px 0', color: '#0f172a', fontSize: 'clamp(23px,7vw,32px)' },
   lead: { margin: '0 0 9px', color: '#64748b', lineHeight: 1.35, fontSize: 14 },
   switcher: { display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 4, marginBottom: 8, padding: 2, background: '#e2e8f0', borderRadius: 9 },
-  switchButton: { minHeight: 38, padding: '0 2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15, whiteSpace: 'nowrap' },
+  switchButton: { minHeight: 38, padding: '2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
   inlineLink: { color: '#166534', fontWeight: 800 },
