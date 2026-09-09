@@ -1,0 +1,50 @@
+name: Payment button label
+on:
+  push:
+    branches: [payment-button-label]
+permissions:
+  contents: write
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: payment-button-label
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Update payment button label
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          purchase = Path('src/PurchasePage.tsx')
+          text = purchase.read_text(encoding='utf-8')
+          old = ": t('Vásárlási adatok mentése')}"
+          new = ": t('Fizetés')}"
+          if old not in text:
+              raise SystemExit('Purchase button label pattern not found')
+          text = text.replace(old, new, 1)
+          purchase.write_text(text, encoding='utf-8')
+
+          i18n = Path('src/publicUiI18n.ts')
+          text = i18n.read_text(encoding='utf-8')
+          pattern = re.compile(r"^\s*'Vásárlási adatok mentése': \{ en: '.*?', de: '.*?' \},$", re.M)
+          text, count = pattern.subn("  'Fizetés': { en: 'Payment', de: 'Zahlung' },", text, count=1)
+          if count != 1:
+              raise SystemExit(f'Translation replacement count: {count}')
+          i18n.write_text(text, encoding='utf-8')
+          PY
+      - run: npm ci
+      - run: npm run build
+      - name: Commit verified change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/PurchasePage.tsx src/publicUiI18n.ts
+          git commit -m "Rename purchase button to payment"
+          git push origin HEAD:payment-button-label
