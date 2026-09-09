@@ -855,12 +855,35 @@ export const MemoryBookEditor = forwardRef<
           {(isDrawing || isErasing) && (
             <>
               {!isErasing && (
-                <input
-                  type="color"
-                  aria-label={copy.brushColor}
-                  value={brushColor}
-                  onChange={(e) => setBrushColor(e.target.value)}
-                />
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '0 10px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    background: '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span>{copy.brushColor}</span>
+                  <input
+                    type="color"
+                    aria-label={copy.brushColor}
+                    value={brushColor}
+                    onChange={(e) => setBrushColor(e.target.value)}
+                    style={{
+                      width: 38,
+                      height: 30,
+                      padding: 1,
+                      border: '1px solid #94a3b8',
+                      borderRadius: 5,
+                      background: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  />
+                </label>
               )}
               <input
                 type="range"

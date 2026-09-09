@@ -42,7 +42,7 @@ const COPY: Record<AppLanguage, Copy> = {
     step3Text: 'A meghívottak fotót és üzenetet adnak hozzá. Te látod és kezeled, mi kerül a könyvbe.',
     typesTitle: 'Kétféleképpen használhatod',
     standardTitle: 'Normál emlékkönyv',
-    standardText: 'Minden meghívott saját oldalt kap. Megírja, megszerkeszti és elküldi neked.',
+    standardText: 'Minden meghívott saját oldalt kap. Megírja, megszerkeszti és visszaküldi neked.',
     eventTitle: 'Rendezvény-vendégkönyv',
     eventText: 'Tedd ki a QR-kódot. A vendégek telefonról azonnal küldhetnek fotót és üzenetet.',
     noAccount: 'A meghívottaknak nem kell MemoryBook-fiókot létrehozniuk.',
