@@ -74,7 +74,6 @@ export const MemoryBookEditor = forwardRef<
     'saved' | 'saving' | 'unsaved' | 'conflict'
   >('saved');
   const [hasSelection, setHasSelection] = useState(false);
-  const [selectedTextFontSize, setSelectedTextFontSize] = useState<number | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [canvasScale, setCanvasScale] = useState(1);
@@ -437,20 +436,87 @@ export const MemoryBookEditor = forwardRef<
       handlersRef.current.pushToHistory()
     );
 
+    const configureTextObject = (object: fabric.FabricObject) => {
+      if (!(object instanceof fabric.IText)) return;
+
+      object.set({
+        borderColor: '#2563eb',
+        cornerColor: '#ffffff',
+        cornerStrokeColor: '#2563eb',
+        cornerStyle: 'circle',
+        cornerSize: 20,
+        transparentCorners: false,
+        padding: 8,
+        centeredRotation: true,
+      });
+      object.setControlsVisibility({
+        tl: true,
+        tr: true,
+        bl: true,
+        br: true,
+        ml: false,
+        mr: false,
+        mt: false,
+        mb: false,
+        mtr: true,
+      });
+      object.setCoords();
+    };
+
+    const keepTextInsideCanvas = (object: fabric.FabricObject) => {
+      if (!(object instanceof fabric.IText)) return;
+
+      object.setCoords();
+      let bounds = object.getBoundingRect();
+
+      if (bounds.width > CANVAS_WIDTH || bounds.height > CANVAS_HEIGHT) {
+        const factor = Math.min(
+          CANVAS_WIDTH / Math.max(bounds.width, 1),
+          CANVAS_HEIGHT / Math.max(bounds.height, 1)
+        );
+        object.set({
+          scaleX: (object.scaleX || 1) * factor,
+          scaleY: (object.scaleY || 1) * factor,
+        });
+        object.setCoords();
+        bounds = object.getBoundingRect();
+      }
+
+      let deltaX = 0;
+      let deltaY = 0;
+      if (bounds.left < 0) deltaX = -bounds.left;
+      else if (bounds.left + bounds.width > CANVAS_WIDTH) {
+        deltaX = CANVAS_WIDTH - (bounds.left + bounds.width);
+      }
+      if (bounds.top < 0) deltaY = -bounds.top;
+      else if (bounds.top + bounds.height > CANVAS_HEIGHT) {
+        deltaY = CANVAS_HEIGHT - (bounds.top + bounds.height);
+      }
+
+      if (deltaX || deltaY) {
+        object.set({
+          left: (object.left || 0) + deltaX,
+          top: (object.top || 0) + deltaY,
+        });
+        object.setCoords();
+      }
+    };
+
     const syncSelectionState = () => {
-      const activeObjects = canvas.getActiveObjects();
       const activeObject = canvas.getActiveObject();
-      setHasSelection(activeObjects.length > 0);
-      setSelectedTextFontSize(
-        activeObject instanceof fabric.IText
-          ? Math.round(activeObject.fontSize || 22)
-          : null
-      );
+      setHasSelection(canvas.getActiveObjects().length > 0);
+      if (activeObject) configureTextObject(activeObject);
     };
 
     canvas.on('selection:created', syncSelectionState);
     canvas.on('selection:updated', syncSelectionState);
     canvas.on('selection:cleared', syncSelectionState);
+    canvas.on('object:moving', (event) => {
+      if (event.target) keepTextInsideCanvas(event.target);
+    });
+    canvas.on('object:modified', (event) => {
+      if (event.target) keepTextInsideCanvas(event.target);
+    });
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -537,6 +603,25 @@ export const MemoryBookEditor = forwardRef<
 
         if (abortController.signal.aborted) return;
 
+        canvas.getObjects().forEach((object) => {
+          if (object instanceof fabric.IText) {
+            object.set({
+              borderColor: '#2563eb',
+              cornerColor: '#ffffff',
+              cornerStrokeColor: '#2563eb',
+              cornerStyle: 'circle',
+              cornerSize: 20,
+              transparentCorners: false,
+              padding: 8,
+              centeredRotation: true,
+            });
+            object.setControlsVisibility({
+              tl: true, tr: true, bl: true, br: true,
+              ml: false, mr: false, mt: false, mb: false, mtr: true,
+            });
+            object.setCoords();
+          }
+        });
         canvas.renderAll();
 
         const initialJson = JSON.stringify(canvas.toJSON());
@@ -618,6 +703,25 @@ export const MemoryBookEditor = forwardRef<
       fontSize: 22,
       fill: '#1F2937',
       editable: true,
+      borderColor: '#2563eb',
+      cornerColor: '#ffffff',
+      cornerStrokeColor: '#2563eb',
+      cornerStyle: 'circle',
+      cornerSize: 20,
+      transparentCorners: false,
+      padding: 8,
+      centeredRotation: true,
+    });
+    text.setControlsVisibility({
+      tl: true,
+      tr: true,
+      bl: true,
+      br: true,
+      ml: false,
+      mr: false,
+      mt: false,
+      mb: false,
+      mtr: true,
     });
 
     canvas.add(text);
@@ -695,29 +799,6 @@ export const MemoryBookEditor = forwardRef<
     canvas.remove(...activeObjects);
     canvas.discardActiveObject();
     canvas.renderAll();
-  };
-
-  const handleSelectedTextFontSize = (fontSize: number) => {
-    const canvas = fabricRef.current;
-    const object = canvas?.getActiveObject();
-    if (!canvas || !(object instanceof fabric.IText)) return;
-
-    object.set({ fontSize });
-    object.setCoords();
-    canvas.requestRenderAll();
-    setSelectedTextFontSize(fontSize);
-    handleStructuralMutation();
-  };
-
-  const handleMoveSelectedText = () => {
-    const canvas = fabricRef.current;
-    const object = canvas?.getActiveObject();
-    if (!canvas || !(object instanceof fabric.IText)) return;
-
-    if (object.isEditing) object.exitEditing();
-    canvas.setActiveObject(object);
-    object.setCoords();
-    canvas.requestRenderAll();
   };
 
   const handleBringForward = () => {
@@ -923,34 +1004,6 @@ export const MemoryBookEditor = forwardRef<
             </>
           )}
 
-          {selectedTextFontSize !== null && (
-            <>
-              <label
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '0 8px',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  background: '#fff',
-                }}
-              >
-                <span>{copy.textSize}</span>
-                <input
-                  type="range"
-                  aria-label={copy.textSize}
-                  min="12"
-                  max="72"
-                  value={selectedTextFontSize}
-                  onChange={(event) => handleSelectedTextFontSize(Number(event.target.value))}
-                />
-                <span>{selectedTextFontSize}</span>
-              </label>
-              <button onClick={handleMoveSelectedText}>{copy.moveText}</button>
-            </>
-          )}
-
           {hasSelection && (
             <>
               <button onClick={handleBringForward}>{copy.bringForward}</button>
@@ -999,7 +1052,7 @@ export const MemoryBookEditor = forwardRef<
             border: '1px solid #cbd5e1',
             boxShadow: '0 10px 30px rgba(0,0,0,.12)',
             overflow: 'hidden',
-            touchAction: isDrawing || isErasing ? 'none' : 'manipulation',
+            touchAction: isDrawing || isErasing || hasSelection ? 'none' : 'manipulation',
           }}
         >
           <div
