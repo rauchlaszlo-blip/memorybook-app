@@ -115,13 +115,14 @@ export function LandingPage() {
         </div>
       </header>
 
+      <a href="/purchase" style={styles.floatingCta} aria-label={copy.primaryCta}>
+        {copy.primaryCta}
+      </a>
+
       <section style={styles.hero}>
         <div style={styles.eyebrow}>{copy.eyebrow}</div>
         <h1 style={styles.heroTitle}>{copy.title}</h1>
         <p style={styles.heroLead}>{copy.lead}</p>
-        <div style={styles.heroActions}>
-          <a href="/purchase" style={styles.primaryButton}>{copy.primaryCta}</a>
-        </div>
       </section>
 
       <section id="how" style={styles.section}>
@@ -162,7 +163,6 @@ export function LandingPage() {
       <section style={styles.bottomCta}>
         <h2 style={styles.bottomTitle}>{copy.bottomTitle}</h2>
         <p style={styles.bottomText}>{copy.bottomText}</p>
-        <a href="/purchase" style={styles.primaryButton}>{copy.bottomCta}</a>
       </section>
     </main>
   );
@@ -267,6 +267,27 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#334155',
     textDecoration: 'none',
     fontWeight: 800,
+  },
+  floatingCta: {
+    position: 'fixed',
+    top: '32vh',
+    right: 'clamp(12px, 3vw, 36px)',
+    zIndex: 20,
+    minHeight: 48,
+    maxWidth: 'min(260px, calc(100vw - 24px))',
+    padding: '12px 17px',
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    background: '#0f172a',
+    color: '#ffffff',
+    textDecoration: 'none',
+    textAlign: 'center',
+    fontWeight: 900,
+    lineHeight: 1.25,
+    boxShadow: '0 12px 28px rgba(15, 23, 42, 0.24)',
   },
   section: { width: '100%', maxWidth: 980, margin: '0 auto 70px' },
   sectionTitle: {
