@@ -368,8 +368,10 @@ export function PurchasePage() {
   return (
     <main style={styles.page}>
       <section style={styles.card}>
-        <div style={styles.languageRow}><LanguageSwitcher /></div>
-        <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
+        <div style={styles.topRow}>
+          <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
+          <LanguageSwitcher />
+        </div>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
         <p style={styles.lead}>{t('A PayPal és a SimplePay fizetési folyamata technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>
@@ -478,25 +480,25 @@ export function PurchasePage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', padding: '18px 12px 40px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
-  languageRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
-  card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 16, background: '#fff', borderRadius: 16, boxSizing: 'border-box', boxShadow: '0 10px 30px rgba(15,23,42,.08)' },
-  back: { display: 'inline-flex', minHeight: 44, alignItems: 'center', color: '#475569', textDecoration: 'none', fontWeight: 700 },
-  brand: { marginTop: 4, color: '#64748b', fontWeight: 800, fontSize: 13, letterSpacing: 1.4, textTransform: 'uppercase' },
-  title: { margin: '6px 0', color: '#0f172a', fontSize: 'clamp(25px,8vw,34px)' },
-  lead: { margin: '0 0 14px', color: '#64748b', lineHeight: 1.5 },
-  switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 12, padding: 3, background: '#e2e8f0', borderRadius: 10 },
-  switchButton: { minHeight: 44, border: 0, borderRadius: 8, background: 'transparent', fontWeight: 800, color: '#475569' },
+  page: { minHeight: '100vh', padding: '8px 8px 24px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
+  topRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 3 },
+  card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 11, background: '#fff', borderRadius: 12, boxSizing: 'border-box', boxShadow: '0 8px 24px rgba(15,23,42,.07)' },
+  back: { display: 'inline-flex', minHeight: 36, alignItems: 'center', color: '#475569', textDecoration: 'none', fontWeight: 700, fontSize: 14 },
+  brand: { marginTop: 0, color: '#64748b', fontWeight: 800, fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase' },
+  title: { margin: '3px 0', color: '#0f172a', fontSize: 'clamp(23px,7vw,32px)' },
+  lead: { margin: '0 0 9px', color: '#64748b', lineHeight: 1.35, fontSize: 14 },
+  switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8, padding: 2, background: '#e2e8f0', borderRadius: 9 },
+  switchButton: { minHeight: 38, border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569' },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
-  notice: { marginBottom: 12, padding: 12, borderRadius: 9, background: '#fff7ed', color: '#9a3412', lineHeight: 1.45 },
+  notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
   inlineLink: { color: '#166534', fontWeight: 800 },
-  form: { display: 'flex', flexDirection: 'column', gap: 8 },
-  label: { display: 'flex', flexDirection: 'column', gap: 4, color: '#334155', fontSize: 14, fontWeight: 700, minWidth: 0 },
-  input: { width: '100%', minHeight: 40, padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', fontSize: 15, background: '#fff' },
-  sectionTitle: { marginTop: 4, color: '#0f172a', fontWeight: 800, fontSize: 16 },
-  twoCols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))', gap: 8 },
-  giftInfo: { padding: 12, borderRadius: 9, background: '#f8fafc', color: '#475569', fontSize: 13, lineHeight: 1.5 },
-  error: { padding: 11, borderRadius: 8, background: '#fef2f2', color: '#991b1b' },
-  primaryButton: { minHeight: 48, border: 0, borderRadius: 9, background: '#0f172a', color: '#fff', fontWeight: 800, fontSize: 16 },
-  success: { marginTop: 16, padding: 14, borderRadius: 10, background: '#ecfdf5', color: '#166534', lineHeight: 1.5, overflowWrap: 'anywhere' },
+  form: { display: 'flex', flexDirection: 'column', gap: 6 },
+  label: { display: 'flex', flexDirection: 'column', gap: 3, color: '#334155', fontSize: 13, fontWeight: 700, minWidth: 0 },
+  input: { width: '100%', minHeight: 36, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 7, boxSizing: 'border-box', fontSize: 14, background: '#fff' },
+  sectionTitle: { marginTop: 2, color: '#0f172a', fontWeight: 800, fontSize: 15 },
+  twoCols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))', gap: 6 },
+  giftInfo: { padding: 9, borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 13, lineHeight: 1.35 },
+  error: { padding: 9, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
+  primaryButton: { minHeight: 44, border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, fontSize: 15 },
+  success: { marginTop: 10, padding: 10, borderRadius: 9, background: '#ecfdf5', color: '#166534', lineHeight: 1.4, fontSize: 13, overflowWrap: 'anywhere' },
 };
