@@ -6,7 +6,13 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
   ? 'http://' + window.location.hostname + ':3001'
   : '';
 
-type GiftInfo = { bookType: 'standard' | 'event' | string; includedPages: number; claimStatus: 'available' | 'claimed' | 'redeemed' | string };
+type GiftInfo = {
+  bookType: 'standard' | 'event' | string;
+  includedPages: number;
+  claimStatus: 'available' | 'claimed' | 'redeemed' | string;
+  recipientName?: string | null;
+  recipientEmailMasked?: string | null;
+};
 
 export function GiftRedeemPage({ token }: { token: string }) {
   const language = usePublicUiLanguage();
@@ -45,7 +51,13 @@ export function GiftRedeemPage({ token }: { token: string }) {
       window.location.href = '/my-books';
     } catch (err: any) {
       console.error(err);
-      setError(err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED' ? t('Ezt az ajándékot már másik fiók beváltotta.') : t('Az ajándék beváltása nem sikerült.'));
+      setError(
+        err?.message === 'GIFT_RECIPIENT_ACCOUNT_MISMATCH'
+          ? t('Ezt az ajándékot másik e-mail címhez rendelték. A megadott Google-fiókkal lépj be.')
+          : err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED'
+            ? t('Ezt az ajándékot már másik fiók beváltotta.')
+            : t('Az ajándék beváltása nem sikerült.')
+      );
     } finally {
       setWorking(false);
     }
@@ -64,6 +76,8 @@ export function GiftRedeemPage({ token }: { token: string }) {
             <p style={styles.text}>
               {info.bookType === 'event' ? t('Rendezvény-vendégkönyv') : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}
             </p>
+            {info.recipientName && <p style={styles.text}><strong>{f('Ajándékozott: {name}', { name: info.recipientName })}</strong></p>}
+            {info.recipientEmailMasked && <p style={styles.text}>{f('A megadott Google-fiókkal váltható be: {email}', { email: info.recipientEmailMasked })}</p>}
             {info.claimStatus === 'available' ? (
               loggedIn ? (
                 <button type="button" onClick={redeem} disabled={working} style={styles.primaryButton}>{working ? t('Beváltás...') : t('Ajándék beváltása')}</button>

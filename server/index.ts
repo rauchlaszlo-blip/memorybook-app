@@ -415,6 +415,56 @@ app.get('/api/postal-lookup/:country/:postalCode', async (req, res) => {
   }
 });
 
+const VIES_COUNTRIES = new Set(['AT','BE','BG','CY','CZ','DE','DK','EE','EL','ES','FI','FR','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK']);
+
+app.get('/api/company-lookup/:country/:taxNumber', async (req, res) => {
+  const inputCountry = String(req.params.country || '').trim().toUpperCase();
+  const countryCode = inputCountry === 'GR' ? 'EL' : inputCountry;
+  if (!VIES_COUNTRIES.has(inputCountry) && !VIES_COUNTRIES.has(countryCode)) {
+    res.status(400).json({ error: 'COMPANY_LOOKUP_NOT_SUPPORTED' });
+    return;
+  }
+  let vatNumber = String(req.params.taxNumber || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (vatNumber.startsWith(inputCountry)) vatNumber = vatNumber.slice(inputCountry.length);
+  if (vatNumber.startsWith(countryCode)) vatNumber = vatNumber.slice(countryCode.length);
+  if (countryCode === 'HU') {
+    const digits = vatNumber.replace(/\D/g, '');
+    vatNumber = digits.slice(0, 8);
+  } else {
+    vatNumber = vatNumber.replace(/[^A-Z0-9]/g, '');
+  }
+  if (!vatNumber) {
+    res.status(400).json({ error: 'INVALID_TAX_NUMBER' });
+    return;
+  }
+  try {
+    const response = await fetch('https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ countryCode, vatNumber }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      res.status(502).json({ error: 'COMPANY_LOOKUP_FAILED' });
+      return;
+    }
+    const valid = Boolean(data?.isValid ?? data?.valid);
+    const rawName = String(data?.name || '').trim();
+    const rawAddress = String(data?.address || '').trim();
+    const companyName = rawName && rawName !== '---' ? rawName : null;
+    const address = rawAddress && rawAddress !== '---' ? rawAddress : null;
+    if (!valid) {
+      res.status(404).json({ valid: false, companyName: null, address: null, source: 'VIES' });
+      return;
+    }
+    res.status(200).json({ valid: true, companyName, address, source: 'VIES' });
+  } catch (err) {
+    console.error('Company lookup error:', err);
+    res.status(502).json({ error: 'COMPANY_LOOKUP_FAILED' });
+  }
+});
+
 app.get('/api/invoicing-capabilities', (_req, res) => {
   res.status(200).json(getInvoicingCapabilities());
 });
@@ -692,6 +742,8 @@ app.post('/api/purchases', async (req, res) => {
   const billingAddress = String(req.body?.billingAddress || '').trim();
   const billingTaxNumber = String(req.body?.billingTaxNumber || '').trim().toUpperCase();
   const billingCompanyName = String(req.body?.billingCompanyName || '').trim();
+  const giftRecipientName = purchaseMode === 'gift' ? String(req.body?.giftRecipientName || '').trim() : '';
+  const giftRecipientEmail = purchaseMode === 'gift' ? String(req.body?.giftRecipientEmail || '').trim().toLowerCase() : '';
   const purchaseBillingName = purchaseMode === 'organization' ? billingCompanyName : billingName;
 
   if (!paymentProvider) {
@@ -709,6 +761,8 @@ app.post('/api/purchases', async (req, res) => {
     billingAddress,
     purchaseMode === 'organization' ? billingCompanyName : billingName,
     purchaseMode === 'organization' ? billingTaxNumber : 'not-required',
+    purchaseMode === 'gift' ? giftRecipientName : 'not-required',
+    purchaseMode === 'gift' ? giftRecipientEmail : 'not-required',
   ];
   if (requiredValues.some((value) => !value)) {
     res.status(400).json({ error: 'INCOMPLETE_PURCHASE_IDENTITY' });
@@ -720,7 +774,7 @@ app.post('/api/purchases', async (req, res) => {
     res.status(400).json({ error: 'INVALID_HUNGARIAN_TAX_NUMBER' });
     return;
   }
-  if (!purchaserEmail.includes('@') || !billingEmail.includes('@')) {
+  if (!purchaserEmail.includes('@') || !billingEmail.includes('@') || (purchaseMode === 'gift' && !giftRecipientEmail.includes('@'))) {
     res.status(400).json({ error: 'INVALID_PURCHASE_EMAIL' });
     return;
   }
@@ -733,7 +787,10 @@ app.post('/api/purchases', async (req, res) => {
     billingPostalCode.length > 30 ||
     billingCity.length > 120 ||
     billingAddress.length > 240 ||
-    billingTaxNumber.length > 80
+    billingTaxNumber.length > 80 ||
+    billingCompanyName.length > 200 ||
+    giftRecipientName.length > 160 ||
+    giftRecipientEmail.length > 240
   ) {
     res.status(400).json({ error: 'PURCHASE_IDENTITY_TOO_LONG' });
     return;
@@ -799,10 +856,12 @@ app.post('/api/purchases', async (req, res) => {
          billing_address,
          billing_tax_number,
          billing_company_name,
+         gift_recipient_name,
+         gift_recipient_email,
          payment_provider,
          payment_status
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), NULLIF($15, ''), $16, 'draft')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), NULLIF($15, ''), NULLIF($16, ''), NULLIF($17, ''), $18, 'draft')
        RETURNING
          id,
          purchase_mode AS "purchaseMode",
@@ -827,6 +886,8 @@ app.post('/api/purchases', async (req, res) => {
         billingAddress,
         billingTaxNumber,
         billingCompanyName,
+        giftRecipientName,
+        giftRecipientEmail,
         paymentProvider,
       ]
     );
@@ -1063,7 +1124,9 @@ app.get('/api/gift-entitlements/:token', async (req, res) => {
          e.book_type AS "bookType",
          e.included_pages AS "includedPages",
          e.status,
-         e.assigned_user_id IS NOT NULL AS "claimed"
+         e.assigned_user_id IS NOT NULL AS "claimed",
+         p.gift_recipient_name AS "recipientName",
+         p.gift_recipient_email AS "recipientEmail"
        FROM book_entitlements e
        JOIN purchases p ON p.id = e.purchase_id
        WHERE e.gift_token = $1
@@ -1078,9 +1141,15 @@ app.get('/api/gift-entitlements/:token', async (req, res) => {
     }
 
     const row = result.rows[0];
+    const recipientEmail = String(row.recipientEmail || '');
+    const recipientEmailMasked = recipientEmail
+      ? recipientEmail.replace(/^(.{1,2}).*(@.*)$/, '$1***$2')
+      : null;
     res.status(200).json({
       bookType: row.bookType,
       includedPages: row.includedPages,
+      recipientName: row.recipientName || null,
+      recipientEmailMasked,
       claimStatus:
         row.status === 'redeemed'
           ? 'redeemed'
@@ -1115,7 +1184,8 @@ app.post('/api/gift-entitlements/:token/redeem', async (req, res) => {
          e.assigned_user_id AS "assignedUserId",
          e.status,
          e.book_type AS "bookType",
-         e.included_pages AS "includedPages"
+         e.included_pages AS "includedPages",
+         p.gift_recipient_email AS "recipientEmail"
        FROM book_entitlements e
        JOIN purchases p ON p.id = e.purchase_id
        WHERE e.gift_token = $1
@@ -1132,6 +1202,13 @@ app.post('/api/gift-entitlements/:token/redeem', async (req, res) => {
     }
 
     const entitlement = result.rows[0];
+    const designatedRecipientEmail = String(entitlement.recipientEmail || '').trim().toLowerCase();
+    const signedInEmail = String(session.user?.email || '').trim().toLowerCase();
+    if (designatedRecipientEmail && designatedRecipientEmail !== signedInEmail) {
+      await client.query('ROLLBACK');
+      res.status(403).json({ error: 'GIFT_RECIPIENT_ACCOUNT_MISMATCH' });
+      return;
+    }
     if (entitlement.status !== 'available') {
       await client.query('ROLLBACK');
       res.status(409).json({ error: 'GIFT_ENTITLEMENT_ALREADY_USED' });
@@ -3188,6 +3265,12 @@ async function initializeDatabase(): Promise<void> {
     'utf8'
   );
   await pool.query(companyBillingMigration);
+
+  const giftRecipientMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260909_gift_recipient.sql'),
+    'utf8'
+  );
+  await pool.query(giftRecipientMigration);
 
   const invoicingMigration = await fs.readFile(
     path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),

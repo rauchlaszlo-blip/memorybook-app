@@ -46,6 +46,10 @@ type PaymentSuccess = {
   giftRedeemPath?: string | null;
 };
 
+type CompanyLookupStatus = 'idle' | 'loading' | 'found' | 'not-found' | 'invalid' | 'error';
+
+const COUNTRY_CODES = `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW`.split(' ');
+
 const EU_COUNTRY_ALIASES = new Set([
   'AT','AUSTRIA','AUSZTRIA','ÖSTERREICH','BE','BELGIUM','BELGIEN','BELGIQUE','BELGIUM','BG','BULGARIA','BULGÁRIA','CY','CYPRUS','CIPRUS','CZ','CZECHIA','CZECH REPUBLIC','CSEHORSZÁG','TSCHECHIEN','DE','GERMANY','NÉMETORSZÁG','DEUTSCHLAND','DK','DENMARK','DÁNIA','DÄNEMARK','EE','ESTONIA','ÉSZTORSZÁG','ESTLAND','EL','GR','GREECE','GÖRÖGORSZÁG','GRIECHENLAND','ES','SPAIN','SPANYOLORSZÁG','SPANIEN','FI','FINLAND','FINNORSZÁG','FR','FRANCE','FRANCIAORSZÁG','FRANKREICH','HR','CROATIA','HORVÁTORSZÁG','KROATIEN','HU','HUNGARY','MAGYARORSZÁG','UNGARN','IE','IRELAND','ÍRORSZÁG','IRLAND','IT','ITALY','OLASZORSZÁG','ITALIEN','LT','LITHUANIA','LITVÁNIA','LITAUEN','LU','LUXEMBOURG','LUXEMBURG','LV','LATVIA','LETTORSZÁG','LETTLAND','MT','MALTA','NL','NETHERLANDS','HOLLANDIA','NIEDERLANDE','PL','POLAND','LENGYELORSZÁG','POLEN','PT','PORTUGAL','PORTUGÁLIA','RO','ROMANIA','ROMÁNIA','RUMÄNIEN','SE','SWEDEN','SVÉDORSZÁG','SCHWEDEN','SI','SLOVENIA','SZLOVÉNIA','SLOWENIEN','SK','SLOVAKIA','SZLOVÁKIA','SLOWAKEI'
 ]);
@@ -74,6 +78,26 @@ function companyTaxPlaceholder(country: string): string {
   return '';
 }
 
+function normalizeCountryCode(value: string): string {
+  const normalized = normalizedCountry(value);
+  const legacy: Record<string, string> = {
+    'MAGYARORSZÁG': 'HU', HUNGARY: 'HU', UNGARN: 'HU',
+    GERMANY: 'DE', 'NÉMETORSZÁG': 'DE', DEUTSCHLAND: 'DE',
+    AUSTRIA: 'AT', AUSZTRIA: 'AT', 'ÖSTERREICH': 'AT',
+  };
+  const mapped = legacy[normalized] || normalized;
+  return COUNTRY_CODES.includes(mapped) ? mapped : 'HU';
+}
+
+function countryLabel(code: string, language: string): string {
+  try {
+    const displayNames = new (Intl as any).DisplayNames([language], { type: 'region' });
+    return String(displayNames.of(code) || code);
+  } catch {
+    return code;
+  }
+}
+
 export function PurchasePage() {
   const language = usePublicUiLanguage();
   const t = useCallback((key: string) => publicText(language, key), [language]);
@@ -99,6 +123,9 @@ export function PurchasePage() {
   const [billingAddress, setBillingAddress] = useState('');
   const [billingTaxNumber, setBillingTaxNumber] = useState('');
   const [billingCompanyName, setBillingCompanyName] = useState('');
+  const [giftRecipientName, setGiftRecipientName] = useState('');
+  const [giftRecipientEmail, setGiftRecipientEmail] = useState('');
+  const [companyLookupStatus, setCompanyLookupStatus] = useState<CompanyLookupStatus>('idle');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -140,7 +167,7 @@ export function PurchasePage() {
 
         setBillingName(profile.billingName || user.name || '');
         setBillingEmail(profile.billingEmail || user.email || '');
-        setBillingCountry(profile.billingCountry || 'Magyarország');
+        setBillingCountry(normalizeCountryCode(profile.billingCountry || 'HU'));
         setBillingPostalCode(profile.billingPostalCode || '');
         setBillingCity(profile.billingCity || '');
         setBillingAddress(profile.billingAddress || '');
@@ -153,10 +180,8 @@ export function PurchasePage() {
   }, [user]);
 
   useEffect(() => {
-    const normalizedCountry = billingCountry.trim().toLocaleLowerCase('hu-HU');
-    const isHungary = normalizedCountry === 'magyarország' || normalizedCountry === 'hungary' || normalizedCountry === 'hu';
     const postalCode = billingPostalCode.trim();
-    if (!isHungary || !/^\d{4}$/.test(postalCode)) return;
+    if (billingCountry !== 'HU' || !/^\d{4}$/.test(postalCode)) return;
 
     let active = true;
     const timer = window.setTimeout(() => {
@@ -175,6 +200,49 @@ export function PurchasePage() {
       window.clearTimeout(timer);
     };
   }, [billingCountry, billingPostalCode]);
+
+  useEffect(() => {
+    if (mode !== 'organization' || !isEuCountry(billingCountry)) {
+      setCompanyLookupStatus('idle');
+      return;
+    }
+    const rawTaxNumber = billingTaxNumber.trim();
+    const compact = rawTaxNumber.replace(/[^A-Za-z0-9]/g, '');
+    const enough = billingCountry === 'HU' ? compact.replace(/^HU/i, '').length >= 8 : compact.length >= 4;
+    if (!enough) {
+      setCompanyLookupStatus('idle');
+      return;
+    }
+    let active = true;
+    setCompanyLookupStatus('loading');
+    const timer = window.setTimeout(() => {
+      fetch(`${API_BASE}/api/company-lookup/${encodeURIComponent(billingCountry)}/${encodeURIComponent(rawTaxNumber)}`)
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!active) return;
+          if (response.status === 404 || data?.valid === false) {
+            setCompanyLookupStatus('invalid');
+            return;
+          }
+          if (!response.ok) {
+            setCompanyLookupStatus('error');
+            return;
+          }
+          const companyName = String(data?.companyName || '').trim();
+          if (companyName) {
+            setBillingCompanyName(companyName);
+            setCompanyLookupStatus('found');
+          } else {
+            setCompanyLookupStatus('not-found');
+          }
+        })
+        .catch(() => { if (active) setCompanyLookupStatus('error'); });
+    }, 600);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [mode, billingCountry, billingTaxNumber]);
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -326,6 +394,8 @@ export function PurchasePage() {
           billingAddress,
           billingTaxNumber,
           billingCompanyName,
+          giftRecipientName,
+          giftRecipientEmail,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -436,6 +506,18 @@ export function PurchasePage() {
         )}
 
         <form onSubmit={submit} style={styles.form}>
+          {mode === 'gift' && (
+            <div style={styles.giftRecipientBox}>
+              <div style={styles.sectionTitle}>{t('Ajándékozott – a könyv jövőbeli tulajdonosa')}</div>
+              <label style={styles.label}>{t('Ajándékozott neve')}
+                <input value={giftRecipientName} onChange={(event) => setGiftRecipientName(event.target.value)} style={styles.input} required />
+              </label>
+              <label style={styles.label}>{t('Ajándékozott Google e-mail címe')}
+                <input type="email" value={giftRecipientEmail} onChange={(event) => setGiftRecipientEmail(event.target.value)} style={styles.input} required />
+              </label>
+              <div style={styles.fieldHint}>{t('Sikeres fizetés után beváltó link készül. A könyvet csak a fenti e-mail címhez tartozó Google-fiók válthatja be.')}</div>
+            </div>
+          )}
           <label style={styles.label}>{t('Könyv típusa')}
             <select value={bookType} onChange={(event) => setBookType(event.target.value as BookType)} style={styles.input}>
               <option value="standard">{t('Normál emlékkönyv – 30 oldal')}</option>
@@ -453,12 +535,12 @@ export function PurchasePage() {
 
           <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>
           <label style={styles.label}>{t('Ország')}
-            <input
-              value={billingCountry}
-              onChange={(event) => setBillingCountry(event.target.value)}
-              placeholder={t('pl. Magyarország, DE, US')}
-              style={styles.input}
-            />
+            <select value={billingCountry} onChange={(event) => setBillingCountry(event.target.value)} style={styles.input}>
+              {COUNTRY_CODES
+                .map((code) => ({ code, label: countryLabel(code, language) }))
+                .sort((a, b) => a.label.localeCompare(b.label, language))
+                .map((item) => <option key={item.code} value={item.code}>{item.label} ({item.code})</option>)}
+            </select>
           </label>
 
           {mode === 'organization' && (
@@ -476,6 +558,11 @@ export function PurchasePage() {
               </label>
               <label style={styles.label}>{t('Cégnév')}
                 <input value={billingCompanyName} onChange={(event) => setBillingCompanyName(event.target.value)} style={styles.input} required />
+                {companyLookupStatus === 'loading' && <span style={styles.fieldHint}>{t('Cégadat ellenőrzése...')}</span>}
+                {companyLookupStatus === 'found' && <span style={styles.fieldHint}>{t('A cégnév automatikusan kitöltve a VIES adatai alapján.')}</span>}
+                {companyLookupStatus === 'not-found' && <span style={styles.fieldHint}>{t('Az adószám érvényes, de a VIES nem adott vissza cégnevet. Add meg kézzel.')}</span>}
+                {companyLookupStatus === 'invalid' && <span style={styles.fieldError}>{t('Ez az adószám nem érvényes a VIES rendszerben, vagy nem közösségi adószám.')}</span>}
+                {companyLookupStatus === 'error' && <span style={styles.fieldHint}>{t('A cégadat most nem kérdezhető le. A cégnév kézzel is megadható.')}</span>}
               </label>
             </>
           )}
@@ -509,7 +596,7 @@ export function PurchasePage() {
             </>
           )}
 
-          {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
+          {mode === 'gift' && <div style={styles.giftInfo}>{t('Az ajándék nem a vásárló fiókjába kerül. Fizetés után küldd el a beváltó linket az ajándékozottnak; a megadott Google-fiókkal tudja átvenni.')}</div>}
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || !user} style={styles.primaryButton}>
@@ -559,6 +646,9 @@ const styles: Record<string, React.CSSProperties> = {
   switchButton: { minHeight: 38, padding: '2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
+  giftRecipientBox: { display: 'grid', gap: 6, padding: 9, borderRadius: 9, background: '#f8fafc', border: '1px solid #e2e8f0' },
+  fieldHint: { display: 'block', marginTop: 2, color: '#64748b', fontSize: 11.5, lineHeight: 1.3, fontWeight: 500 },
+  fieldError: { display: 'block', marginTop: 2, color: '#b91c1c', fontSize: 11.5, lineHeight: 1.3, fontWeight: 600 },
   accountInfo: { display: 'flex', flexWrap: 'wrap', gap: '2px 8px', marginBottom: 6, padding: '6px 8px', borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 12, overflowWrap: 'anywhere' },
   inlineLink: { color: '#166534', fontWeight: 800 },
   form: { display: 'flex', flexDirection: 'column', gap: 6 },
