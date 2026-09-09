@@ -17,6 +17,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: python scripts/apply_purchase_mode_fields.py
+      - name: Remove duplicate existing translations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/publicUiI18n.ts')
+          text = p.read_text(encoding='utf-8')
+          for line in [
+              "  'Számlázási név': { en: 'Billing name', de: 'Rechnungsname' },\n",
+              "  'Számlázási e-mail': { en: 'Billing email', de: 'Rechnungs-E-Mail' },\n",
+          ]:
+              # The file already had this key before the patch; keep the original later occurrence.
+              if text.count(line) > 1:
+                  text = text.replace(line, '', 1)
+          p.write_text(text, encoding='utf-8')
+          PY
       - run: npm ci
       - run: npm run build
       - name: Verify changes
