@@ -1,0 +1,52 @@
+name: Remove purchaser identification
+on:
+  push:
+    branches: [remove-purchaser-identification]
+permissions:
+  contents: write
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remove-purchaser-identification
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Remove duplicate purchaser identification block
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/PurchasePage.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old_body = """          purchaserName,\n          purchaserEmail,"""
+          new_body = """          purchaserName: mode === 'gift' ? billingName : purchaserName,\n          purchaserEmail: mode === 'gift' ? billingEmail : purchaserEmail,"""
+          if old_body not in text:
+              raise SystemExit('Purchase identity body block not found')
+          text = text.replace(old_body, new_body, 1)
+
+          pattern = re.compile(r"\n          \{mode === 'gift' && \(\n            <>\n              <div style=\{styles\.sectionTitle\}>\{t\('Vásárló azonosítása'\)\}</div>\n              <label style=\{styles\.label\}>\{t\('Név'\)\}\n                <input value=\{purchaserName\} onChange=\{\(event\) => setPurchaserName\(event\.target\.value\)\} style=\{styles\.input\} />\n              </label>\n              <label style=\{styles\.label\}>\{t\('E-mail'\)\}\n                <input type=\"email\" value=\{purchaserEmail\} onChange=\{\(event\) => setPurchaserEmail\(event\.target\.value\)\} style=\{styles\.input\} />\n              </label>\n            </>\n          \)\}\n", re.S)
+          text, count = pattern.subn('\n', text, count=1)
+          if count != 1:
+              raise SystemExit(f'Purchaser identification block removal count: {count}')
+
+          if "Vásárló azonosítása" in text:
+              raise SystemExit('Purchaser identification title still present')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - run: npm ci
+      - run: npm run build
+      - name: Commit verified change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/PurchasePage.tsx
+          git commit -m "Remove duplicate purchaser identification block"
+          git push origin HEAD:remove-purchaser-identification
