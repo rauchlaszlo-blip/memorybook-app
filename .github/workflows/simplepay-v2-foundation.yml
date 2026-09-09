@@ -35,99 +35,110 @@ jobs:
             verifySimplePaySignature,
           } from '${{ github.workspace }}/server/payments/simplepay.ts';
 
-          process.env.SIMPLEPAY_ENVIRONMENT = 'sandbox';
-          process.env.SIMPLEPAY_MERCHANT_ID = 'TESTMERCHANT';
-          process.env.SIMPLEPAY_SECRET_KEY = 'test-secret-key';
-          process.env.SIMPLEPAY_API_BASE_URL = 'https://simplepay.test/payment';
-          delete process.env.SIMPLEPAY_LIVE_ENABLED;
+          async function main() {
+            process.env.SIMPLEPAY_ENVIRONMENT = 'sandbox';
+            process.env.SIMPLEPAY_MERCHANT_ID = 'TESTMERCHANT';
+            process.env.SIMPLEPAY_SECRET_KEY = 'test-secret-key';
+            process.env.SIMPLEPAY_API_BASE_URL = 'https://simplepay.test/payment';
+            delete process.env.SIMPLEPAY_LIVE_ENABLED;
 
-          const raw = JSON.stringify({ hello: 'world' });
-          const signature = signSimplePayBody(raw);
-          assert.equal(verifySimplePaySignature(raw, signature), true);
-          assert.equal(verifySimplePaySignature(raw + ' ', signature), false);
+            const raw = JSON.stringify({ hello: 'world' });
+            const signature = signSimplePayBody(raw);
+            assert.equal(verifySimplePaySignature(raw, signature), true);
+            assert.equal(verifySimplePaySignature(raw + ' ', signature), false);
 
-          globalThis.fetch = async (url, init) => {
-            assert.equal(String(url), 'https://simplepay.test/payment/v2/start');
-            const requestBody = String(init?.body || '');
-            const requestSignature = new Headers(init?.headers).get('Signature') || '';
-            assert.equal(verifySimplePaySignature(requestBody, requestSignature), true);
-            const request = JSON.parse(requestBody);
-            assert.equal(request.merchant, 'TESTMERCHANT');
-            assert.equal(request.orderRef, 'purchase-test-1');
-            assert.equal(request.currency, 'HUF');
-            assert.equal(request.total, 12990);
-            assert.deepEqual(request.methods, ['CARD']);
-            const responseObject = {
-              salt: '0123456789abcdef0123456789abcdef',
-              merchant: request.merchant,
-              orderRef: request.orderRef,
-              currency: request.currency,
-              total: request.total,
-              transactionId: 123456789,
-              paymentUrl: 'https://sandbox.simplepay.hu/pay/123456789',
+            globalThis.fetch = async (url, init) => {
+              assert.equal(String(url), 'https://simplepay.test/payment/v2/start');
+              const requestBody = String(init?.body || '');
+              const requestSignature = new Headers(init?.headers).get('Signature') || '';
+              assert.equal(verifySimplePaySignature(requestBody, requestSignature), true);
+              const request = JSON.parse(requestBody);
+              assert.equal(request.merchant, 'TESTMERCHANT');
+              assert.equal(request.orderRef, 'purchase-test-1');
+              assert.equal(request.currency, 'HUF');
+              assert.equal(request.total, 12990);
+              assert.deepEqual(request.methods, ['CARD']);
+              const responseObject = {
+                salt: '0123456789abcdef0123456789abcdef',
+                merchant: request.merchant,
+                orderRef: request.orderRef,
+                currency: request.currency,
+                total: request.total,
+                transactionId: 123456789,
+                paymentUrl: 'https://sandbox.simplepay.hu/pay/123456789',
+              };
+              const responseBody = JSON.stringify(responseObject);
+              return new Response(responseBody, {
+                status: 200,
+                headers: {
+                  'Content-Type': 'application/json',
+                  Signature: signSimplePayBody(responseBody),
+                },
+              });
             };
-            const responseBody = JSON.stringify(responseObject);
-            return new Response(responseBody, {
-              status: 200,
-              headers: {
-                'Content-Type': 'application/json',
-                Signature: signSimplePayBody(responseBody),
-              },
-            });
-          };
 
-          const started = await startSimplePayTransaction({
-            purchaseId: 'purchase-test-1',
-            amountMinor: 12990,
-            currency: 'HUF',
-            customerEmail: 'buyer@example.com',
-            language: 'HU',
-            redirectUrl: 'https://memorybook.example/purchase',
-          });
-          assert.equal(started.transactionId, '123456789');
-          assert.equal(started.amountMinor, 12990);
-
-          const ipnBody = JSON.stringify({
-            salt: 'abcdef0123456789abcdef0123456789',
-            orderRef: 'purchase-test-1',
-            method: 'CARD',
-            merchant: 'TESTMERCHANT',
-            finishDate: '2026-09-09T06:00:00+02:00',
-            paymentDate: '2026-09-09T05:59:00+02:00',
-            transactionId: 123456789,
-            status: 'FINISHED',
-          });
-          const ipnSignature = signSimplePayBody(ipnBody);
-          const ack = buildSimplePayIpnAcknowledgement(
-            ipnBody,
-            ipnSignature,
-            new Date('2026-09-09T04:01:00.000Z')
-          );
-          assert.equal(ack.message.status, 'FINISHED');
-          assert.equal(JSON.parse(ack.responseBody).receiveDate, '2026-09-09T04:01:00.000Z');
-          assert.equal(verifySimplePaySignature(ack.responseBody, ack.responseSignature), true);
-
-          assert.throws(
-            () => buildSimplePayIpnAcknowledgement(ipnBody, 'invalid-signature'),
-            (error: unknown) => error instanceof SimplePayAdapterError && error.message === 'SIMPLEPAY_IPN_SIGNATURE_INVALID'
-          );
-
-          process.env.SIMPLEPAY_ENVIRONMENT = 'live';
-          process.env.SIMPLEPAY_API_BASE_URL = 'https://simplepay.test/payment';
-          let liveBlocked = false;
-          try {
-            await startSimplePayTransaction({
-              purchaseId: 'purchase-live-test',
-              amountMinor: 1000,
+            const started = await startSimplePayTransaction({
+              purchaseId: 'purchase-test-1',
+              amountMinor: 12990,
               currency: 'HUF',
               customerEmail: 'buyer@example.com',
+              language: 'HU',
               redirectUrl: 'https://memorybook.example/purchase',
             });
-          } catch (error) {
-            liveBlocked = error instanceof SimplePayAdapterError && error.message === 'SIMPLEPAY_LIVE_NOT_ENABLED';
+            assert.equal(started.transactionId, '123456789');
+            assert.equal(started.amountMinor, 12990);
+
+            const ipnBody = JSON.stringify({
+              salt: 'abcdef0123456789abcdef0123456789',
+              orderRef: 'purchase-test-1',
+              method: 'CARD',
+              merchant: 'TESTMERCHANT',
+              finishDate: '2026-09-09T06:00:00+02:00',
+              paymentDate: '2026-09-09T05:59:00+02:00',
+              transactionId: 123456789,
+              status: 'FINISHED',
+            });
+            const ipnSignature = signSimplePayBody(ipnBody);
+            const ack = buildSimplePayIpnAcknowledgement(
+              ipnBody,
+              ipnSignature,
+              new Date('2026-09-09T04:01:00.000Z')
+            );
+            assert.equal(ack.message.status, 'FINISHED');
+            assert.equal(JSON.parse(ack.responseBody).receiveDate, '2026-09-09T04:01:00.000Z');
+            assert.equal(verifySimplePaySignature(ack.responseBody, ack.responseSignature), true);
+
+            assert.throws(
+              () => buildSimplePayIpnAcknowledgement(ipnBody, 'invalid-signature'),
+              (error: unknown) =>
+                error instanceof SimplePayAdapterError &&
+                error.message === 'SIMPLEPAY_IPN_SIGNATURE_INVALID'
+            );
+
+            process.env.SIMPLEPAY_ENVIRONMENT = 'live';
+            process.env.SIMPLEPAY_API_BASE_URL = 'https://simplepay.test/payment';
+            let liveBlocked = false;
+            try {
+              await startSimplePayTransaction({
+                purchaseId: 'purchase-live-test',
+                amountMinor: 1000,
+                currency: 'HUF',
+                customerEmail: 'buyer@example.com',
+                redirectUrl: 'https://memorybook.example/purchase',
+              });
+            } catch (error) {
+              liveBlocked =
+                error instanceof SimplePayAdapterError &&
+                error.message === 'SIMPLEPAY_LIVE_NOT_ENABLED';
+            }
+            assert.equal(liveBlocked, true);
+            console.log('SimplePay protocol self-test PASS');
           }
-          assert.equal(liveBlocked, true);
-          console.log('SimplePay protocol self-test PASS');
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
           EOF
           npx tsx /tmp/simplepay-selftest.ts
       - name: Verify scoped diff
