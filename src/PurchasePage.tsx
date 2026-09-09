@@ -221,8 +221,8 @@ export function PurchasePage() {
           purchaseMode: mode,
           bookType,
           paymentProvider: provider,
-          purchaserName,
-          purchaserEmail,
+          purchaserName: mode === 'gift' ? billingName : purchaserName,
+          purchaserEmail: mode === 'gift' ? billingEmail : purchaserEmail,
           billingName,
           billingEmail,
           billingCountry,
@@ -351,17 +351,6 @@ export function PurchasePage() {
             <div style={styles.notice}>{t('A SimplePay sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
           )}
 
-          {mode === 'gift' && (
-            <>
-              <div style={styles.sectionTitle}>{t('Vásárló azonosítása')}</div>
-              <label style={styles.label}>{t('Név')}
-                <input value={purchaserName} onChange={(event) => setPurchaserName(event.target.value)} style={styles.input} />
-              </label>
-              <label style={styles.label}>{t('E-mail')}
-                <input type="email" value={purchaserEmail} onChange={(event) => setPurchaserEmail(event.target.value)} style={styles.input} />
-              </label>
-            </>
-          )}
 
           <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>
           <label style={styles.label}>{t('Ország')}
