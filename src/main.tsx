@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AuthPage } from './AuthPage.tsx'
+import { LandingPage } from './LandingPage.tsx'
 import { MyBooksPage } from './MyBooksPage.tsx'
 import { OwnerBookPage } from './OwnerBookPage.tsx'
 import { PageInviteEditorPage } from './PageInviteEditorPage.tsx'
@@ -27,8 +28,10 @@ const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
 const eventQrMatch = path.match(/^\/my-books\/([^/]+)\/event-qr$/)
 const giftMatch = path.match(/^\/gift\/([^/]+)$/)
 
-const root = path === '/login'
-  ? <AuthPage />
+const root = path === '/'
+  ? <LandingPage />
+  : path === '/login'
+    ? <AuthPage />
   : path === '/purchase'
     ? <PurchasePage />
   : path === '/nekem-is-kell'
@@ -37,7 +40,7 @@ const root = path === '/login'
     ? <GiftRedeemPage token={decodeURIComponent(giftMatch[1])} />
   : eventQrMatch
     ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
-  : path === '/' || path === '/my-books'
+  : path === '/my-books'
     ? <MyBooksPage />
     : ownerBookMatch
       ? <OwnerBookPage bookId={decodeURIComponent(ownerBookMatch[1])} />
@@ -53,6 +56,6 @@ const root = path === '/login'
                 ? <BookViewerPage bookId={decodeURIComponent(bookViewMatch[1])} />
                 : path === '/demo'
                   ? <App />
-                  : <MyBooksPage />
+                  : <LandingPage />
 
 createRoot(document.getElementById('root')!).render(root)
