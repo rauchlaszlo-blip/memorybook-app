@@ -32,7 +32,7 @@ const COPY: Record<AppLanguage, Copy> = {
     eyebrow: 'MemoryBook',
     title: 'Közös emlékek. Egyetlen könyvben.',
     lead: 'Hozz létre egy emlékkönyvet, hívd meg azokat, akik fontosak, ők pedig fotókkal és üzenetekkel töltik meg.',
-    primaryCta: 'Készítsd el az emlékkönyved',
+    primaryCta: 'Nekem is kell',
     howTitle: 'Így működik',
     step1Title: '1. Készíts egy könyvet',
     step1Text: 'Válaszd ki, hogy személyes emlékkönyvet vagy rendezvény-vendégkönyvet szeretnél.',
@@ -48,14 +48,14 @@ const COPY: Record<AppLanguage, Copy> = {
     noAccount: 'A meghívottaknak nem kell MemoryBook-fiókot létrehozniuk.',
     bottomTitle: 'Te elindítod. Ők megtöltik emlékekkel.',
     bottomText: 'Születésnapra, ballagásra, osztálytalálkozóra, esküvőre vagy bármilyen közös alkalomra.',
-    bottomCta: 'Készítsd el az emlékkönyved',
+    bottomCta: 'Nekem is kell',
   },
   en: {
     login: 'Sign in',
     eyebrow: 'MemoryBook',
     title: 'Shared memories. One book.',
     lead: 'Create a memory book, invite the people who matter, and let them fill it with photos and messages.',
-    primaryCta: 'Create your memory book',
+    primaryCta: 'I want one too',
     howTitle: 'How it works',
     step1Title: '1. Create a book',
     step1Text: 'Choose a personal memory book or an event guestbook.',
@@ -71,14 +71,14 @@ const COPY: Record<AppLanguage, Copy> = {
     noAccount: 'Invited contributors do not need to create a MemoryBook account.',
     bottomTitle: 'You start it. They fill it with memories.',
     bottomText: 'For birthdays, graduations, reunions, weddings or any shared occasion.',
-    bottomCta: 'Create your memory book',
+    bottomCta: 'I want one too',
   },
   de: {
     login: 'Anmelden',
     eyebrow: 'MemoryBook',
     title: 'Gemeinsame Erinnerungen. In einem Buch.',
     lead: 'Erstelle ein Erinnerungsbuch, lade wichtige Menschen ein und lass sie es mit Fotos und Nachrichten füllen.',
-    primaryCta: 'Erstelle dein Erinnerungsbuch',
+    primaryCta: 'Das will ich auch',
     howTitle: 'So funktioniert es',
     step1Title: '1. Erstelle ein Buch',
     step1Text: 'Wähle zwischen einem persönlichen Erinnerungsbuch und einem Veranstaltungs-Gästebuch.',
@@ -94,14 +94,26 @@ const COPY: Record<AppLanguage, Copy> = {
     noAccount: 'Eingeladene Mitwirkende müssen kein MemoryBook-Konto erstellen.',
     bottomTitle: 'Du startest. Sie füllen es mit Erinnerungen.',
     bottomText: 'Für Geburtstage, Abschlüsse, Klassentreffen, Hochzeiten oder jeden gemeinsamen Anlass.',
-    bottomCta: 'Erstelle dein Erinnerungsbuch',
+    bottomCta: 'Das will ich auch',
   },
 };
 
 export function LandingPage() {
   const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches
+  );
 
   useEffect(() => subscribeAppLanguage(setLanguage), []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 640px)');
+    const syncMobile = () => setIsMobile(mediaQuery.matches);
+
+    syncMobile();
+    mediaQuery.addEventListener('change', syncMobile);
+    return () => mediaQuery.removeEventListener('change', syncMobile);
+  }, []);
 
   const copy = COPY[language];
 
@@ -115,7 +127,11 @@ export function LandingPage() {
         </div>
       </header>
 
-      <a href="/purchase" style={styles.floatingCta} aria-label={copy.primaryCta}>
+      <a
+        href="/purchase"
+        style={isMobile ? { ...styles.floatingCta, ...styles.floatingCtaMobile } : styles.floatingCta}
+        aria-label={copy.primaryCta}
+      >
         {copy.primaryCta}
       </a>
 
@@ -288,6 +304,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     lineHeight: 1.25,
     boxShadow: '0 12px 28px rgba(15, 23, 42, 0.24)',
+  },
+  floatingCtaMobile: {
+    top: 'auto',
+    right: 12,
+    bottom: 'calc(16px + env(safe-area-inset-bottom))',
+    minHeight: 40,
+    maxWidth: 170,
+    padding: '9px 14px',
+    fontSize: 14,
+    boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
   },
   section: { width: '100%', maxWidth: 980, margin: '0 auto 70px' },
   sectionTitle: {
