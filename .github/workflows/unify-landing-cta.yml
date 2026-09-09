@@ -1,0 +1,59 @@
+name: Unify landing CTA copy
+
+on:
+  push:
+    branches:
+      - unify-landing-cta-copy-2
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Update CTA copy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/LandingPage.tsx')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+            "primaryCta: 'MemoryBook készítése',": "primaryCta: 'Készítsd el az emlékkönyved',",
+            "bottomCta: 'Emlékkönyvet készítek',": "bottomCta: 'Készítsd el az emlékkönyved',",
+            "primaryCta: 'Create a MemoryBook',": "primaryCta: 'Create your memory book',",
+            "bottomCta: 'Create my memory book',": "bottomCta: 'Create your memory book',",
+            "primaryCta: 'MemoryBook erstellen',": "primaryCta: 'Erstelle dein Erinnerungsbuch',",
+            "bottomCta: 'Erinnerungsbuch erstellen',": "bottomCta: 'Erstelle dein Erinnerungsbuch',",
+          }
+          for old, new in replacements.items():
+              if s.count(old) != 1:
+                  raise SystemExit(f'Expected exactly one occurrence: {old!r}')
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Production build
+        run: npm run build
+      - name: Verify CTA copy
+        run: |
+          test "$(grep -o "Készítsd el az emlékkönyved" src/LandingPage.tsx | wc -l)" -eq 2
+          test "$(grep -o "Create your memory book" src/LandingPage.tsx | wc -l)" -eq 2
+          test "$(grep -o "Erstelle dein Erinnerungsbuch" src/LandingPage.tsx | wc -l)" -eq 2
+          git diff --check
+      - name: Commit tested change and remove workflow
+        run: |
+          rm .github/workflows/unify-landing-cta.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/LandingPage.tsx .github/workflows/unify-landing-cta.yml
+          git commit -m "Unify landing page CTA copy [skip ci]"
+          git push
