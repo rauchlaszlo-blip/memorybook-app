@@ -1,0 +1,61 @@
+name: Compact purchase billing
+on:
+  push:
+    branches: [compact-purchase-billing]
+permissions:
+  contents: write
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: compact-purchase-billing
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Reorder and compact purchase form
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/PurchasePage.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          pattern = re.compile(r"          <div style=\{styles\.sectionTitle\}>\{t\('Vásárló azonosítása'\)\}</div>.*?          <label style=\{styles\.label\}>\{t\('Adószám \(ha szükséges\)'\)\}\n            <input value=\{billingTaxNumber\} onChange=\{\(event\) => setBillingTaxNumber\(event\.target\.value\)\} style=\{styles\.input\} />\n          </label>", re.S)
+
+          replacement = """          {mode === 'gift' && (\n            <>\n              <div style={styles.sectionTitle}>{t('Vásárló azonosítása')}</div>\n              <label style={styles.label}>{t('Név')}\n                <input value={purchaserName} onChange={(event) => setPurchaserName(event.target.value)} style={styles.input} />\n              </label>\n              <label style={styles.label}>{t('E-mail')}\n                <input type=\"email\" value={purchaserEmail} onChange={(event) => setPurchaserEmail(event.target.value)} style={styles.input} />\n              </label>\n            </>\n          )}\n\n          <div style={styles.sectionTitle}>{t('Számlázási adatok')}</div>\n          <label style={styles.label}>{t('Ország')}\n            <input value={billingCountry} onChange={(event) => setBillingCountry(event.target.value)} style={styles.input} />\n          </label>\n          <div style={styles.twoCols}>\n            <label style={styles.label}>{t('Irányítószám')}\n              <input value={billingPostalCode} onChange={(event) => setBillingPostalCode(event.target.value)} style={styles.input} />\n            </label>\n            <label style={styles.label}>{t('Település')}\n              <input value={billingCity} onChange={(event) => setBillingCity(event.target.value)} style={styles.input} />\n            </label>\n          </div>\n          <label style={styles.label}>{t('Cím')}\n            <input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} style={styles.input} />\n          </label>\n          <label style={styles.label}>{t('Adószám (ha szükséges)')}\n            <input value={billingTaxNumber} onChange={(event) => setBillingTaxNumber(event.target.value)} style={styles.input} />\n          </label>\n          <label style={styles.label}>{t('Név')}\n            <input value={billingName} onChange={(event) => setBillingName(event.target.value)} style={styles.input} />\n          </label>\n          <label style={styles.label}>{t('E-mail')}\n            <input type=\"email\" value={billingEmail} onChange={(event) => setBillingEmail(event.target.value)} style={styles.input} />\n          </label>"""
+
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Purchase field block replacement count: {count}')
+
+          replacements = {
+              "card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 20,": "card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 16,",
+              "lead: { margin: '0 0 18px',": "lead: { margin: '0 0 14px',",
+              "switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16, padding: 4,": "switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 12, padding: 3,",
+              "form: { display: 'flex', flexDirection: 'column', gap: 13 },": "form: { display: 'flex', flexDirection: 'column', gap: 8 },",
+              "label: { display: 'flex', flexDirection: 'column', gap: 6,": "label: { display: 'flex', flexDirection: 'column', gap: 4,",
+              "input: { width: '100%', minHeight: 46, padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 9, boxSizing: 'border-box', fontSize: 16,": "input: { width: '100%', minHeight: 40, padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', fontSize: 15,",
+              "sectionTitle: { marginTop: 6, color: '#0f172a', fontWeight: 800, fontSize: 17 },": "sectionTitle: { marginTop: 4, color: '#0f172a', fontWeight: 800, fontSize: 16 },",
+              "twoCols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,220px),1fr))', gap: 10 },": "twoCols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))', gap: 8 },",
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Missing style pattern: {old}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - run: npm ci
+      - run: npm run build
+      - name: Commit verified change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/PurchasePage.tsx
+          git commit -m "Compact purchase billing form"
+          git push origin HEAD:compact-purchase-billing
