@@ -111,7 +111,7 @@ async function ensurePurchasePaymentAccess(req: any, purchaseId: string): Promis
   }
 
   const purchase = result.rows[0];
-  if (purchase.purchaseMode !== 'self') return;
+  if (purchase.purchaseMode === 'gift') return;
 
   const session = await getSession(req).catch(() => null);
   if (!session) {
@@ -663,7 +663,12 @@ app.get('/api/my/books', async (req, res) => {
 });
 
 app.post('/api/purchases', async (req, res) => {
-  const purchaseMode = req.body?.purchaseMode === 'gift' ? 'gift' : 'self';
+  const purchaseMode =
+    req.body?.purchaseMode === 'gift'
+      ? 'gift'
+      : req.body?.purchaseMode === 'organization'
+        ? 'organization'
+        : 'self';
   const bookType = req.body?.bookType === 'event' ? 'event' : 'standard';
   const paymentProvider =
     req.body?.paymentProvider === 'paypal'
@@ -673,17 +678,17 @@ app.post('/api/purchases', async (req, res) => {
         : null;
 
   const session = await getSession(req).catch(() => null);
-  if (purchaseMode === 'self' && !session) {
+  if (purchaseMode !== 'gift' && !session) {
     res.status(401).json({ error: 'ACCOUNT_REQUIRED_FOR_SELF_PURCHASE' });
     return;
   }
 
   const purchaserName =
-    purchaseMode === 'self'
+    purchaseMode !== 'gift'
       ? String(session?.user?.name || req.body?.purchaserName || '').trim()
       : String(req.body?.purchaserName || '').trim();
   const purchaserEmail =
-    purchaseMode === 'self'
+    purchaseMode !== 'gift'
       ? String(session?.user?.email || req.body?.purchaserEmail || '').trim().toLowerCase()
       : String(req.body?.purchaserEmail || '').trim().toLowerCase();
   const billingName = String(req.body?.billingName || '').trim();
@@ -3135,7 +3140,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS purchases (
       id TEXT PRIMARY KEY,
-      purchase_mode TEXT NOT NULL CHECK (purchase_mode IN ('self', 'gift')),
+      purchase_mode TEXT NOT NULL CHECK (purchase_mode IN ('self', 'gift', 'organization')),
       book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event')),
       included_pages INTEGER NOT NULL DEFAULT 30,
       purchaser_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -3164,6 +3169,12 @@ async function initializeDatabase(): Promise<void> {
     'utf8'
   );
   await pool.query(billingProfilesMigration);
+
+  const organizationPurchaseModeMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260909_organization_purchase_mode.sql'),
+    'utf8'
+  );
+  await pool.query(organizationPurchaseModeMigration);
 
   const invoicingMigration = await fs.readFile(
     path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),
