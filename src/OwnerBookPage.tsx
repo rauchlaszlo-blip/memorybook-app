@@ -595,6 +595,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                           {isInviteExpired(page)
                             ? t('A meghívó lejárt. Az oldal új címzettnek kiadható.')
                             : f('A meghívó 14 napig használható. Lejár: {date}', { date: formatInviteExpiry(page.inviteExpiresAt, uiLanguage) })}
+                          {!isInviteExpired(page) && page.inviteSentAt && (page.inviteRecipientName || page.inviteRecipientEmail) && (
+                            <><br /><strong>{f('Aktív címzett: {name}', { name: page.inviteRecipientName || page.inviteRecipientEmail || '' })}</strong></>
+                          )}
                         </div>
                       )}
                       <button
@@ -610,7 +613,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                             : isInviteExpired(page)
                               ? t('Új címzett meghívása')
                               : page.inviteSentAt
-                                ? t('Meghívó újraküldése')
+                                ? (page.inviteRecipientName || page.inviteRecipientEmail
+                                    ? f('Újraküldés: {name}', { name: page.inviteRecipientName || page.inviteRecipientEmail || '' })
+                                    : t('Meghívó újraküldése'))
                                 : t('Meghívás folytatása')}
                       </button>
                     </div>

@@ -1697,6 +1697,40 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
       return;
     }
 
+    const existingInviteResult = await pool.query(
+      `SELECT
+         p.invite_recipient_name AS "inviteRecipientName",
+         p.invite_recipient_email AS "inviteRecipientEmail",
+         p.invite_delivery_method AS "inviteDeliveryMethod"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3
+         AND p.invite_token IS NOT NULL
+         AND p.invite_status IN ('invited', 'draft')`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (existingInviteResult.rowCount === 0) {
+      res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
+      return;
+    }
+
+    const existingInvite = existingInviteResult.rows[0];
+    const savedRecipientName = String(existingInvite.inviteRecipientName || '').trim();
+    const savedRecipientEmail = String(existingInvite.inviteRecipientEmail || '').trim().toLowerCase();
+    const savedDeliveryMethod = String(existingInvite.inviteDeliveryMethod || '').trim();
+    const recipientChanged =
+      (savedRecipientName && recipientName && savedRecipientName.toLocaleLowerCase('hu-HU') !== recipientName.toLocaleLowerCase('hu-HU')) ||
+      (savedRecipientEmail && recipientEmail && savedRecipientEmail !== recipientEmail.toLowerCase()) ||
+      (savedDeliveryMethod && savedDeliveryMethod !== deliveryMethod);
+
+    if (recipientChanged) {
+      res.status(409).json({ error: 'PAGE_INVITE_RECIPIENT_LOCKED' });
+      return;
+    }
+
     const result = await pool.query(
       `UPDATE pages p
        SET invite_sent_at = COALESCE(p.invite_sent_at, CURRENT_TIMESTAMP),
@@ -2130,6 +2164,7 @@ app.get('/api/page-invites/:token', async (req, res) => {
          p.invite_created_at AS "inviteCreatedAt",
          p.invite_created_at + INTERVAL '14 days' AS "inviteExpiresAt",
          p.invite_language AS "inviteLanguage",
+         p.invite_recipient_name AS "inviteRecipientName",
          COALESCE(p.invite_language, b.language) AS "language",
          p.submitted_at AS "submittedAt"
        FROM pages p
