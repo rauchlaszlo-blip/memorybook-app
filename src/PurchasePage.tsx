@@ -17,7 +17,7 @@ type BillingProfile = {
   billingAddress?: string;
   billingTaxNumber?: string | null;
 };
-type Mode = 'self' | 'gift';
+type Mode = 'self' | 'gift' | 'organization';
 type BookType = 'standard' | 'event';
 type Provider = 'paypal' | 'simplepay';
 type PaymentCapabilities = {
@@ -51,7 +51,13 @@ export function PurchasePage() {
   const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const initialQuery = new URLSearchParams(window.location.search);
   const [user, setUser] = useState<UserData | null>(null);
-  const [mode, setMode] = useState<Mode>(initialQuery.get('mode') === 'gift' ? 'gift' : 'self');
+  const [mode, setMode] = useState<Mode>(
+    initialQuery.get('mode') === 'gift'
+      ? 'gift'
+      : initialQuery.get('mode') === 'organization'
+        ? 'organization'
+        : 'self'
+  );
   const [bookType, setBookType] = useState<BookType>('standard');
   const [provider, setProvider] = useState<Provider>('simplepay');
   const [purchaserName, setPurchaserName] = useState('');
@@ -264,8 +270,9 @@ export function PurchasePage() {
     setNotice(null);
     setPurchaseId(null);
     setPaymentSuccess(null);
-    if (mode === 'self' && !user) {
-      window.location.href = `/login?returnTo=${encodeURIComponent('/purchase?mode=self')}`;
+    if (mode !== 'gift' && !user) {
+      const returnTo = `/purchase?mode=${mode}`;
+      window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
       return;
     }
     try {
@@ -378,12 +385,13 @@ export function PurchasePage() {
         <div style={styles.switcher}>
           <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
           <button type="button" onClick={() => setMode('gift')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.active : {}) }}>{t('Ajándékba')}</button>
+          <button type="button" onClick={() => setMode('organization')} style={{ ...styles.switchButton, ...(mode === 'organization' ? styles.active : {}) }}>{t('Cég / szervezet')}</button>
         </div>
 
-        {mode === 'self' && !user && (
+        {mode !== 'gift' && !user && (
           <div style={styles.notice}>
-            {t('Saját könyv vásárlásához előbb be kell lépned vagy regisztrálnod.')}
-            <a href={`/login?returnTo=${encodeURIComponent('/purchase?mode=self')}`} style={styles.inlineLink}> {t('Belépés / regisztráció')}</a>
+            {t('A vásárláshoz előbb be kell lépned vagy regisztrálnod.')}
+            <a href={`/login?returnTo=${encodeURIComponent(`/purchase?mode=${mode}`)}`} style={styles.inlineLink}> {t('Belépés / regisztráció')}</a>
           </div>
         )}
 
@@ -436,7 +444,7 @@ export function PurchasePage() {
           {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
-          <button type="submit" disabled={loading || (mode === 'self' && !user)} style={styles.primaryButton}>
+          <button type="submit" disabled={loading || (mode !== 'gift' && !user)} style={styles.primaryButton}>
             {loading
               ? t('Folyamatban...')
               : provider === 'simplepay' && simplePayReady
@@ -479,8 +487,8 @@ const styles: Record<string, React.CSSProperties> = {
   brand: { marginTop: 0, color: '#64748b', fontWeight: 800, fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { margin: '3px 0', color: '#0f172a', fontSize: 'clamp(23px,7vw,32px)' },
   lead: { margin: '0 0 9px', color: '#64748b', lineHeight: 1.35, fontSize: 14 },
-  switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8, padding: 2, background: '#e2e8f0', borderRadius: 9 },
-  switchButton: { minHeight: 38, border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569' },
+  switcher: { display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 4, marginBottom: 8, padding: 2, background: '#e2e8f0', borderRadius: 9 },
+  switchButton: { minHeight: 38, padding: '2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
   inlineLink: { color: '#166534', fontWeight: 800 },
