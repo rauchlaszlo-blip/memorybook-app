@@ -10,6 +10,12 @@ import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth';
 import { pool } from './db';
 import { getInvoicingCapabilities } from './invoicing';
+import { getPayPalCapabilities, PayPalAdapterError } from './payments/paypal';
+import {
+  capturePayPalPaymentForPurchase,
+  createPayPalOrderForPurchase,
+  PayPalPurchaseError,
+} from './payments/paypal-purchase';
 
 dotenv.config();
 
@@ -46,6 +52,79 @@ async function getSession(req: any) {
   return auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
+}
+
+function getPublicAppBaseUrl(req: any): string {
+  const configured = String(
+    process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || ''
+  ).trim().replace(/\/+$/, '');
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.toString().replace(/\/+$/, '');
+      }
+    } catch {
+      throw new PayPalPurchaseError('INVALID_PUBLIC_APP_URL', 500);
+    }
+  }
+
+  const host = String(req.get?.('host') || '').trim();
+  const hostname = host.split(':')[0].toLowerCase();
+  if (!host || (hostname !== 'localhost' && hostname !== '127.0.0.1')) {
+    throw new PayPalPurchaseError('PUBLIC_APP_URL_NOT_AVAILABLE', 503);
+  }
+  return `http://${host}`;
+}
+
+async function ensurePurchasePaymentAccess(req: any, purchaseId: string): Promise<void> {
+  const result = await pool.query(
+    `SELECT
+       purchase_mode AS "purchaseMode",
+       purchaser_user_id AS "purchaserUserId"
+     FROM purchases
+     WHERE id = $1`,
+    [purchaseId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new PayPalPurchaseError('PURCHASE_NOT_FOUND', 404);
+  }
+
+  const purchase = result.rows[0];
+  if (purchase.purchaseMode !== 'self') return;
+
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    throw new PayPalPurchaseError('UNAUTHENTICATED', 401);
+  }
+  if (session.user.id !== purchase.purchaserUserId) {
+    throw new PayPalPurchaseError('PURCHASE_NOT_FOUND', 404);
+  }
+}
+
+function sendPayPalRouteError(res: any, err: any, fallbackCode: string): void {
+  let status = 500;
+  let code = fallbackCode;
+
+  if (err instanceof PayPalPurchaseError) {
+    status = err.status;
+    code = err.message || fallbackCode;
+  } else if (err instanceof PayPalAdapterError) {
+    const configError =
+      err.message.startsWith('MISSING_PAYPAL_') || err.message === 'PAYPAL_LIVE_NOT_ENABLED';
+    status = configError ? 503 : 502;
+    code = err.message || fallbackCode;
+  }
+
+  console.error(fallbackCode, {
+    code,
+    status,
+    providerStatus: err instanceof PayPalAdapterError ? err.status : undefined,
+    providerName: err instanceof PayPalAdapterError ? err.providerName : undefined,
+    providerIssue: err instanceof PayPalAdapterError ? err.providerIssue : undefined,
+  });
+  res.status(status).json({ error: code });
 }
 
 function isPageInviteExpired(inviteCreatedAt: string | Date | null | undefined): boolean {
@@ -247,6 +326,16 @@ app.get('/api/auth-capabilities', (_req, res) => {
 
 app.get('/api/invoicing-capabilities', (_req, res) => {
   res.status(200).json(getInvoicingCapabilities());
+});
+
+app.get('/api/payment-capabilities', (_req, res) => {
+  res.status(200).json({
+    paypal: getPayPalCapabilities(),
+    simplepay: {
+      enabled: false,
+      integrationReady: false,
+    },
+  });
 });
 
 app.get('/api/me', async (req, res) => {
@@ -574,6 +663,70 @@ app.post('/api/purchases', async (req, res) => {
   } catch (err) {
     console.error('Purchase draft create error:', err);
     res.status(500).json({ error: 'PURCHASE_DRAFT_CREATE_FAILED' });
+  }
+});
+
+
+app.post('/api/purchases/:purchaseId/paypal/order', async (req, res) => {
+  const purchaseId = String(req.params.purchaseId || '').trim();
+  if (!purchaseId) {
+    res.status(400).json({ error: 'PURCHASE_ID_REQUIRED' });
+    return;
+  }
+
+  try {
+    await ensurePurchasePaymentAccess(req, purchaseId);
+    const publicBaseUrl = getPublicAppBaseUrl(req);
+    const encodedPurchaseId = encodeURIComponent(purchaseId);
+    const result = await createPayPalOrderForPurchase(purchaseId, {
+      returnUrl: `${publicBaseUrl}/purchase?paypal=return&purchaseId=${encodedPurchaseId}`,
+      cancelUrl: `${publicBaseUrl}/purchase?paypal=cancel&purchaseId=${encodedPurchaseId}`,
+    });
+
+    res.status(201).json({
+      success: true,
+      purchaseId: result.purchaseId,
+      paymentStatus: result.paymentStatus,
+      order: {
+        orderId: result.order.orderId,
+        status: result.order.status,
+        approvalUrl: result.order.approvalUrl,
+      },
+    });
+  } catch (err) {
+    sendPayPalRouteError(res, err, 'PAYPAL_ORDER_CREATE_FAILED');
+  }
+});
+
+app.post('/api/purchases/:purchaseId/paypal/capture', async (req, res) => {
+  const purchaseId = String(req.params.purchaseId || '').trim();
+  const orderId = String(req.body?.orderId || '').trim();
+  if (!purchaseId || !orderId) {
+    res.status(400).json({ error: 'PAYPAL_CAPTURE_INPUT_REQUIRED' });
+    return;
+  }
+
+  try {
+    await ensurePurchasePaymentAccess(req, purchaseId);
+    const result = await capturePayPalPaymentForPurchase(purchaseId, orderId);
+    const giftToken = result.entitlement?.giftToken || null;
+
+    res.status(200).json({
+      success: true,
+      purchaseId: result.purchaseId,
+      paymentStatus: result.paymentStatus,
+      alreadyFinalized: result.alreadyFinalized,
+      entitlement: {
+        id: result.entitlement?.id || null,
+        bookType: result.entitlement?.bookType || null,
+        includedPages: result.entitlement?.includedPages ?? null,
+        status: result.entitlement?.status || null,
+        giftToken,
+      },
+      giftRedeemPath: giftToken ? `/gift/${encodeURIComponent(giftToken)}` : null,
+    });
+  } catch (err) {
+    sendPayPalRouteError(res, err, 'PAYPAL_CAPTURE_FAILED');
   }
 });
 

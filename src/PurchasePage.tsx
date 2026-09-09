@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
@@ -11,14 +11,29 @@ type UserData = { id: string; name?: string; email?: string };
 type Mode = 'self' | 'gift';
 type BookType = 'standard' | 'event';
 type Provider = 'paypal' | 'simplepay';
+type PaymentCapabilities = {
+  paypal?: {
+    environment?: 'sandbox' | 'live';
+    credentialsConfigured?: boolean;
+    liveRequested?: boolean;
+    liveEnabled?: boolean;
+    enabled?: boolean;
+    missingConfiguration?: string[];
+  };
+  simplepay?: { enabled?: boolean; integrationReady?: boolean };
+};
+type PaymentSuccess = {
+  purchaseId: string;
+  giftRedeemPath?: string | null;
+};
 
 export function PurchasePage() {
   const language = usePublicUiLanguage();
-  const t = (key: string) => publicText(language, key);
+  const t = useCallback((key: string) => publicText(language, key), [language]);
   const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
-  const query = new URLSearchParams(window.location.search);
+  const initialQuery = new URLSearchParams(window.location.search);
   const [user, setUser] = useState<UserData | null>(null);
-  const [mode, setMode] = useState<Mode>(query.get('mode') === 'gift' ? 'gift' : 'self');
+  const [mode, setMode] = useState<Mode>(initialQuery.get('mode') === 'gift' ? 'gift' : 'self');
   const [bookType, setBookType] = useState<BookType>('standard');
   const [provider, setProvider] = useState<Provider>('simplepay');
   const [purchaserName, setPurchaserName] = useState('');
@@ -32,7 +47,10 @@ export function PurchasePage() {
   const [billingTaxNumber, setBillingTaxNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
+  const [paymentCapabilities, setPaymentCapabilities] = useState<PaymentCapabilities | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState<PaymentSuccess | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/me`, { credentials: 'include' })
@@ -48,12 +66,78 @@ export function PurchasePage() {
         }
       })
       .catch(() => {});
+
+    fetch(`${API_BASE}/api/payment-capabilities`, { credentials: 'include' })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => setPaymentCapabilities(data || null))
+      .catch(() => setPaymentCapabilities(null));
   }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const paypalState = query.get('paypal');
+    const returnedPurchaseId = query.get('purchaseId');
+
+    if (paypalState === 'cancel') {
+      setPurchaseId(returnedPurchaseId);
+      setNotice(t('A PayPal fizetés megszakadt. Nem történt terhelés.'));
+      window.history.replaceState({}, '', '/purchase');
+      return;
+    }
+
+    if (paypalState !== 'return') return;
+
+    const orderId = query.get('token');
+    if (!returnedPurchaseId || !orderId) {
+      setError(t('A PayPal visszatérési adatai hiányosak.'));
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+    setNotice(t('PayPal fizetés ellenőrzése...'));
+
+    fetch(`${API_BASE}/api/purchases/${encodeURIComponent(returnedPurchaseId)}/paypal/capture`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || 'PAYPAL_CAPTURE_FAILED');
+        return data;
+      })
+      .then((data) => {
+        if (!active) return;
+        setPurchaseId(returnedPurchaseId);
+        setPaymentSuccess({
+          purchaseId: returnedPurchaseId,
+          giftRedeemPath: data?.giftRedeemPath || null,
+        });
+        setNotice(null);
+        window.history.replaceState({}, '', '/purchase');
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error(err);
+        setNotice(null);
+        setError(t('A PayPal fizetés lezárása nem sikerült. A vásárlást nem jelöltük kifizetettnek.'));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [t]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    setNotice(null);
     setPurchaseId(null);
+    setPaymentSuccess(null);
     if (mode === 'self' && !user) {
       window.location.href = `/login?returnTo=${encodeURIComponent('/purchase?mode=self')}`;
       return;
@@ -81,14 +165,54 @@ export function PurchasePage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'PURCHASE_DRAFT_CREATE_FAILED');
-      setPurchaseId(data.purchase?.id || null);
+
+      const nextPurchaseId = String(data.purchase?.id || '');
+      setPurchaseId(nextPurchaseId || null);
+      if (!nextPurchaseId) throw new Error('PURCHASE_ID_MISSING');
+
+      if (provider !== 'paypal') {
+        setNotice(t('A SimplePay bekötése még nincs aktiválva. A vásárlási adatok elmentve.'));
+        return;
+      }
+
+      if (!paymentCapabilities?.paypal?.enabled) {
+        setNotice(t('A PayPal technikailag be van kötve, de a sandbox hitelesítő adatok még nincsenek beállítva.'));
+        return;
+      }
+
+      const orderResponse = await fetch(
+        `${API_BASE}/api/purchases/${encodeURIComponent(nextPurchaseId)}/paypal/order`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+      const orderData = await orderResponse.json().catch(() => ({}));
+      if (!orderResponse.ok) {
+        if (orderData?.error === 'PURCHASE_AMOUNT_NOT_READY') {
+          setNotice(t('A PayPal útvonal működik, de a MemoryBook ára és pénzneme még nincs beállítva.'));
+          return;
+        }
+        throw new Error(orderData?.error || 'PAYPAL_ORDER_CREATE_FAILED');
+      }
+
+      const approvalUrl = String(orderData?.order?.approvalUrl || '');
+      if (!approvalUrl) throw new Error('PAYPAL_APPROVAL_URL_MISSING');
+      window.location.assign(approvalUrl);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message === 'INCOMPLETE_PURCHASE_IDENTITY' ? t('Töltsd ki a számlázáshoz szükséges adatokat.') : t('A vásárlás előkészítése nem sikerült.'));
+      setError(
+        err?.message === 'INCOMPLETE_PURCHASE_IDENTITY'
+          ? t('Töltsd ki a számlázáshoz szükséges adatokat.')
+          : t('A vásárlás előkészítése nem sikerült.')
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  const paypalReady = Boolean(paymentCapabilities?.paypal?.enabled);
 
   return (
     <main style={styles.page}>
@@ -97,7 +221,7 @@ export function PurchasePage() {
         <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
-        <p style={styles.lead}>{t('A fizetési alapfolyamat elkészült. A PayPal és SimplePay tényleges fizetési indítása a következő integrációs lépés.')}</p>
+        <p style={styles.lead}>{t('A PayPal fizetési folyamat technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>
 
         <div style={styles.switcher}>
           <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
@@ -125,6 +249,10 @@ export function PurchasePage() {
               <option value="paypal">PayPal</option>
             </select>
           </label>
+
+          {provider === 'paypal' && paymentCapabilities && !paypalReady && (
+            <div style={styles.notice}>{t('A PayPal sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
+          )}
 
           <div style={styles.sectionTitle}>{t('Vásárló azonosítása')}</div>
           <label style={styles.label}>{t('Név')}
@@ -160,17 +288,30 @@ export function PurchasePage() {
           </label>
 
           {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
+          {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || (mode === 'self' && !user)} style={styles.primaryButton}>
-            {loading ? t('Mentés...') : t('Vásárlási adatok mentése')}
+            {loading ? t('Folyamatban...') : provider === 'paypal' && paypalReady ? t('Tovább a PayPal fizetéshez') : t('Vásárlási adatok mentése')}
           </button>
         </form>
 
-        {purchaseId && (
+        {paymentSuccess && (
+          <div style={styles.success}>
+            <strong>{t('A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
+            {f('Azonosító: {id}', { id: paymentSuccess.purchaseId })}<br />
+            {paymentSuccess.giftRedeemPath ? (
+              <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>
+            ) : (
+              <a href="/my-books" style={styles.inlineLink}>{t('Tovább a könyveimhez')}</a>
+            )}
+          </div>
+        )}
+
+        {purchaseId && !paymentSuccess && (
           <div style={styles.success}>
             <strong>{t('Vásárlási alap rögzítve.')}</strong><br />
             {f('Azonosító: {id}', { id: purchaseId })}<br />
-            {t('Még nem történt fizetés, ezért könyvjogosultság sem keletkezett. A következő lépésben ehhez kötjük a PayPal és SimplePay fizetést.')}
+            {t('Fizetés nélkül könyvjogosultság nem keletkezik.')}
           </div>
         )}
       </section>
@@ -189,8 +330,8 @@ const styles: Record<string, React.CSSProperties> = {
   switcher: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16, padding: 4, background: '#e2e8f0', borderRadius: 10 },
   switchButton: { minHeight: 44, border: 0, borderRadius: 8, background: 'transparent', fontWeight: 800, color: '#475569' },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
-  notice: { marginBottom: 16, padding: 12, borderRadius: 9, background: '#fff7ed', color: '#9a3412', lineHeight: 1.45 },
-  inlineLink: { color: '#9a3412', fontWeight: 800 },
+  notice: { marginBottom: 12, padding: 12, borderRadius: 9, background: '#fff7ed', color: '#9a3412', lineHeight: 1.45 },
+  inlineLink: { color: '#166534', fontWeight: 800 },
   form: { display: 'flex', flexDirection: 'column', gap: 13 },
   label: { display: 'flex', flexDirection: 'column', gap: 6, color: '#334155', fontSize: 14, fontWeight: 700, minWidth: 0 },
   input: { width: '100%', minHeight: 46, padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 9, boxSizing: 'border-box', fontSize: 16, background: '#fff' },

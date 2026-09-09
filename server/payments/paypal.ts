@@ -348,7 +348,8 @@ export async function createPayPalOrder(
     stableRequestId('create', input.purchaseId)
   );
 
-  const approvalUrl = order.links?.find((link) => link.rel === 'approve')?.href || '';
+  const approvalUrl =
+    order.links?.find((link) => link.rel === 'approve' || link.rel === 'payer-action')?.href || '';
   if (!order.id || !approvalUrl) {
     throw new PayPalAdapterError('PAYPAL_ORDER_RESPONSE_INCOMPLETE', { providerBody: order });
   }
