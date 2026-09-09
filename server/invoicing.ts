@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { pool } from './db';
+import { billingoAdapter } from './invoice-providers/billingo';
 
 export type InvoiceProvider = 'billingo' | 'szamlazzhu';
 
@@ -57,6 +58,8 @@ const adapters = new Map<InvoiceProvider, InvoiceProviderAdapter>();
 export function registerInvoiceProviderAdapter(adapter: InvoiceProviderAdapter): void {
   adapters.set(adapter.provider, adapter);
 }
+
+registerInvoiceProviderAdapter(billingoAdapter);
 
 export function getInvoiceProviderAdapter(provider: InvoiceProvider): InvoiceProviderAdapter | null {
   return adapters.get(provider) || null;
