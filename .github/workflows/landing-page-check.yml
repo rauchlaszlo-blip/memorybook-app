@@ -1,0 +1,32 @@
+name: Landing page check
+
+on:
+  push:
+    branches:
+      - simplify-public-landing
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Production build
+        run: npm run build
+      - name: Verify landing route and copy anchors
+        run: |
+          grep -F "? <LandingPage />" src/main.tsx
+          grep -F "Közös emlékek. Egyetlen könyvben." src/LandingPage.tsx
+          grep -F "Így működik" src/LandingPage.tsx
+          grep -F "Normál emlékkönyv" src/LandingPage.tsx
+          grep -F "Rendezvény-vendégkönyv" src/LandingPage.tsx
+          grep -F "nem kell MemoryBook-fiókot" src/LandingPage.tsx
+          git diff --check
