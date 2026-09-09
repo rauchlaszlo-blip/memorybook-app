@@ -1,0 +1,35 @@
+name: Lock invite recipient resends
+on:
+  push:
+    branches: [lock-invite-recipient-resends]
+permissions:
+  contents: write
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: lock-invite-recipient-resends
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python scripts/lock_invite_recipient_resends.py
+      - run: npm ci
+      - run: npm run build
+      - name: Verify invite recipient lock
+        run: |
+          grep -q "PAGE_INVITE_RECIPIENT_LOCKED" server/index.ts
+          grep -q 'invite_recipient_name AS "inviteRecipientName"' server/index.ts
+          grep -q "recipientNotice" src/PageInviteEditorPage.tsx
+          grep -q "readOnly={identityLocked}" src/InviteSendDialog.tsx
+          grep -q "Újraküldés: {name}" src/OwnerBookPage.tsx
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/InviteSendDialog.tsx src/OwnerBookPage.tsx src/ownerUiI18n.ts src/PageInviteEditorPage.tsx src/inviteEditorI18n.ts server/index.ts
+          git commit -m "Lock active page invitations to their recipient"
+          git push origin HEAD:lock-invite-recipient-resends
