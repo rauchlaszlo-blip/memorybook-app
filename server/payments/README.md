@@ -1,6 +1,8 @@
-# PayPal payment foundation
+# Payment foundations
 
-This module uses PayPal Orders v2 with server-side OAuth 2.0.
+## PayPal
+
+Uses PayPal Orders v2 with server-side OAuth 2.0.
 
 Configuration:
 - `PAYPAL_CLIENT_ID`
@@ -15,4 +17,24 @@ Safety properties:
 - entitlement creation is idempotent because `book_entitlements.purchase_id` is unique;
 - live PayPal calls are blocked unless explicitly enabled.
 
-The HTTP route/UI wiring is intentionally a separate integration step.
+## SimplePay
+
+Uses the SimplePay Online API v2 protocol. Requests and responses are signed with Base64-encoded HMAC-SHA384 over the exact raw JSON body.
+
+Configuration:
+- `SIMPLEPAY_MERCHANT_ID`
+- `SIMPLEPAY_SECRET_KEY`
+- `SIMPLEPAY_ENVIRONMENT=sandbox|live` (defaults to `sandbox`)
+- `SIMPLEPAY_LIVE_ENABLED=true` is additionally required for live calls
+- `SIMPLEPAY_API_BASE_URL` may be overridden for controlled tests
+
+Safety properties:
+- live SimplePay calls are blocked unless explicitly enabled;
+- every synchronous SimplePay response signature is verified before its JSON is trusted;
+- transaction ID, order reference, amount and currency are checked against the purchase before a start response is accepted;
+- incoming IPN messages must pass raw-body HMAC-SHA384 signature verification and merchant-ID validation;
+- only a signed `FINISHED` IPN with the transaction ID already stored from the validated start response may mark a purchase paid;
+- entitlement creation is idempotent because `book_entitlements.purchase_id` is unique;
+- the IPN acknowledgement is returned as compact JSON with `receiveDate` and its own `Signature` header value.
+
+HTTP route/UI wiring and real provider credentials are separate integration steps. Purchase pricing must exist before either provider may start a payment.
