@@ -130,7 +130,6 @@ export function PurchasePage() {
 
           setNotice(t('A SimplePay fizetés még feldolgozás alatt van. A könyvjogosultság csak a hiteles SimplePay értesítés után jön létre.'));
           setLoading(false);
-          window.history.replaceState({}, '', '/purchase');
         } catch (err) {
           if (!active) return;
           console.error(err);
