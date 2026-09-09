@@ -37,4 +37,11 @@ Safety properties:
 - entitlement creation is idempotent because `book_entitlements.purchase_id` is unique;
 - the IPN acknowledgement is returned as compact JSON with `receiveDate` and its own `Signature` header value.
 
-HTTP route/UI wiring and real provider credentials are separate integration steps. Purchase pricing must exist before either provider may start a payment.
+SimplePay HTTP integration routes:
+- `POST /api/purchases/:purchaseId/simplepay/start` creates the signed provider transaction and returns its payment URL;
+- `POST /api/payments/simplepay/ipn` verifies the exact raw request body and returns the exact signed acknowledgement body;
+- `GET /api/purchases/:purchaseId/simplepay/status` exposes only the locally verified purchase state for the browser return flow.
+
+The browser redirect never marks a purchase paid. Only a verified `FINISHED` IPN may finalize the purchase and create the entitlement. The SimplePay merchant/sandbox IPN configuration must point to `/api/payments/simplepay/ipn` when provider credentials are configured.
+
+Real provider credentials and purchase pricing remain separate configuration steps. Purchase pricing must exist before either provider may start a payment.

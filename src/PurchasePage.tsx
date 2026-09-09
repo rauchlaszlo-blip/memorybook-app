@@ -20,10 +20,19 @@ type PaymentCapabilities = {
     enabled?: boolean;
     missingConfiguration?: string[];
   };
-  simplepay?: { enabled?: boolean; integrationReady?: boolean };
+  simplepay?: {
+    environment?: 'sandbox' | 'live';
+    credentialsConfigured?: boolean;
+    liveRequested?: boolean;
+    liveEnabled?: boolean;
+    enabled?: boolean;
+    integrationReady?: boolean;
+    missingConfiguration?: string[];
+  };
 };
 type PaymentSuccess = {
   purchaseId: string;
+  provider: Provider;
   giftRedeemPath?: string | null;
 };
 
@@ -76,7 +85,67 @@ export function PurchasePage() {
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     const paypalState = query.get('paypal');
+    const simplePayState = query.get('simplepay');
     const returnedPurchaseId = query.get('purchaseId');
+
+    if (simplePayState === 'return') {
+      if (!returnedPurchaseId) {
+        setError(t('A SimplePay visszatérési adatai hiányosak.'));
+        return;
+      }
+
+      let active = true;
+      let timer: number | undefined;
+      setPurchaseId(returnedPurchaseId);
+      setLoading(true);
+      setError(null);
+      setNotice(t('SimplePay fizetés ellenőrzése...'));
+
+      const checkStatus = async (attempt: number) => {
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/purchases/${encodeURIComponent(returnedPurchaseId)}/simplepay/status`,
+            { credentials: 'include' }
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data?.error || 'SIMPLEPAY_STATUS_FAILED');
+          if (!active) return;
+
+          if (data?.paymentStatus === 'paid') {
+            setPaymentSuccess({
+              purchaseId: returnedPurchaseId,
+              provider: 'simplepay',
+              giftRedeemPath: data?.giftRedeemPath || null,
+            });
+            setNotice(null);
+            setLoading(false);
+            window.history.replaceState({}, '', '/purchase');
+            return;
+          }
+
+          if (attempt < 7) {
+            timer = window.setTimeout(() => { void checkStatus(attempt + 1); }, 1000);
+            return;
+          }
+
+          setNotice(t('A SimplePay fizetés még feldolgozás alatt van. A könyvjogosultság csak a hiteles SimplePay értesítés után jön létre.'));
+          setLoading(false);
+          window.history.replaceState({}, '', '/purchase');
+        } catch (err) {
+          if (!active) return;
+          console.error(err);
+          setNotice(null);
+          setLoading(false);
+          setError(t('A SimplePay fizetés állapotának ellenőrzése nem sikerült. A vásárlást nem jelöltük kifizetettnek.'));
+        }
+      };
+
+      void checkStatus(0);
+      return () => {
+        active = false;
+        if (timer !== undefined) window.clearTimeout(timer);
+      };
+    }
 
     if (paypalState === 'cancel') {
       setPurchaseId(returnedPurchaseId);
@@ -114,6 +183,7 @@ export function PurchasePage() {
         setPurchaseId(returnedPurchaseId);
         setPaymentSuccess({
           purchaseId: returnedPurchaseId,
+          provider: 'paypal',
           giftRedeemPath: data?.giftRedeemPath || null,
         });
         setNotice(null);
@@ -170,8 +240,32 @@ export function PurchasePage() {
       setPurchaseId(nextPurchaseId || null);
       if (!nextPurchaseId) throw new Error('PURCHASE_ID_MISSING');
 
-      if (provider !== 'paypal') {
-        setNotice(t('A SimplePay bekötése még nincs aktiválva. A vásárlási adatok elmentve.'));
+      if (provider === 'simplepay') {
+        if (!paymentCapabilities?.simplepay?.enabled) {
+          setNotice(t('A SimplePay technikailag be van kötve, de a sandbox hitelesítő adatok még nincsenek beállítva.'));
+          return;
+        }
+
+        const startResponse = await fetch(
+          `${API_BASE}/api/purchases/${encodeURIComponent(nextPurchaseId)}/simplepay/start`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+        const startData = await startResponse.json().catch(() => ({}));
+        if (!startResponse.ok) {
+          if (startData?.error === 'PURCHASE_AMOUNT_NOT_READY') {
+            setNotice(t('A SimplePay útvonal működik, de a MemoryBook ára és pénzneme még nincs beállítva.'));
+            return;
+          }
+          throw new Error(startData?.error || 'SIMPLEPAY_START_FAILED');
+        }
+
+        const paymentUrl = String(startData?.transaction?.paymentUrl || '');
+        if (!paymentUrl) throw new Error('SIMPLEPAY_PAYMENT_URL_MISSING');
+        window.location.assign(paymentUrl);
         return;
       }
 
@@ -213,6 +307,7 @@ export function PurchasePage() {
   };
 
   const paypalReady = Boolean(paymentCapabilities?.paypal?.enabled);
+  const simplePayReady = Boolean(paymentCapabilities?.simplepay?.enabled);
 
   return (
     <main style={styles.page}>
@@ -221,7 +316,7 @@ export function PurchasePage() {
         <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
         <div style={styles.brand}>MemoryBook</div>
         <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
-        <p style={styles.lead}>{t('A PayPal fizetési folyamat technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>
+        <p style={styles.lead}>{t('A PayPal és a SimplePay fizetési folyamata technikailag be van kötve. Éles fizetés csak külön aktiválás után indulhat.')}</p>
 
         <div style={styles.switcher}>
           <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
@@ -252,6 +347,9 @@ export function PurchasePage() {
 
           {provider === 'paypal' && paymentCapabilities && !paypalReady && (
             <div style={styles.notice}>{t('A PayPal sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
+          )}
+          {provider === 'simplepay' && paymentCapabilities && !simplePayReady && (
+            <div style={styles.notice}>{t('A SimplePay sandbox még nincs aktiválva. A fizetés nem indul el, amíg nincs beállítva teszt hitelesítés.')}</div>
           )}
 
           <div style={styles.sectionTitle}>{t('Vásárló azonosítása')}</div>
@@ -291,13 +389,19 @@ export function PurchasePage() {
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || (mode === 'self' && !user)} style={styles.primaryButton}>
-            {loading ? t('Folyamatban...') : provider === 'paypal' && paypalReady ? t('Tovább a PayPal fizetéshez') : t('Vásárlási adatok mentése')}
+            {loading
+              ? t('Folyamatban...')
+              : provider === 'simplepay' && simplePayReady
+                ? t('Tovább a SimplePay fizetéshez')
+                : provider === 'paypal' && paypalReady
+                  ? t('Tovább a PayPal fizetéshez')
+                  : t('Vásárlási adatok mentése')}
           </button>
         </form>
 
         {paymentSuccess && (
           <div style={styles.success}>
-            <strong>{t('A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
+            <strong>{t(paymentSuccess.provider === 'simplepay' ? 'A SimplePay fizetés sikeres. A könyvjogosultság létrejött.' : 'A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
             {f('Azonosító: {id}', { id: paymentSuccess.purchaseId })}<br />
             {paymentSuccess.giftRedeemPath ? (
               <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>

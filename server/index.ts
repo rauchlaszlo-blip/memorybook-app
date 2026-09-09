@@ -16,6 +16,16 @@ import {
   createPayPalOrderForPurchase,
   PayPalPurchaseError,
 } from './payments/paypal-purchase';
+import {
+  buildSimplePayIpnAcknowledgement,
+  getSimplePayCapabilities,
+  SimplePayAdapterError,
+} from './payments/simplepay';
+import {
+  createSimplePayTransactionForPurchase,
+  finalizeSimplePayPurchaseFromIpn,
+  SimplePayPurchaseError,
+} from './payments/simplepay-purchase';
 
 dotenv.config();
 
@@ -38,7 +48,15 @@ if (auth) {
   app.all('/api/auth/*splat', toNodeHandler(auth));
 }
 
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({
+  limit: '5mb',
+  verify: (req: any, _res: any, buf: Buffer) => {
+    const pathname = String(req.originalUrl || req.url || '').split('?')[0];
+    if (pathname === '/api/payments/simplepay/ipn') {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
@@ -123,6 +141,31 @@ function sendPayPalRouteError(res: any, err: any, fallbackCode: string): void {
     providerStatus: err instanceof PayPalAdapterError ? err.status : undefined,
     providerName: err instanceof PayPalAdapterError ? err.providerName : undefined,
     providerIssue: err instanceof PayPalAdapterError ? err.providerIssue : undefined,
+  });
+  res.status(status).json({ error: code });
+}
+
+function sendSimplePayRouteError(res: any, err: any, fallbackCode: string): void {
+  let status = 500;
+  let code = fallbackCode;
+
+  if (err instanceof SimplePayPurchaseError || err instanceof PayPalPurchaseError) {
+    status = err.status;
+    code = err.message || fallbackCode;
+  } else if (err instanceof SimplePayAdapterError) {
+    const configError =
+      err.message.startsWith('MISSING_SIMPLEPAY_') ||
+      err.message === 'SIMPLEPAY_LIVE_NOT_ENABLED';
+    const ipnInputError = err.message.startsWith('SIMPLEPAY_IPN_');
+    status = configError ? 503 : ipnInputError ? 400 : 502;
+    code = err.message || fallbackCode;
+  }
+
+  console.error(fallbackCode, {
+    code,
+    status,
+    providerStatus: err instanceof SimplePayAdapterError ? err.status : undefined,
+    providerErrorCodes: err instanceof SimplePayAdapterError ? err.providerErrorCodes : undefined,
   });
   res.status(status).json({ error: code });
 }
@@ -332,8 +375,8 @@ app.get('/api/payment-capabilities', (_req, res) => {
   res.status(200).json({
     paypal: getPayPalCapabilities(),
     simplepay: {
-      enabled: false,
-      integrationReady: false,
+      ...getSimplePayCapabilities(),
+      integrationReady: true,
     },
   });
 });
@@ -666,6 +709,116 @@ app.post('/api/purchases', async (req, res) => {
   }
 });
 
+
+app.post('/api/purchases/:purchaseId/simplepay/start', async (req, res) => {
+  const purchaseId = String(req.params.purchaseId || '').trim();
+  if (!purchaseId) {
+    res.status(400).json({ error: 'PURCHASE_ID_REQUIRED' });
+    return;
+  }
+
+  try {
+    await ensurePurchasePaymentAccess(req, purchaseId);
+    const publicBaseUrl = getPublicAppBaseUrl(req);
+    const encodedPurchaseId = encodeURIComponent(purchaseId);
+    const result = await createSimplePayTransactionForPurchase(
+      purchaseId,
+      `${publicBaseUrl}/purchase?simplepay=return&purchaseId=${encodedPurchaseId}`
+    );
+
+    res.status(201).json({
+      success: true,
+      purchaseId: result.purchaseId,
+      paymentStatus: result.paymentStatus,
+      transaction: {
+        transactionId: result.transaction.transactionId,
+        paymentUrl: result.transaction.paymentUrl,
+      },
+    });
+  } catch (err) {
+    sendSimplePayRouteError(res, err, 'SIMPLEPAY_START_FAILED');
+  }
+});
+
+app.get('/api/purchases/:purchaseId/simplepay/status', async (req, res) => {
+  const purchaseId = String(req.params.purchaseId || '').trim();
+  if (!purchaseId) {
+    res.status(400).json({ error: 'PURCHASE_ID_REQUIRED' });
+    return;
+  }
+
+  try {
+    await ensurePurchasePaymentAccess(req, purchaseId);
+    const result = await pool.query(
+      `SELECT
+         p.payment_status AS "paymentStatus",
+         p.provider_reference AS "providerReference",
+         e.id AS "entitlementId",
+         e.gift_token AS "giftToken",
+         e.book_type AS "bookType",
+         e.included_pages AS "includedPages",
+         e.status AS "entitlementStatus"
+       FROM purchases p
+       LEFT JOIN book_entitlements e ON e.purchase_id = p.id
+       WHERE p.id = $1
+         AND p.payment_provider = 'simplepay'`,
+      [purchaseId]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'PURCHASE_NOT_FOUND' });
+      return;
+    }
+
+    const row = result.rows[0];
+    if (row.paymentStatus === 'paid' && !row.entitlementId) {
+      res.status(500).json({ error: 'PAID_PURCHASE_ENTITLEMENT_MISSING' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      purchaseId,
+      paymentStatus: row.paymentStatus,
+      providerReference: row.providerReference,
+      entitlement: row.entitlementId
+        ? {
+            id: row.entitlementId,
+            bookType: row.bookType,
+            includedPages: row.includedPages,
+            status: row.entitlementStatus,
+            giftToken: row.giftToken,
+          }
+        : null,
+      giftRedeemPath: row.giftToken ? `/gift/${encodeURIComponent(row.giftToken)}` : null,
+    });
+  } catch (err) {
+    sendSimplePayRouteError(res, err, 'SIMPLEPAY_STATUS_FAILED');
+  }
+});
+
+app.post('/api/payments/simplepay/ipn', async (req: any, res) => {
+  const rawBody = typeof req.rawBody === 'string' ? req.rawBody : '';
+  const incomingSignature = String(req.get('Signature') || '').trim();
+
+  if (!rawBody || !incomingSignature) {
+    res.status(400).json({ error: 'SIMPLEPAY_IPN_INPUT_REQUIRED' });
+    return;
+  }
+
+  try {
+    const acknowledgement = buildSimplePayIpnAcknowledgement(rawBody, incomingSignature);
+    await finalizeSimplePayPurchaseFromIpn(acknowledgement.message);
+
+    res
+      .status(200)
+      .set('Signature', acknowledgement.responseSignature)
+      .type('application/json')
+      .send(acknowledgement.responseBody);
+  } catch (err) {
+    sendSimplePayRouteError(res, err, 'SIMPLEPAY_IPN_FAILED');
+  }
+});
 
 app.post('/api/purchases/:purchaseId/paypal/order', async (req, res) => {
   const purchaseId = String(req.params.purchaseId || '').trim();
