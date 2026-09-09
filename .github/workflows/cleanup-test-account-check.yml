@@ -1,0 +1,20 @@
+name: Cleanup test account check
+on:
+  push:
+    branches: [cleanup-old-test-account]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify cleanup is narrowly scoped
+        run: |
+          grep -F "ZhIE1JihhmFq0FcEWSLbsIRROuC0zm8g" server/migrations/20260908_owner_notifications.sql
+          grep -F "payment_status = 'draft'" server/migrations/20260908_owner_notifications.sql
+          grep -F "book-974f42e2-0fa7-40dc-8e51-629125d11b7c" server/migrations/20260908_owner_notifications.sql
