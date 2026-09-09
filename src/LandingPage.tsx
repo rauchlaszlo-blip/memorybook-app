@@ -121,7 +121,6 @@ export function LandingPage() {
         <p style={styles.heroLead}>{copy.lead}</p>
         <div style={styles.heroActions}>
           <a href="/purchase" style={styles.primaryButton}>{copy.primaryCta}</a>
-          <a href="#how" style={styles.secondaryButton}>{copy.howTitle}</a>
         </div>
       </section>
 
