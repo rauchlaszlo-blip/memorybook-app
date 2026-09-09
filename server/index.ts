@@ -3189,12 +3189,6 @@ async function initializeDatabase(): Promise<void> {
   );
   await pool.query(companyBillingMigration);
 
-  const testBookGrantMigration = await fs.readFile(
-    path.join(process.cwd(), 'server', 'migrations', '20260909_grant_test_book_rauch.sql'),
-    'utf8'
-  );
-  await pool.query(testBookGrantMigration);
-
   const invoicingMigration = await fs.readFile(
     path.join(process.cwd(), 'server', 'migrations', '20260908_invoicing_foundation.sql'),
     'utf8'
