@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { publicFormat, publicText, usePublicUiLanguage } from './publicUiI18n';
@@ -29,7 +29,7 @@ type PaymentSuccess = {
 
 export function PurchasePage() {
   const language = usePublicUiLanguage();
-  const t = (key: string) => publicText(language, key);
+  const t = useCallback((key: string) => publicText(language, key), [language]);
   const f = (key: string, values: Record<string, string | number>) => publicFormat(language, key, values);
   const initialQuery = new URLSearchParams(window.location.search);
   const [user, setUser] = useState<UserData | null>(null);

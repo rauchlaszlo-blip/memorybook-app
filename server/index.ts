@@ -55,7 +55,9 @@ async function getSession(req: any) {
 }
 
 function getPublicAppBaseUrl(req: any): string {
-  const configured = String(process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  const configured = String(
+    process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || ''
+  ).trim().replace(/\/+$/, '');
   if (configured) {
     try {
       const parsed = new URL(configured);
@@ -67,16 +69,12 @@ function getPublicAppBaseUrl(req: any): string {
     }
   }
 
-  const forwardedProto = String(req.headers?.['x-forwarded-proto'] || '')
-    .split(',')[0]
-    .trim()
-    .toLowerCase();
-  const protocol = forwardedProto === 'https' ? 'https' : 'http';
   const host = String(req.get?.('host') || '').trim();
-  if (!host) {
-    throw new PayPalPurchaseError('PUBLIC_APP_URL_NOT_AVAILABLE', 500);
+  const hostname = host.split(':')[0].toLowerCase();
+  if (!host || (hostname !== 'localhost' && hostname !== '127.0.0.1')) {
+    throw new PayPalPurchaseError('PUBLIC_APP_URL_NOT_AVAILABLE', 503);
   }
-  return `${protocol}://${host}`;
+  return `http://${host}`;
 }
 
 async function ensurePurchasePaymentAccess(req: any, purchaseId: string): Promise<void> {
