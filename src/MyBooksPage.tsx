@@ -142,6 +142,28 @@ export function MyBooksPage() {
 
   return (
     <main style={styles.page}>
+      <style>{`
+        .my-books-grid {
+          width: min(100%, 660px);
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 300px));
+          justify-content: center;
+          gap: 24px;
+        }
+        .my-books-cover-link {
+          display: block;
+          width: 100%;
+          text-decoration: none;
+        }
+        @media (max-width: 700px) {
+          .my-books-grid {
+            width: 100%;
+            grid-template-columns: minmax(0, min(72%, 300px));
+            gap: 18px;
+          }
+        }
+      `}</style>
       <section style={styles.container}>
         <header style={styles.header}>
           <div>
@@ -205,13 +227,13 @@ export function MyBooksPage() {
         )}
 
         {!loading && !error && books.length > 0 && (
-          <div style={styles.grid}>
+          <div className="my-books-grid">
             {books.map((book) => {
               const openPath = book.bookType === 'event'
                 ? `/my-books/${encodeURIComponent(book.id)}`
                 : `/book/${encodeURIComponent(book.id)}/view`;
               return (
-                  <a key={book.id} href={openPath} style={styles.coverLink} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
+                  <a key={book.id} href={openPath} className="my-books-cover-link" aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
                     {book.coverPreviewImageUrl ? (
                       <img src={book.coverPreviewImageUrl} alt={book.title} style={styles.coverImage} />
                     ) : (
