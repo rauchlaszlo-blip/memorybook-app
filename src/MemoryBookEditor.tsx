@@ -1175,6 +1175,25 @@ export const MemoryBookEditor = forwardRef<
           min-width: 120px;
           height: 44px;
         }
+        .memorybook-draw-menu {
+          width: 280px;
+          min-width: 0 !important;
+          box-sizing: border-box;
+        }
+        .memorybook-draw-tool {
+          flex: 1 1 0;
+          min-width: 0 !important;
+          padding: 6px 8px !important;
+          font-size: 28px !important;
+          line-height: 1;
+        }
+        @media (max-width: 600px) {
+          .memorybook-editor-toolbar .memorybook-draw-menu {
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(92vw, 360px);
+          }
+        }
       `}</style>
 
       <div
@@ -1243,16 +1262,19 @@ export const MemoryBookEditor = forwardRef<
 
           <details style={{ position: 'relative' }}>
             <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz'}</summary>
-            <div style={{ ...editorStyles.toolMenu, minWidth: 250, gap: 8 }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div className="memorybook-draw-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
                 {([
-                  ['pencil', language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza'],
-                  ['marker', language === 'de' ? 'Filzstift' : language === 'en' ? 'Marker' : 'Filctoll'],
-                  ['brush', language === 'de' ? 'Pinsel' : language === 'en' ? 'Brush' : 'Ecset'],
-                ] as const).map(([tool, label]) => (
+                  ['pencil', language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza', '✎'],
+                  ['marker', language === 'de' ? 'Filzstift' : language === 'en' ? 'Marker' : 'Filctoll', '▰'],
+                  ['brush', language === 'de' ? 'Pinsel' : language === 'en' ? 'Brush' : 'Ecset', '🖌️'],
+                ] as const).map(([tool, label, icon]) => (
                   <button
                     key={tool}
                     type="button"
+                    className="memorybook-draw-tool"
+                    aria-label={label}
+                    title={label}
                     aria-pressed={brushTool === tool && isDrawing}
                     onClick={() => {
                       fabricRef.current?.discardActiveObject();
@@ -1261,9 +1283,9 @@ export const MemoryBookEditor = forwardRef<
                       setIsErasing(false);
                       setIsDrawing(true);
                     }}
-                    style={{ flex: '1 1 30%', minWidth: 70, background: brushTool === tool && isDrawing ? '#dbeafe' : '#fff' }}
+                    style={{ background: brushTool === tool && isDrawing ? '#dbeafe' : '#fff' }}
                   >
-                    {label}
+                    <span aria-hidden="true">{icon}</span>
                   </button>
                 ))}
               </div>
