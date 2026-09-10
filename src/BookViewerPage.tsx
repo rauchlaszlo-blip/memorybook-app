@@ -290,6 +290,8 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         </div>
         </div>
 
+        {error && <div style={styles.error}>{error}</div>}
+
         {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
