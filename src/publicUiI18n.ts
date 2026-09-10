@@ -8,6 +8,9 @@ import {
 type Translation = { en: string; de: string };
 
 const translations: Record<string, Translation> = {
+  'Tesztverzió: a fizetési gomb nem terhel pénzt, hanem azonnal létrehozza a könyvjogosultságot.': { en: 'Test version: the payment button does not charge money; it immediately creates the book entitlement.', de: 'Testversion: Die Zahlungsschaltfläche belastet kein Geld, sondern erstellt sofort die Buchberechtigung.' },
+  'Tesztfizetés – könyvjogosultság létrehozása': { en: 'Test payment – create book entitlement', de: 'Testzahlung – Buchberechtigung erstellen' },
+  'A tesztfizetés sikeres. A könyvjogosultság létrejött.': { en: 'The test payment was successful. The book entitlement has been created.', de: 'Die Testzahlung war erfolgreich. Die Buchberechtigung wurde erstellt.' },
   'A Google-belépés nem sikerült. Próbáld újra.': { en: 'Google sign-in failed. Please try again.', de: 'Die Google-Anmeldung ist fehlgeschlagen. Bitte versuche es erneut.' },
   'A Google-belépés technikailag elő van készítve, de az OAuth kliens még nincs aktiválva.': { en: 'Google sign-in is technically prepared, but the OAuth client has not been activated yet.', de: 'Die Google-Anmeldung ist technisch vorbereitet, aber der OAuth-Client ist noch nicht aktiviert.' },
   'A Google-belépés nem sikerült.': { en: 'Google sign-in failed.', de: 'Die Google-Anmeldung ist fehlgeschlagen.' },

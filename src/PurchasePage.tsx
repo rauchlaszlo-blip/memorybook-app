@@ -22,6 +22,7 @@ type Mode = 'self' | 'gift' | 'organization';
 type BookType = 'standard' | 'event';
 type Provider = 'paypal' | 'simplepay';
 type PaymentCapabilities = {
+  testPaymentEnabled?: boolean;
   paypal?: {
     environment?: 'sandbox' | 'live';
     credentialsConfigured?: boolean;
@@ -42,7 +43,7 @@ type PaymentCapabilities = {
 };
 type PaymentSuccess = {
   purchaseId: string;
-  provider: Provider;
+  provider: Provider | 'test';
   giftRedeemPath?: string | null;
 };
 
@@ -455,6 +456,22 @@ export function PurchasePage() {
       setPurchaseId(nextPurchaseId || null);
       if (!nextPurchaseId) throw new Error('PURCHASE_ID_MISSING');
 
+      if (paymentCapabilities?.testPaymentEnabled) {
+        const testResponse = await fetch(
+          `${API_BASE}/api/purchases/${encodeURIComponent(nextPurchaseId)}/test-complete`,
+          { method: 'POST', credentials: 'include' }
+        );
+        const testData = await testResponse.json().catch(() => ({}));
+        if (!testResponse.ok) throw new Error(testData?.error || 'TEST_PURCHASE_COMPLETE_FAILED');
+        setPaymentSuccess({
+          purchaseId: nextPurchaseId,
+          provider: 'test',
+          giftRedeemPath: testData?.giftRedeemPath || null,
+        });
+        setPurchaseId(nextPurchaseId);
+        return;
+      }
+
       if (provider === 'simplepay') {
         if (!paymentCapabilities?.simplepay?.enabled) {
           setNotice(t('A SimplePay technikailag be van kötve, de a sandbox hitelesítő adatok még nincsenek beállítva.'));
@@ -523,6 +540,7 @@ export function PurchasePage() {
 
   const paypalReady = Boolean(paymentCapabilities?.paypal?.enabled);
   const simplePayReady = Boolean(paymentCapabilities?.simplepay?.enabled);
+  const testPaymentEnabled = Boolean(paymentCapabilities?.testPaymentEnabled);
 
   return (
     <main style={styles.page}>
@@ -553,6 +571,10 @@ export function PurchasePage() {
             <span>{user.name || purchaserName}</span>
             <span>{user.email || purchaserEmail}</span>
           </div>
+        )}
+
+        {testPaymentEnabled && (
+          <div style={styles.testNotice}>{t('Tesztverzió: a fizetési gomb nem terhel pénzt, hanem azonnal létrehozza a könyvjogosultságot.')}</div>
         )}
 
         <form onSubmit={submit} style={{ ...styles.form, ...(mode === 'gift' ? styles.giftForm : {}) }}>
@@ -640,6 +662,8 @@ export function PurchasePage() {
           <button type="submit" disabled={loading || !user} style={styles.primaryButton}>
             {loading
               ? t('Folyamatban...')
+              : testPaymentEnabled
+                ? t('Tesztfizetés – könyvjogosultság létrehozása')
               : provider === 'simplepay' && simplePayReady
                 ? t('Tovább a SimplePay fizetéshez')
                 : provider === 'paypal' && paypalReady
@@ -650,7 +674,7 @@ export function PurchasePage() {
 
         {paymentSuccess && (
           <div style={styles.success}>
-            <strong>{t(paymentSuccess.provider === 'simplepay' ? 'A SimplePay fizetés sikeres. A könyvjogosultság létrejött.' : 'A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
+            <strong>{t(paymentSuccess.provider === 'test' ? 'A tesztfizetés sikeres. A könyvjogosultság létrejött.' : paymentSuccess.provider === 'simplepay' ? 'A SimplePay fizetés sikeres. A könyvjogosultság létrejött.' : 'A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
             {f('Azonosító: {id}', { id: paymentSuccess.purchaseId })}<br />
             {paymentSuccess.giftRedeemPath ? (
               <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>
@@ -690,6 +714,7 @@ const styles: Record<string, React.CSSProperties> = {
   giftSwitchButton: { minHeight: 34 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
+  testNotice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#eff6ff', color: '#1e40af', lineHeight: 1.35, fontSize: 13, fontWeight: 700 },
   giftRecipientBox: { display: 'grid', gap: 6, padding: 9, borderRadius: 9, background: '#f8fafc', border: '1px solid #e2e8f0' },
   fieldHint: { gridColumn: '2', display: 'block', marginTop: 2, color: '#64748b', fontSize: 11.5, lineHeight: 1.3, fontWeight: 500 },
   fieldError: { gridColumn: '2', display: 'block', marginTop: 2, color: '#b91c1c', fontSize: 11.5, lineHeight: 1.3, fontWeight: 600 },

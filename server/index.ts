@@ -510,10 +510,13 @@ app.get('/api/invoicing-capabilities', (_req, res) => {
 });
 
 app.get('/api/payment-capabilities', (_req, res) => {
+  const paypal = getPayPalCapabilities();
+  const simplepay = getSimplePayCapabilities();
   res.status(200).json({
-    paypal: getPayPalCapabilities(),
+    testPaymentEnabled: !paypal.enabled && !simplepay.enabled,
+    paypal,
     simplepay: {
-      ...getSimplePayCapabilities(),
+      ...simplepay,
       integrationReady: true,
     },
   });
@@ -960,6 +963,109 @@ app.post('/api/purchases', async (req, res) => {
   } catch (err) {
     console.error('Purchase draft create error:', err);
     res.status(500).json({ error: 'PURCHASE_DRAFT_CREATE_FAILED' });
+  }
+});
+
+app.post('/api/purchases/:purchaseId/test-complete', async (req, res) => {
+  const paypal = getPayPalCapabilities();
+  const simplepay = getSimplePayCapabilities();
+  if (paypal.enabled || simplepay.enabled) {
+    res.status(403).json({ error: 'TEST_PAYMENT_DISABLED' });
+    return;
+  }
+
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const purchaseId = String(req.params.purchaseId || '').trim();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const purchaseResult = await client.query(
+      `SELECT
+         id,
+         purchase_mode AS "purchaseMode",
+         book_type AS "bookType",
+         included_pages AS "includedPages",
+         purchaser_user_id AS "purchaserUserId",
+         payment_status AS "paymentStatus"
+       FROM purchases
+       WHERE id = $1 AND purchaser_user_id = $2
+       FOR UPDATE`,
+      [purchaseId, session.user.id]
+    );
+
+    if (purchaseResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'PURCHASE_NOT_FOUND' });
+      return;
+    }
+
+    const purchase = purchaseResult.rows[0];
+    if (purchase.paymentStatus !== 'draft' && purchase.paymentStatus !== 'paid') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PURCHASE_PAYMENT_STATE_CHANGED' });
+      return;
+    }
+
+    await client.query(
+      `UPDATE purchases
+       SET payment_status = 'paid',
+           provider_reference = COALESCE(provider_reference, $2),
+           paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [purchaseId, `test-${crypto.randomUUID()}`]
+    );
+
+    const entitlementId = `entitlement-${crypto.randomUUID()}`;
+    const giftToken = purchase.purchaseMode === 'gift' ? `gift-${crypto.randomUUID()}` : null;
+    await client.query(
+      `INSERT INTO book_entitlements (
+         id, purchase_id, assigned_user_id, gift_token,
+         book_type, included_pages, status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, 'available')
+       ON CONFLICT (purchase_id) DO NOTHING`,
+      [
+        entitlementId,
+        purchaseId,
+        purchase.purchaseMode === 'self' ? session.user.id : null,
+        giftToken,
+        purchase.bookType,
+        Number(purchase.includedPages) || 0,
+      ]
+    );
+
+    const entitlementResult = await client.query(
+      `SELECT id, gift_token AS "giftToken", book_type AS "bookType",
+              included_pages AS "includedPages", status
+       FROM book_entitlements WHERE purchase_id = $1`,
+      [purchaseId]
+    );
+    const entitlement = entitlementResult.rows[0];
+    if (!entitlement) throw new Error('TEST_ENTITLEMENT_CREATE_FAILED');
+
+    await client.query('COMMIT');
+    res.status(200).json({
+      purchaseId,
+      paymentStatus: 'paid',
+      testPayment: true,
+      giftRedeemPath: entitlement.giftToken
+        ? `/gift/${encodeURIComponent(entitlement.giftToken)}`
+        : null,
+      entitlement,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Test purchase completion error:', err);
+    res.status(500).json({ error: 'TEST_PURCHASE_COMPLETE_FAILED' });
+  } finally {
+    client.release();
   }
 });
 
