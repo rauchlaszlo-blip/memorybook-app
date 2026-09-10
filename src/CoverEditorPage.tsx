@@ -82,9 +82,6 @@ export function CoverEditorPage({ bookId }: { bookId: string }) {
   return <main style={styles.page}>
     <section style={styles.header}>
       <a href="/my-books" style={styles.back}>{copy.back}</a>
-      <div style={styles.eyebrow}>{copy.eyebrow}</div>
-      <h1 style={styles.title}>{cover.title}</h1>
-      <p style={styles.hint}>{copy.hint}</p>
     </section>
     <MemoryBookEditor
       ref={editorRef}
