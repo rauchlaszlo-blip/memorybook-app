@@ -189,8 +189,6 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         <div style={styles.eyebrow}>MemoryBook</div>
         <h1 style={styles.title}>{bookTitle}</h1>
-        <div style={styles.meta}>{t('Csak olvasható könyvnézet')}</div>
-
         <div style={styles.topBar}>
           <button
             type="button"
@@ -402,7 +400,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   image: {
     display: 'block',
