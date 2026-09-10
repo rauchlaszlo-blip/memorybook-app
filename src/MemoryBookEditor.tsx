@@ -36,6 +36,7 @@ interface MemoryBookEditorProps {
   newTextWidth?: number;
   newTextFontSize?: number;
   newTextTop?: number;
+  newTextAlign?: 'left' | 'center' | 'right';
 }
 
 type PendingSave = {
@@ -116,7 +117,7 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150 }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left' }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -847,6 +848,7 @@ export const MemoryBookEditor = forwardRef<
       width: textWidth,
       fontFamily: 'sans-serif',
       fontSize: newTextFontSize,
+      textAlign: newTextAlign,
       splitByGrapheme: true,
       fill: '#1F2937',
       editable: true,

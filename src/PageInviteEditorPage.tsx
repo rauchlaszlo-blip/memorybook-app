@@ -241,6 +241,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         newTextWidth={600}
         newTextFontSize={48}
         newTextTop={180}
+        newTextAlign="center"
       />
     </main>
   );
