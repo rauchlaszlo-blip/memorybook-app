@@ -150,6 +150,7 @@ export const MemoryBookEditor = forwardRef<
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
+  const [eraserWidth, setEraserWidth] = useState(24);
   const [brushColor, setBrushColor] = useState('#1F2937');
   const [brushWidth, setBrushWidth] = useState(5);
   const [brushTool, setBrushTool] = useState<'pen' | 'pencil' | 'brush'>('pen');
@@ -869,11 +870,11 @@ export const MemoryBookEditor = forwardRef<
         : brushColor;
       canvas.freeDrawingBrush.color = isErasing ? '#FFFFFF' : selectedColor;
       canvas.freeDrawingBrush.width = isErasing
-        ? Math.max(brushWidth * 2, 12)
+        ? eraserWidth
         : Math.max(1, Math.round(brushWidth * profile.widthMultiplier));
       (canvas.freeDrawingBrush as any).strokeLineCap = brushTool === 'brush' ? 'round' : 'butt';
     }
-  }, [isDrawing, isErasing, brushColor, brushWidth, brushTool]);
+  }, [isDrawing, isErasing, brushColor, brushWidth, brushTool, eraserWidth]);
 
   const handleAddText = () => {
     const canvas = fabricRef.current;
@@ -1373,23 +1374,42 @@ export const MemoryBookEditor = forwardRef<
               </button>
             </div>
           </details>
-          <button
-            type="button"
-            aria-pressed={isErasing}
-            onClick={(event) => {
-              event.currentTarget
-                .closest('.memorybook-editor-toolbar')
-                ?.querySelectorAll('details[open]')
-                .forEach((detail) => detail.removeAttribute('open'));
-              fabricRef.current?.discardActiveObject();
-              fabricRef.current?.requestRenderAll();
-              setIsDrawing(false);
-              setIsErasing((previous) => !previous);
+          <details
+            style={{ position: 'relative' }}
+            onToggle={(event) => {
+              const enabled = event.currentTarget.open;
+              setIsErasing(enabled);
+              if (enabled) {
+                setIsDrawing(false);
+                fabricRef.current?.discardActiveObject();
+                fabricRef.current?.requestRenderAll();
+              }
             }}
-            style={{ background: isErasing ? '#dbeafe' : '#fff' }}
           >
-            {isErasing ? copy.stopEraser : copy.eraser}
-          </button>
+            <summary style={{ ...editorStyles.toolSummary, background: isErasing ? '#dbeafe' : '#fff' }}>
+              {copy.eraser}
+            </summary>
+            <div className="memorybook-draw-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
+              <label style={{ ...editorStyles.toolMenuItem, display: 'grid', gap: 7 }}>
+                <span>{language === 'de' ? 'Radierergröße' : language === 'en' ? 'Eraser size' : 'Radír mérete'}</span>
+                <input
+                  type="range"
+                  aria-label={language === 'de' ? 'Radierergröße' : language === 'en' ? 'Eraser size' : 'Radír mérete'}
+                  min="8"
+                  max="80"
+                  value={eraserWidth}
+                  onChange={(event) => setEraserWidth(Number(event.target.value))}
+                  style={{ width: '100%', minWidth: 0 }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+              >
+                {copy.stopEraser}
+              </button>
+            </div>
+          </details>
           <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
 
           {compactLayout && (<><button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button><button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>↪</button><strong translate="no" style={{ whiteSpace: 'nowrap' }}>{saveStatus === 'saved' ? copy.saved : saveStatus === 'saving' ? copy.saving : saveStatus === 'conflict' ? copy.conflict : copy.unsaved}</strong></>)}
