@@ -170,8 +170,6 @@ export function PurchasePage() {
   const [billingAddress, setBillingAddress] = useState('');
   const [billingTaxNumber, setBillingTaxNumber] = useState('');
   const [billingCompanyName, setBillingCompanyName] = useState('');
-  const [giftRecipientName, setGiftRecipientName] = useState('');
-  const [giftRecipientEmail, setGiftRecipientEmail] = useState('');
   const [companyLookupStatus, setCompanyLookupStatus] = useState<CompanyLookupStatus>('idle');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -448,8 +446,6 @@ export function PurchasePage() {
           billingAddress,
           billingTaxNumber,
           billingCompanyName,
-          giftRecipientName,
-          giftRecipientEmail,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -560,18 +556,6 @@ export function PurchasePage() {
         )}
 
         <form onSubmit={submit} style={styles.form}>
-          {mode === 'gift' && (
-            <div style={styles.giftRecipientBox}>
-              <div style={styles.sectionTitle}>{t('Ajándékozott – a könyv jövőbeli tulajdonosa')}</div>
-              <label style={styles.label}>{t('Ajándékozott neve')}
-                <input value={giftRecipientName} onChange={(event) => setGiftRecipientName(event.target.value)} style={styles.input} required />
-              </label>
-              <label style={styles.label}>{t('Ajándékozott Google e-mail címe')}
-                <input type="email" value={giftRecipientEmail} onChange={(event) => setGiftRecipientEmail(event.target.value)} style={styles.input} required />
-              </label>
-              <div style={styles.fieldHint}>{t('Sikeres fizetés után beváltó link készül. A könyvet csak a fenti e-mail címhez tartozó Google-fiók válthatja be.')}</div>
-            </div>
-          )}
           <label style={styles.label}>{t('Könyv típusa')}
             <select value={bookType} onChange={(event) => setBookType(event.target.value as BookType)} style={styles.input}>
               <option value="standard">{t('Normál emlékkönyv – 30 oldal')}</option>
@@ -650,7 +634,7 @@ export function PurchasePage() {
             </>
           )}
 
-          {mode === 'gift' && <div style={styles.giftInfo}>{t('Az ajándék nem a vásárló fiókjába kerül. Fizetés után küldd el a beváltó linket az ajándékozottnak; a megadott Google-fiókkal tudja átvenni.')}</div>}
+          {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || !user} style={styles.primaryButton}>
