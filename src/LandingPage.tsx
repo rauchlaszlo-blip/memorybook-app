@@ -191,7 +191,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#0f172a',
     fontFamily: 'Arial, sans-serif',
     boxSizing: 'border-box',
-    padding: '0 18px 48px',
+    padding: '0 18px 32px',
   },
   header: {
     width: '100%',
@@ -226,7 +226,7 @@ const styles: Record<string, React.CSSProperties> = {
   hero: {
     width: '100%',
     maxWidth: 820,
-    margin: '52px auto 74px',
+    margin: '34px auto 44px',
     textAlign: 'center',
   },
   eyebrow: {
@@ -247,7 +247,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   heroLead: {
     maxWidth: 680,
-    margin: '22px auto 0',
+    margin: '16px auto 0',
     fontSize: 'clamp(18px, 4vw, 22px)',
     lineHeight: 1.55,
     color: '#475569',
@@ -315,9 +315,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     boxShadow: '0 8px 20px rgba(15, 23, 42, 0.22)',
   },
-  section: { width: '100%', maxWidth: 980, margin: '0 auto 70px' },
+  section: { width: '100%', maxWidth: 980, margin: '0 auto 42px' },
   sectionTitle: {
-    margin: '0 0 22px',
+    margin: '0 0 15px',
     textAlign: 'center',
     fontSize: 'clamp(28px, 6vw, 38px)',
     letterSpacing: -1,
@@ -325,10 +325,11 @@ const styles: Record<string, React.CSSProperties> = {
   stepsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
-    gap: 14,
+    columnGap: 14,
+    rowGap: 9,
   },
   stepCard: {
-    padding: 24,
+    padding: 20,
     background: '#ffffff',
     border: '1px solid #e2e8f0',
     borderRadius: 16,
@@ -338,10 +339,11 @@ const styles: Record<string, React.CSSProperties> = {
   typesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
-    gap: 16,
+    columnGap: 16,
+    rowGap: 10,
   },
   typeCard: {
-    padding: 26,
+    padding: 21,
     background: '#ffffff',
     border: '1px solid #e2e8f0',
     borderRadius: 18,
@@ -361,7 +363,7 @@ const styles: Record<string, React.CSSProperties> = {
   typeTitle: { margin: '0 0 10px', fontSize: 24 },
   noAccount: {
     maxWidth: 700,
-    margin: '18px auto 0',
+    margin: '12px auto 0',
     textAlign: 'center',
     color: '#475569',
     fontWeight: 700,
@@ -371,7 +373,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     maxWidth: 900,
     margin: '0 auto',
-    padding: '42px 24px',
+    padding: '30px 22px',
     boxSizing: 'border-box',
     textAlign: 'center',
     borderRadius: 22,
@@ -379,5 +381,5 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #e2e8f0',
   },
   bottomTitle: { margin: 0, fontSize: 'clamp(28px, 6vw, 40px)', letterSpacing: -1 },
-  bottomText: { maxWidth: 660, margin: '14px auto 24px', color: '#64748b', lineHeight: 1.6, fontSize: 17 },
+  bottomText: { maxWidth: 660, margin: '10px auto 16px', color: '#64748b', lineHeight: 1.6, fontSize: 17 },
 };
