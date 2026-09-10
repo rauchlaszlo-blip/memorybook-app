@@ -220,6 +220,8 @@ const translations: Record<string, Translation> = {
   '1. Meghívó nyelve': { en: '1. Invitation language', de: '1. Sprache der Einladung' },
   '2. Személyre szabás': { en: '2. Personalization', de: '2. Personalisierung' },
   'Küldés': { en: 'Send', de: 'Senden' },
+  'Megszólítás': { en: 'Greeting', de: 'Anrede' },
+  'Automatikus – {language}': { en: 'Automatic – {language}', de: 'Automatisch – {language}' },
 };
 
 export function ownerText(language: AppLanguage, key: string): string {
