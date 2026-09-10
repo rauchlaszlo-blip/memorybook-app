@@ -68,6 +68,7 @@ const configureObjectControls = (object: fabric.FabricObject) => {
     cornerStrokeColor: '#2563eb',
     cornerStyle: 'circle',
     cornerSize: MOBILE_CONTROL_SIZE,
+    touchCornerSize: 80,
     transparentCorners: false,
     padding: 8,
     centeredRotation: true,
