@@ -37,6 +37,7 @@ interface MemoryBookEditorProps {
   newTextFontSize?: number;
   newTextTop?: number;
   newTextAlign?: 'left' | 'center' | 'right';
+  enableBackgroundControls?: boolean;
 }
 
 type PendingSave = {
@@ -124,7 +125,7 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left' }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -954,6 +955,65 @@ export const MemoryBookEditor = forwardRef<
     e.target.value = '';
   };
 
+  const backgroundCopy = language === 'de'
+    ? { color: 'Hintergrundfarbe', photo: 'Hintergrundbild', patterns: 'Muster' }
+    : language === 'en'
+      ? { color: 'Background color', photo: 'Background image', patterns: 'Patterns' }
+      : { color: 'Háttérszín', photo: 'Háttérkép', patterns: 'Minták' };
+
+  const applyBackground = (background: string | fabric.Gradient<'linear'>) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.set({ backgroundColor: background, backgroundImage: undefined });
+    canvas.requestRenderAll();
+    handleStructuralMutation();
+  };
+
+  const handleBackgroundImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !fabricRef.current) return;
+
+    const uploadTargetPageId = currentPageIdRef.current;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (uploadTargetPageId !== currentPageIdRef.current) return;
+      const dataUrl = event.target?.result as string;
+      const imgElement = new Image();
+      imgElement.onload = () => {
+        const canvas = fabricRef.current;
+        if (!canvas || uploadTargetPageId !== currentPageIdRef.current) return;
+        const scale = Math.max(CANVAS_WIDTH / imgElement.width, CANVAS_HEIGHT / imgElement.height);
+        const backgroundImage = new fabric.FabricImage(imgElement, {
+          left: CANVAS_WIDTH / 2,
+          top: CANVAS_HEIGHT / 2,
+          originX: 'center',
+          originY: 'center',
+          scaleX: scale,
+          scaleY: scale,
+          selectable: false,
+          evented: false,
+        });
+        canvas.set({ backgroundImage });
+        canvas.requestRenderAll();
+        handleStructuralMutation();
+      };
+      imgElement.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const applyBackgroundPattern = (colors: [string, string]) => {
+    applyBackground(new fabric.Gradient({
+      type: 'linear',
+      coords: { x1: 0, y1: 0, x2: CANVAS_WIDTH, y2: CANVAS_HEIGHT },
+      colorStops: [
+        { offset: 0, color: colors[0] },
+        { offset: 1, color: colors[1] },
+      ],
+    }));
+  };
+
   const handleDeleteSelected = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -1115,6 +1175,72 @@ export const MemoryBookEditor = forwardRef<
               onChange={handleImageUpload}
             />
           </label>
+
+          {enableBackgroundControls && (
+            <>
+              <label
+                title={backgroundCopy.color}
+                style={{
+                  minHeight: 44,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  padding: '6px 10px',
+                  background: '#fff',
+                }}
+              >
+                {backgroundCopy.color}
+                <input
+                  type="color"
+                  defaultValue="#0f172a"
+                  onChange={(event) => applyBackground(event.target.value)}
+                  style={{ width: 30, height: 30, padding: 0, border: 0, background: 'transparent' }}
+                />
+              </label>
+              <label
+                style={{
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 6,
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                  background: '#fff',
+                }}
+              >
+                {backgroundCopy.photo}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleBackgroundImageUpload}
+                />
+              </label>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} aria-label={backgroundCopy.patterns}>
+                {([
+                  ['#0f172a', '#334155'],
+                  ['#3f1d2e', '#b45309'],
+                  ['#0f3d3e', '#84a98c'],
+                  ['#312e81', '#a78bfa'],
+                ] as [string, string][]).map((colors, index) => (
+                  <button
+                    key={colors.join('-')}
+                    type="button"
+                    onClick={() => applyBackgroundPattern(colors)}
+                    title={`${backgroundCopy.patterns} ${index + 1}`}
+                    aria-label={`${backgroundCopy.patterns} ${index + 1}`}
+                    style={{
+                      width: 44,
+                      minWidth: 44,
+                      padding: 0,
+                      borderRadius: 8,
+                      background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+                    }}
+                  />
+                ))}
+              </span>
+            </>
+          )}
 
           <button
             onClick={handleSelectMode}
