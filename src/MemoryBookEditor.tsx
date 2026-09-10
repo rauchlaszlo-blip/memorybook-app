@@ -33,6 +33,9 @@ interface MemoryBookEditorProps {
   ) => Promise<{ newVersion: number }>;
   onConflict?: (pageId: string) => void;
   language?: AppLanguage;
+  newTextWidth?: number;
+  newTextFontSize?: number;
+  newTextTop?: number;
 }
 
 type PendingSave = {
@@ -113,7 +116,7 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu' }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150 }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -836,12 +839,14 @@ export const MemoryBookEditor = forwardRef<
     setIsErasing(false);
     canvas.isDrawingMode = false;
 
+    const textWidth = Math.min(newTextWidth, CANVAS_WIDTH - 32);
+
     const text = new fabric.Textbox(copy.textPlaceholder, {
-      left: (CANVAS_WIDTH - DEFAULT_TEXT_WIDTH) / 2,
-      top: 150,
-      width: DEFAULT_TEXT_WIDTH,
+      left: (CANVAS_WIDTH - textWidth) / 2,
+      top: newTextTop,
+      width: textWidth,
       fontFamily: 'sans-serif',
-      fontSize: DEFAULT_TEXT_FONT_SIZE,
+      fontSize: newTextFontSize,
       splitByGrapheme: true,
       fill: '#1F2937',
       editable: true,

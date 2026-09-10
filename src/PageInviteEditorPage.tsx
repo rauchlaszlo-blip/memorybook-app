@@ -238,6 +238,9 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         page={page}
         onSavePage={savePage}
         language={language}
+        newTextWidth={600}
+        newTextFontSize={48}
+        newTextTop={180}
       />
     </main>
   );
