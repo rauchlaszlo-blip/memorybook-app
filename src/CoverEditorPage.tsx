@@ -89,14 +89,15 @@ export function CoverEditorPage({ bookId }: { bookId: string }) {
       onSavePage={saveCover}
       language={language}
       enableBackgroundControls
+      compactLayout
     />
   </main>;
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#f1f5f9', padding: '16px 12px 40px', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif' },
-  header: { width: '100%', maxWidth: 750, margin: '0 auto 14px' },
-  back: { display: 'inline-block', marginBottom: 14, color: '#475569', textDecoration: 'none', fontWeight: 700 },
+  page: { minHeight: '100vh', background: '#f1f5f9', padding: '6px 12px 20px', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif' },
+  header: { width: '100%', maxWidth: 750, margin: '0 auto 4px' },
+  back: { display: 'inline-block', padding: '5px 0', color: '#475569', textDecoration: 'none', fontWeight: 700 },
   eyebrow: { color: '#64748b', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.2 },
   title: { margin: '6px 0', color: '#0f172a', fontSize: 'clamp(24px, 7vw, 34px)', overflowWrap: 'anywhere' },
   hint: { margin: 0, color: '#64748b', lineHeight: 1.45 },
