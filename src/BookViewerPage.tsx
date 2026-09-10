@@ -400,7 +400,7 @@ const styles: Record<string, React.CSSProperties> = {
   arrowRight: { marginRight: -2 },
   pageNumber: { maxWidth: 640, margin: '0 auto 6px', color: '#334155', fontSize: 14, fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap' },
   viewer: {
-    width: 'min(100%, 640px, calc((100svh - 170px) * 0.7049))',
+    width: 'min(100%, 560px, calc(70.5svh - 120px))',
     height: 'auto',
     maxWidth: 640,
     aspectRatio: '750 / 1064',
