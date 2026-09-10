@@ -7,7 +7,7 @@ import {
   type AppLanguage,
 } from './i18n';
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
 
   useEffect(() => subscribeAppLanguage(setLanguage), []);
@@ -27,7 +27,7 @@ export function LanguageSwitcher() {
             ? 'Anwendungssprache'
             : 'Application language'
       }
-      style={styles.select}
+      style={compact ? { ...styles.select, ...styles.compactSelect } : styles.select}
     >
       {SUPPORTED_APP_LANGUAGES.map((item) => (
         <option key={item.code} value={item.code}>
@@ -48,5 +48,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#334155',
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  compactSelect: {
+    minHeight: 40,
+    padding: '6px 7px',
+    fontSize: 12,
   },
 };
