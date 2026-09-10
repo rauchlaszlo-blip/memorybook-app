@@ -252,11 +252,11 @@ export function InviteSendDialog({
 
         <div style={styles.stepLabel}>{t('2. Személyre szabás')}</div>
         <label style={styles.label}>
-          {t('Címzett neve')} {t('(kötelező)')}
+          {t('Megszólítás')}
           <input
             value={recipientName}
             onChange={(event) => updateRecipientName(event.target.value)}
-            placeholder={t('pl. Rubinszky Gertrúd')}
+            placeholder={t('pl. Gertrúd')}
             style={styles.input}
             maxLength={120}
             readOnly={identityLocked}
