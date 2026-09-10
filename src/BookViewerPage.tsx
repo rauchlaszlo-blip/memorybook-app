@@ -208,6 +208,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   return (
     <main style={styles.page}>
       <section style={styles.container}>
+        <div style={styles.viewerStage}>
         <div style={styles.bookActions}>
           <a href="/my-books" style={styles.backLink}>
             {t('← Saját könyveim')}
@@ -216,8 +217,11 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
           </a>
         </div>
-
-        <div style={styles.viewerStage}>
+          <div style={styles.pageNumber}>
+            {isCover
+              ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
+              : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
+          </div>
           <div style={styles.topBar}>
             <button
               type="button"
@@ -228,11 +232,6 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             >
               ←
             </button>
-            <div style={styles.pageNumber}>
-              {isCover
-                ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
-                : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
-            </div>
             <button
               type="button"
               onClick={() => setCurrentIndex((index) => Math.min(totalItems - 1, index + 1))}
@@ -290,10 +289,6 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           )}
         </div>
         </div>
-
-        {error && <div style={styles.error}>{error}</div>}
-
-
 
         {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
@@ -375,7 +370,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 700,
   },
-  bookActions: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '2px 0 12px' },
+  bookActions: { width: 'min(100%, 560px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 auto 8px' },
   inviteLink: { minHeight: 38, padding: '7px 11px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 14, fontWeight: 800 },
   eyebrow: {
     fontSize: 12,
@@ -396,14 +391,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     fontSize: 13,
   },
-  viewerStage: { position: 'relative', width: '100%', maxWidth: 750, margin: '0 auto' },
-  topBar: { position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none' },
+  viewerStage: { position: 'relative', width: '100%', maxWidth: 620, margin: '0 auto' },
+  topBar: { position: 'absolute', top: 48, bottom: 0, left: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none' },
   arrowButton: { pointerEvents: 'auto', width: 48, height: 64, border: '1px solid #cbd5e1', borderRadius: 12, background: 'rgba(255,255,255,0.92)', color: '#0f172a', fontSize: 30, lineHeight: 1, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,23,42,0.16)', touchAction: 'manipulation' },
-  arrowLeft: { marginLeft: 8 },
-  arrowRight: { marginRight: 8 },
+  arrowLeft: { marginLeft: -2 },
+  arrowRight: { marginRight: -2 },
   viewer: {
-    width: '100%',
-    maxWidth: 750,
+    width: 'min(100%, 560px)',
+    height: 'min(calc(100svh - 210px), 700px)',
+    maxWidth: 560,
     aspectRatio: '750 / 1064',
     margin: '0 auto',
     background: 'white',
