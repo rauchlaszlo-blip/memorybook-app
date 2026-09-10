@@ -1400,6 +1400,7 @@ function App() {
         page={page}
         onSavePage={handleSavePage}
         onConflict={() => {}}
+        enableBackgroundControls
       />
     </>
   );
