@@ -289,7 +289,11 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             </div>
           )}
         </div>
-        </div>\n\n        {error && <div style={styles.error}>{error}</div>}\n\n
+        </div>
+
+        {error && <div style={styles.error}>{error}</div>}
+
+
 
         {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
