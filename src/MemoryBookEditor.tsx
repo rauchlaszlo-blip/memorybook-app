@@ -580,9 +580,23 @@ export const MemoryBookEditor = forwardRef<
       angle: number;
     } | null = null;
     let suppressedSelectionTarget: fabric.FabricObject | null = null;
+    let selectionTapLockedTarget: {
+      object: fabric.FabricObject;
+      lockMovementX: boolean;
+      lockMovementY: boolean;
+    } | null = null;
     canvas.on('mouse:down:before', (event) => {
       const activeObject = canvas.getActiveObject();
       const nextTarget = event.target;
+
+      if (!activeObject && nextTarget) {
+        selectionTapLockedTarget = {
+          object: nextTarget,
+          lockMovementX: nextTarget.lockMovementX,
+          lockMovementY: nextTarget.lockMovementY,
+        };
+        nextTarget.set({ lockMovementX: true, lockMovementY: true });
+      }
 
       if (activeObject && !nextTarget) {
         blankTapSnapshot = {
@@ -619,6 +633,12 @@ export const MemoryBookEditor = forwardRef<
       syncSelectionState();
     });
     canvas.on('mouse:up', () => {
+      if (selectionTapLockedTarget) {
+        const { object, lockMovementX, lockMovementY } = selectionTapLockedTarget;
+        object.set({ lockMovementX, lockMovementY });
+        object.setCoords();
+        selectionTapLockedTarget = null;
+      }
       if (suppressedSelectionTarget) {
         suppressedSelectionTarget.selectable = true;
         suppressedSelectionTarget = null;
