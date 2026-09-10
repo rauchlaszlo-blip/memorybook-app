@@ -91,6 +91,24 @@ const configureObjectControls = (object: fabric.FabricObject) => {
   object.setCoords();
 };
 
+const getTextboxMaxWidth = (object: fabric.FabricObject) => {
+  const left = Math.max(0, object.left || 0);
+  const scaleX = Math.max(Math.abs(object.scaleX || 1), 0.01);
+  return Math.max(80, (CANVAS_WIDTH - left - 16) / scaleX);
+};
+
+const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
+  if (!(object instanceof fabric.Textbox)) return;
+
+  const maxWidth = getTextboxMaxWidth(object);
+  object.set({
+    splitByGrapheme: true,
+    width: Math.min(object.width || DEFAULT_TEXT_WIDTH, maxWidth),
+  });
+  object.initDimensions();
+  object.setCoords();
+};
+
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
@@ -465,9 +483,10 @@ export const MemoryBookEditor = forwardRef<
     canvas.on('object:removed', () =>
       handlersRef.current.handleStructuralMutation()
     );
-    canvas.on('text:changed', () =>
-      handlersRef.current.handleTextTypingMutation()
-    );
+    canvas.on('text:changed', (event) => {
+      if (event.target) constrainTextboxToCanvas(event.target);
+      handlersRef.current.handleTextTypingMutation();
+    });
     canvas.on('text:editing:exited', () =>
       handlersRef.current.pushToHistory()
     );
@@ -670,7 +689,23 @@ export const MemoryBookEditor = forwardRef<
 
         if (abortController.signal.aborted) return;
 
-        canvas.getObjects().forEach(configureObjectControls);
+        canvas.getObjects().forEach((object, index) => {
+          let configuredObject = object;
+
+          if (object instanceof fabric.IText && !(object instanceof fabric.Textbox)) {
+            const replacement = new fabric.Textbox(object.text, {
+              ...object.toObject(),
+              width: Math.min(object.width || DEFAULT_TEXT_WIDTH, getTextboxMaxWidth(object)),
+              splitByGrapheme: true,
+            });
+            canvas.remove(object);
+            canvas.insertAt(index, replacement);
+            configuredObject = replacement;
+          }
+
+          constrainTextboxToCanvas(configuredObject);
+          configureObjectControls(configuredObject);
+        });
         canvas.renderAll();
 
         const initialJson = JSON.stringify(canvas.toJSON());
@@ -757,6 +792,7 @@ export const MemoryBookEditor = forwardRef<
       width: DEFAULT_TEXT_WIDTH,
       fontFamily: 'sans-serif',
       fontSize: DEFAULT_TEXT_FONT_SIZE,
+      splitByGrapheme: true,
       fill: '#1F2937',
       editable: true,
       borderColor: '#2563eb',
