@@ -182,7 +182,10 @@ export const MemoryBookEditor = forwardRef<
 
     const updateScale = () => {
       const availableWidth = viewport.clientWidth || CANVAS_WIDTH;
-      setCanvasScale(Math.min(1, availableWidth / CANVAS_WIDTH));
+      const widthScale = availableWidth / CANVAS_WIDTH;
+      const availableHeight = Math.max(240, window.innerHeight - viewport.getBoundingClientRect().top - 8);
+      const heightScale = compactLayout ? availableHeight / CANVAS_HEIGHT : 1;
+      setCanvasScale(Math.min(1, widthScale, heightScale));
     };
 
     updateScale();
@@ -197,7 +200,7 @@ export const MemoryBookEditor = forwardRef<
       observer?.disconnect();
       window.removeEventListener('resize', updateScale);
     };
-  }, []);
+  }, [compactLayout]);
 
   const getPageState = useCallback(
     (pageId: string, initialVersion = 1): PageSaveState => {
@@ -1314,27 +1317,44 @@ export const MemoryBookEditor = forwardRef<
             {copy.select}
           </button>
 
-          <button
-            onClick={() => {
-              fabricRef.current?.discardActiveObject();
-              fabricRef.current?.requestRenderAll();
-              setIsDrawing((prev) => !prev);
-              setIsErasing(false);
-            }}
-          >
-            {isDrawing ? copy.stopDrawing : copy.startDrawing}
-          </button>
+          <div style={{ display: 'inline-flex', flexWrap: 'nowrap', gap: compactLayout ? 6 : 8, alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                fabricRef.current?.discardActiveObject();
+                fabricRef.current?.requestRenderAll();
+                setIsDrawing((prev) => !prev);
+                setIsErasing(false);
+              }}
+            >
+              {isDrawing ? copy.stopDrawing : copy.startDrawing}
+            </button>
 
-          <button
-            onClick={() => {
-              fabricRef.current?.discardActiveObject();
-              fabricRef.current?.requestRenderAll();
-              setIsErasing((prev) => !prev);
-              setIsDrawing(false);
-            }}
-          >
-            {isErasing ? copy.stopEraser : copy.eraser}
-          </button>
+            <button
+              onClick={() => {
+                fabricRef.current?.discardActiveObject();
+                fabricRef.current?.requestRenderAll();
+                setIsErasing((prev) => !prev);
+                setIsDrawing(false);
+              }}
+            >
+              {isErasing ? copy.stopEraser : copy.eraser}
+            </button>
+
+            {compactLayout && (
+              <>
+                <button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button>
+                <strong translate="no" style={{ whiteSpace: 'nowrap' }}>
+                  {saveStatus === 'saved'
+                    ? copy.saved
+                    : saveStatus === 'saving'
+                      ? copy.saving
+                      : saveStatus === 'conflict'
+                        ? copy.conflict
+                        : copy.unsaved}
+                </strong>
+              </>
+            )}
+          </div>
 
           {(isDrawing || isErasing) && (
             <>
@@ -1389,7 +1409,7 @@ export const MemoryBookEditor = forwardRef<
           )}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        {!compactLayout && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>
             ↩
           </button>
@@ -1407,7 +1427,7 @@ export const MemoryBookEditor = forwardRef<
                   : copy.unsaved}
           </strong>
 
-        </div>
+        </div>}
       </div>
 
       <div
