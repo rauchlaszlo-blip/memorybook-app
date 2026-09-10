@@ -40,6 +40,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
+  const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
   const [page, setPage] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,9 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
 
-  const currentPageId = pageIds[currentIndex];
+  const isCover = currentIndex === 0;
+  const totalItems = pageIds.length + 1;
+  const currentPageId = isCover ? undefined : pageIds[currentIndex - 1];
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -91,6 +94,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         setPageIds(ids);
         setBookTitle(data.book?.title || 'MemoryBook');
+        setCoverPreviewImageUrl(data.book?.coverPreviewImageUrl || null);
         setPage(null);
       } catch (err) {
         console.error(err);
@@ -106,6 +110,9 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   }, [bookId]);
 
   useEffect(() => {
+    if (isCover) {
+      return;
+    }
     if (!currentPageId) {
       return;
     }
@@ -143,7 +150,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
     };
 
     loadPage();
-  }, [currentPageId]);
+  }, [currentPageId, isCover]);
 
 
   const saveOwnerNote = async () => {
@@ -190,7 +197,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             onClick={() =>
               setCurrentIndex((index) => Math.max(0, index - 1))
             }
-            disabled={currentIndex === 0 || pageIds.length === 0}
+            disabled={currentIndex === 0}
             style={styles.button}
             aria-label={t('Előző oldal')}
           >
@@ -198,21 +205,20 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           </button>
 
           <div style={styles.pageNumber}>
-            {pageIds.length > 0
-              ? f('{current} / {total} oldal', { current: currentIndex + 1, total: pageIds.length })
-              : t('Nincs oldal')}
+            {isCover
+              ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
+              : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
           </div>
 
           <button
             type="button"
             onClick={() =>
               setCurrentIndex((index) =>
-                Math.min(pageIds.length - 1, index + 1)
+                Math.min(totalItems - 1, index + 1)
               )
             }
             disabled={
-              pageIds.length === 0 ||
-              currentIndex === pageIds.length - 1
+              currentIndex === totalItems - 1
             }
             style={styles.button}
             aria-label={t('Következő oldal')}
@@ -224,12 +230,17 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         {error && <div style={styles.error}>{error}</div>}
 
         <div style={styles.viewer} data-memory-content="true">
-          {loading ? (
+          {!isCover && loading ? (
             <div style={styles.message}>{t('Oldal betöltése...')}</div>
-          ) : pageIds.length === 0 ? (
-            <div style={styles.emptyPage}>
-              <div>{t('Még nincs beküldött oldal ebben a könyvben.')}</div>
-            </div>
+          ) : isCover ? (
+            coverPreviewImageUrl ? (
+              <img src={coverPreviewImageUrl} alt={bookTitle} style={styles.image} />
+            ) : (
+              <div style={styles.defaultCover}>
+                <div style={styles.coverBrand}>MemoryBook</div>
+                <div style={styles.coverTitle}>{bookTitle}</div>
+              </div>
+            )
           ) : page?.previewImageUrl ? (
             <img
               src={page.previewImageUrl}
@@ -244,7 +255,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           )}
         </div>
 
-        {!loading && page && (
+        {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
             <h2 style={styles.identityTitle}>
@@ -418,6 +429,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     textAlign: 'center',
   },
+  defaultCover: {
+    width: '100%',
+    height: '100%',
+    padding: '10%',
+    boxSizing: 'border-box',
+    background: 'linear-gradient(145deg, #0f172a, #334155)',
+    color: '#ffffff',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+  },
+  coverBrand: { marginBottom: 28, fontSize: 14, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.7 },
+  coverTitle: { maxWidth: 620, fontSize: 'clamp(30px, 8vw, 58px)', lineHeight: 1.15, fontWeight: 800, overflowWrap: 'anywhere' },
   emptyText: {
     marginTop: 8,
     fontSize: 14,

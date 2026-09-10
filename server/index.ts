@@ -360,6 +360,46 @@ async function savePageVersioned(
   return row;
 }
 
+async function saveBookCoverVersioned(
+  bookId: string,
+  ownerUserId: string,
+  canvasData: Record<string, any>,
+  previewDataUrl: string | null | undefined,
+  expectedVersion: number
+) {
+  let newPreviewUrl: string | null = null;
+  if (previewDataUrl) {
+    newPreviewUrl = await processAndSavePreview(`cover-${bookId}`, previewDataUrl);
+  }
+
+  const result = await pool.query(
+    `UPDATE books
+     SET cover_canvas_json = $1,
+         cover_preview_image_url = COALESCE($2, cover_preview_image_url),
+         cover_version = cover_version + 1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $3 AND owner_user_id = $4 AND book_type = 'standard' AND cover_version = $5
+     RETURNING cover_version AS "version",
+               cover_preview_image_url AS "previewImageUrl",
+               updated_at AS "updatedAt"`,
+    [canvasData, newPreviewUrl, bookId, ownerUserId, expectedVersion]
+  );
+
+  if (result.rowCount === 0) {
+    const check = await pool.query(
+      `SELECT cover_version AS "version" FROM books
+       WHERE id = $1 AND owner_user_id = $2 AND book_type = 'standard'`,
+      [bookId, ownerUserId]
+    );
+    const error: any = new Error(check.rowCount === 0 ? 'BOOK_NOT_FOUND' : 'COVER_CONFLICT');
+    error.status = check.rowCount === 0 ? 404 : 409;
+    error.latestRemoteVersion = check.rows[0]?.version;
+    throw error;
+  }
+
+  return result.rows[0];
+}
+
 app.get('/api/auth-capabilities', (_req, res) => {
   res.status(200).json({
     google: Boolean(process.env.GOOGLE_CLIENT_ID) && Boolean(process.env.GOOGLE_CLIENT_SECRET),
@@ -716,6 +756,7 @@ app.get('/api/my/books', async (req, res) => {
          b.title,
          b.book_type AS "bookType",
          b.language,
+         b.cover_preview_image_url AS "coverPreviewImageUrl",
          b.created_at AS "createdAt",
          COUNT(DISTINCT p.id)::int AS "pageCount",
          COUNT(DISTINCT c.id)::int AS "contributionCount"
@@ -723,7 +764,7 @@ app.get('/api/my/books', async (req, res) => {
        LEFT JOIN pages p ON p.book_id = b.id
        LEFT JOIN contributions c ON c.book_id = b.id
        WHERE b.owner_user_id = $1
-       GROUP BY b.id, b.title, b.book_type, b.language, b.created_at
+       GROUP BY b.id, b.title, b.book_type, b.language, b.cover_preview_image_url, b.created_at
        ORDER BY b.created_at DESC`,
       [session.user.id]
     );
@@ -1446,6 +1487,84 @@ app.patch('/api/my/books/:bookId/language', async (req, res) => {
   }
 });
 
+app.get('/api/my/books/:bookId/cover', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+    const result = await pool.query(
+      `SELECT id, title, language,
+              cover_canvas_json AS "canvasData",
+              cover_preview_image_url AS "previewImageUrl",
+              cover_version AS "version"
+       FROM books
+       WHERE id = $1 AND owner_user_id = $2 AND book_type = 'standard'`,
+      [req.params.bookId, session.user.id]
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Book cover load error:', err);
+    res.status(500).json({ error: 'BOOK_COVER_LOAD_FAILED' });
+  }
+});
+
+app.put('/api/my/books/:bookId/cover', async (req, res) => {
+  const { canvasData, previewDataUrl, expectedVersion } = req.body;
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    res.status(400).json({ error: 'INVALID_EXPECTED_VERSION' });
+    return;
+  }
+  if (!canvasData || typeof canvasData !== 'object' || Array.isArray(canvasData)) {
+    res.status(400).json({ error: 'INVALID_CANVAS_DATA' });
+    return;
+  }
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+    const row = await saveBookCoverVersioned(
+      req.params.bookId,
+      session.user.id,
+      canvasData,
+      previewDataUrl,
+      expectedVersion
+    );
+    res.status(200).json({
+      success: true,
+      newVersion: row.version,
+      previewImageUrl: row.previewImageUrl,
+      updatedAt: row.updatedAt,
+    });
+  } catch (err: any) {
+    console.error('Book cover save error:', err);
+    if (err?.status === 404) {
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+    if (err?.status === 409) {
+      res.status(409).json({ error: 'COVER_CONFLICT', latestRemoteVersion: err.latestRemoteVersion });
+      return;
+    }
+    if (err?.message === 'INVALID_PREVIEW_FORMAT' || err?.message === 'INVALID_PREVIEW_JPEG' || err?.message === 'PREVIEW_TOO_LARGE') {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: 'BOOK_COVER_SAVE_FAILED' });
+  }
+});
+
 app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
@@ -1541,7 +1660,8 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
     }
 
     const bookResult = await pool.query(
-      `SELECT id, title, book_type AS "bookType", language, invite_token AS "eventInviteToken"
+      `SELECT id, title, book_type AS "bookType", language, invite_token AS "eventInviteToken",
+              cover_preview_image_url AS "coverPreviewImageUrl"
        FROM books
        WHERE id = $1 AND owner_user_id = $2`,
       [req.params.bookId, session.user.id]
@@ -3276,6 +3396,9 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_canvas_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_preview_image_url TEXT`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_version INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`UPDATE books SET language = 'hu' WHERE language NOT IN ('hu', 'en', 'de') OR language IS NULL`);
   await pool.query(`UPDATE books SET language = 'en' WHERE id = $1`, [DEMO_BOOK_ID]);
   await pool.query(`UPDATE books SET page_capacity = 0 WHERE book_type = 'event' AND page_capacity <> 0`);

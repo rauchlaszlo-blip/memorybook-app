@@ -14,6 +14,7 @@ import { InviteCtaPage } from './InviteCtaPage.tsx'
 import { EventGuestbookQrPage } from './EventGuestbookQrPage.tsx'
 import { PurchasePage } from './PurchasePage.tsx'
 import { GiftRedeemPage } from './GiftRedeemPage.tsx'
+import { CoverEditorPage } from './CoverEditorPage.tsx'
 import { initializeAppLanguage } from './i18n'
 
 initializeAppLanguage()
@@ -27,6 +28,7 @@ const organizerMatch = path.match(/^\/organizer\/([^/]+)\/contributions$/)
 const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
 const eventQrMatch = path.match(/^\/my-books\/([^/]+)\/event-qr$/)
 const giftMatch = path.match(/^\/gift\/([^/]+)$/)
+const coverEditorMatch = path.match(/^\/my-books\/([^/]+)\/cover$/)
 
 const root = path === '/'
   ? <LandingPage />
@@ -38,6 +40,8 @@ const root = path === '/'
     ? <InviteCtaPage />
   : giftMatch
     ? <GiftRedeemPage token={decodeURIComponent(giftMatch[1])} />
+  : coverEditorMatch
+    ? <CoverEditorPage bookId={decodeURIComponent(coverEditorMatch[1])} />
   : eventQrMatch
     ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
   : path === '/my-books'

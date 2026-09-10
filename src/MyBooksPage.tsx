@@ -19,6 +19,7 @@ type BookSummary = {
   contributionCount: number;
   bookType?: 'standard' | 'event' | string;
   language?: AppLanguage;
+  coverPreviewImageUrl?: string | null;
   createdAt: string;
 };
 type Entitlement = {
@@ -229,6 +230,18 @@ export function MyBooksPage() {
           <div style={styles.grid}>
             {books.map((book) => (
               <article key={book.id} style={styles.card}>
+                {book.bookType !== 'event' && (
+                  <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.coverLink} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
+                    {book.coverPreviewImageUrl ? (
+                      <img src={book.coverPreviewImageUrl} alt={book.title} style={styles.coverImage} />
+                    ) : (
+                      <div style={styles.defaultCover}>
+                        <div style={styles.defaultCoverBrand}>MemoryBook</div>
+                        <div style={styles.defaultCoverTitle}>{book.title}</div>
+                      </div>
+                    )}
+                  </a>
+                )}
                 <h2 style={styles.bookTitle}>{book.title}</h2>
                 <div style={styles.typeBadge}>{book.bookType === 'event' ? t('Rendezvény-vendégkönyv') : language === 'de' ? 'Normales Erinnerungsbuch' : language === 'en' ? 'Standard memory book' : 'Normál emlékkönyv'}</div>
                 <div style={styles.meta}>{book.bookType === 'event' ? f('{count} bejegyzés', { count: book.contributionCount }) : f('{count} oldal', { count: book.pageCount })}</div>
@@ -237,6 +250,7 @@ export function MyBooksPage() {
                     {book.bookType === 'event' ? t('Rendezvény kezelése') : t('Oldalak és meghívók')}
                   </a>
                   {book.bookType !== 'event' && <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.secondaryLink}>{t('Könyv megnyitása')}</a>}
+                  {book.bookType !== 'event' && <a href={`/my-books/${encodeURIComponent(book.id)}/cover`} style={styles.secondaryLink}>{language === 'de' ? 'Cover bearbeiten' : language === 'en' ? 'Edit cover' : 'Fedőlap szerkesztése'}</a>}
                   {book.bookType === 'event' && <a href={`/organizer/${encodeURIComponent(book.id)}/contributions`} style={styles.secondaryLink}>{t('Beérkezett bejegyzések')}</a>}
                 </div>
               </article>
@@ -274,6 +288,11 @@ const styles: Record<string, React.CSSProperties> = {
   emptyText: { maxWidth: 560, margin: '0 auto', color: '#64748b', lineHeight: 1.6 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 16 },
   card: { padding: 20, background: '#ffffff', borderRadius: 14, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
+  coverLink: { display: 'block', width: 'min(72%, 210px)', margin: '0 auto 18px', textDecoration: 'none' },
+  coverImage: { display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 8, boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)' },
+  defaultCover: { width: '100%', aspectRatio: '750 / 1064', padding: 18, boxSizing: 'border-box', borderRadius: 8, background: 'linear-gradient(145deg, #0f172a, #334155)', color: '#ffffff', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
+  defaultCoverBrand: { position: 'absolute', opacity: 0, pointerEvents: 'none' },
+  defaultCoverTitle: { fontSize: 20, lineHeight: 1.25, fontWeight: 800, overflowWrap: 'anywhere' },
   bookTitle: { margin: '0 0 8px', color: '#0f172a', fontSize: 21, overflowWrap: 'anywhere' },
   typeBadge: { display: 'inline-block', marginBottom: 7, padding: '4px 8px', borderRadius: 999, background: '#e2e8f0', color: '#475569', fontSize: 12, fontWeight: 800 },
   meta: { color: '#64748b', fontSize: 14 },
