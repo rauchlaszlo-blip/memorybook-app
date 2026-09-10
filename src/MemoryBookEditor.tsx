@@ -99,6 +99,12 @@ const configureObjectControls = (object: fabric.FabricObject) => {
 const getTextboxMaxWidth = (object: fabric.FabricObject) => {
   const left = Math.max(0, object.left || 0);
   const scaleX = Math.max(Math.abs(object.scaleX || 1), 0.01);
+
+  if (object.originX === 'center') {
+    const halfAvailableWidth = Math.max(0, Math.min(left, CANVAS_WIDTH - left) - 16);
+    return Math.max(80, (halfAvailableWidth * 2) / scaleX);
+  }
+
   return Math.max(80, (CANVAS_WIDTH - left - 16) / scaleX);
 };
 
@@ -842,9 +848,11 @@ export const MemoryBookEditor = forwardRef<
 
     const textWidth = Math.min(newTextWidth, CANVAS_WIDTH - 32);
 
+    const centerNewText = newTextAlign === 'center';
     const text = new fabric.Textbox(copy.textPlaceholder, {
-      left: (CANVAS_WIDTH - textWidth) / 2,
+      left: centerNewText ? CANVAS_WIDTH / 2 : (CANVAS_WIDTH - textWidth) / 2,
       top: newTextTop,
+      originX: centerNewText ? 'center' : 'left',
       width: textWidth,
       fontFamily: 'sans-serif',
       fontSize: newTextFontSize,
