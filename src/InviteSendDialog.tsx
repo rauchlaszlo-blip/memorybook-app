@@ -98,7 +98,6 @@ export function InviteSendDialog({
   isResend = false,
   savedRecipientName = null,
   savedRecipientEmail = null,
-  savedDeliveryMethod = null,
   onSent,
   onClose,
 }: InviteSendDialogProps) {
@@ -108,9 +107,7 @@ export function InviteSendDialog({
   const hasSavedIdentity = Boolean(savedRecipientName || savedRecipientEmail);
   const identityLocked = isResend && hasSavedIdentity;
   const lockedRecipientLabel = savedRecipientName || savedRecipientEmail || '';
-  const [platform, setPlatform] = useState<SendPlatform>(
-    savedDeliveryMethod === 'email' ? 'email' : 'share'
-  );
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [recipientName, setRecipientName] = useState(savedRecipientName || '');
   const [email, setEmail] = useState(savedRecipientEmail || '');
   const [inviteLanguageChoice, setInviteLanguageChoice] = useState<InviteLanguageChoice>(
@@ -146,14 +143,15 @@ export function InviteSendDialog({
     setMessage(buildMessage(bookTitle, pageUrl, language, recipientName));
   };
 
-  const send = async () => {
+  const send = async (selectedPlatform: SendPlatform) => {
+    setSendMenuOpen(false);
     setSendError(null);
 
-    if (platform === 'share' && !recipientName.trim()) {
+    if (selectedPlatform === 'share' && !recipientName.trim()) {
       setSendError(t('Megosztásnál add meg a címzett nevét, hogy az emlék később is azonosítható legyen.'));
       return;
     }
-    if (platform === 'email' && !email.trim()) {
+    if (selectedPlatform === 'email' && !email.trim()) {
       setSendError(t('E-mail küldésnél add meg a címzett e-mail címét.'));
       return;
     }
@@ -161,7 +159,7 @@ export function InviteSendDialog({
     const metadata = {
       recipientName: recipientName.trim(),
       recipientEmail: email.trim(),
-      deliveryMethod: platform,
+      deliveryMethod: selectedPlatform,
       inviteLanguage: inviteLanguageChoice === 'inherit' ? null : inviteLanguageChoice,
     } as const;
 
@@ -172,7 +170,7 @@ export function InviteSendDialog({
       if (!confirmed) return;
     }
 
-    if (platform === 'email') {
+    if (selectedPlatform === 'email') {
       try {
         const subject = buildInviteTitle(effectiveInviteLanguage, bookTitle);
         const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
@@ -237,29 +235,7 @@ export function InviteSendDialog({
               : t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
           </div>
         )}
-        <div style={styles.stepLabel}>{t('1. Küldési mód')}</div>
-        <div style={styles.platformGrid}>
-          <button
-            type="button"
-            onClick={() => !identityLocked && setPlatform('share')}
-            disabled={identityLocked}
-            style={platform === 'share' ? styles.platformActive : styles.platformButton}
-          >
-            {t('Megosztás…')}
-            <span style={styles.platformHint}>{t('Messenger, WhatsApp, SMS, e-mail és más telepített app')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => !identityLocked && setPlatform('email')}
-            disabled={identityLocked}
-            style={platform === 'email' ? styles.platformActive : styles.platformButton}
-          >
-            E-mail
-            <span style={styles.platformHint}>{t('Közvetlenül a levelező alkalmazásban')}</span>
-          </button>
-        </div>
-
-        <div style={styles.stepLabel}>{t('2. Meghívó nyelve')}</div>
+        <div style={styles.stepLabel}>{t('1. Meghívó nyelve')}</div>
         <label style={styles.label}>
           {t('Nyelv')}
           <select
@@ -275,9 +251,9 @@ export function InviteSendDialog({
           </select>
         </label>
 
-        <div style={styles.stepLabel}>{t('3. Személyre szabás')}</div>
+        <div style={styles.stepLabel}>{t('2. Személyre szabás')}</div>
         <label style={styles.label}>
-          {t('Címzett neve')} {platform === 'share' ? t('(kötelező)') : t('(opcionális)')}
+          {t('Címzett neve')} {t('(kötelező)')}
           <input
             value={recipientName}
             onChange={(event) => updateRecipientName(event.target.value)}
@@ -288,19 +264,17 @@ export function InviteSendDialog({
           />
         </label>
 
-        {platform === 'email' && (
-          <label style={styles.label}>
-            {t('E-mail cím (kötelező)')}
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="nev@example.com"
-              style={styles.input}
-              readOnly={identityLocked}
-            />
-          </label>
-        )}
+        <label style={styles.label}>
+          {t('E-mail cím')} {t('(az E-mail küldéshez)')}
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="nev@example.com"
+            style={styles.input}
+            readOnly={identityLocked}
+          />
+        </label>
 
         <label style={styles.label}>
           {t('Meghívó üzenet')}
@@ -322,9 +296,28 @@ export function InviteSendDialog({
 
         <div style={styles.actions}>
           <button type="button" onClick={onClose} style={styles.secondaryButton}>{t('Mégse')}</button>
-          <button type="button" onClick={send} style={styles.primaryButton}>
-            {platform === 'email' ? t('E-mail megnyitása') : t('Címzett és app kiválasztása')}
-          </button>
+          <div style={styles.sendMenuWrap}>
+            {sendMenuOpen && (
+              <div style={styles.sendMenu} role="menu">
+                <button type="button" onClick={() => void send('share')} style={styles.sendMenuButton} role="menuitem">
+                  <strong>{t('Megosztás…')}</strong>
+                  <span style={styles.platformHint}>{t('Messenger, WhatsApp, SMS és más telepített app')}</span>
+                </button>
+                <button type="button" onClick={() => void send('email')} style={styles.sendMenuButton} role="menuitem">
+                  <strong>E-mail</strong>
+                  <span style={styles.platformHint}>{t('Közvetlenül a levelező alkalmazásban')}</span>
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setSendMenuOpen((open) => !open)}
+              style={styles.primaryButton}
+              aria-expanded={sendMenuOpen}
+            >
+              {t('Küldés')}
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -374,7 +367,6 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
   },
   stepLabel: { margin: '16px 0 8px', color: '#334155', fontSize: 13, fontWeight: 800 },
-  platformGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 10 },
   platformButton: {
     minHeight: 70,
     padding: 12,
@@ -426,6 +418,31 @@ const styles: Record<string, React.CSSProperties> = {
   note: { marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#64748b', fontSize: 12, lineHeight: 1.45 },
   error: { marginTop: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   actions: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: 10, marginTop: 16 },
+  sendMenuWrap: { position: 'relative' },
+  sendMenu: {
+    position: 'absolute',
+    right: 0,
+    bottom: 'calc(100% + 8px)',
+    zIndex: 2,
+    width: 'min(320px, calc(100vw - 48px))',
+    padding: 6,
+    border: '1px solid #cbd5e1',
+    borderRadius: 10,
+    background: '#ffffff',
+    boxShadow: '0 12px 30px rgba(15, 23, 42, 0.18)',
+  },
+  sendMenuButton: {
+    display: 'block',
+    width: '100%',
+    minHeight: 58,
+    padding: '10px 12px',
+    border: 0,
+    borderRadius: 7,
+    background: '#ffffff',
+    color: '#0f172a',
+    textAlign: 'left',
+    fontSize: 15,
+  },
   secondaryButton: {
     minHeight: 48,
     padding: '10px 12px',
@@ -436,6 +453,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
   },
   primaryButton: {
+    width: '100%',
     minHeight: 48,
     padding: '10px 12px',
     border: 0,
