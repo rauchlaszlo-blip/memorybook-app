@@ -20,11 +20,11 @@ function defaultCoverCanvas(title: string) {
     version: '7.4.0',
     objects: [{
       type: 'Textbox', version: '7.4.0', originX: 'left', originY: 'top',
-      left: 75, top: 405, width: 600, height: 150, fill: '#0f172a', stroke: null,
+      left: 75, top: 110, width: 600, height: 190, fill: '#0f172a', stroke: null,
       strokeWidth: 1, scaleX: 1, scaleY: 1, angle: 0, opacity: 1,
       visible: true, backgroundColor: '', fillRule: 'nonzero', paintFirst: 'fill',
       globalCompositeOperation: 'source-over', skewX: 0, skewY: 0,
-      text: title, fontSize: 52, fontWeight: '700', fontFamily: 'Arial',
+      text: title, fontSize: 64, fontWeight: '700', fontFamily: 'Arial',
       fontStyle: 'normal', lineHeight: 1.16, underline: false, overline: false,
       linethrough: false, textAlign: 'center', charSpacing: 0, styles: [],
       direction: 'ltr', path: null, pathStartOffset: 0, pathSide: 'left',
