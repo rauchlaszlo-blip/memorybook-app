@@ -807,8 +807,6 @@ app.post('/api/purchases', async (req, res) => {
   const billingAddress = String(req.body?.billingAddress || '').trim();
   const billingTaxNumber = String(req.body?.billingTaxNumber || '').trim().toUpperCase();
   const billingCompanyName = String(req.body?.billingCompanyName || '').trim();
-  const giftRecipientName = purchaseMode === 'gift' ? String(req.body?.giftRecipientName || '').trim() : '';
-  const giftRecipientEmail = purchaseMode === 'gift' ? String(req.body?.giftRecipientEmail || '').trim().toLowerCase() : '';
   const purchaseBillingName = purchaseMode === 'organization' ? billingCompanyName : billingName;
 
   if (!paymentProvider) {
@@ -826,8 +824,6 @@ app.post('/api/purchases', async (req, res) => {
     billingAddress,
     purchaseMode === 'organization' ? billingCompanyName : billingName,
     purchaseMode === 'organization' ? billingTaxNumber : 'not-required',
-    purchaseMode === 'gift' ? giftRecipientName : 'not-required',
-    purchaseMode === 'gift' ? giftRecipientEmail : 'not-required',
   ];
   if (requiredValues.some((value) => !value)) {
     res.status(400).json({ error: 'INCOMPLETE_PURCHASE_IDENTITY' });
@@ -839,7 +835,7 @@ app.post('/api/purchases', async (req, res) => {
     res.status(400).json({ error: 'INVALID_HUNGARIAN_TAX_NUMBER' });
     return;
   }
-  if (!purchaserEmail.includes('@') || !billingEmail.includes('@') || (purchaseMode === 'gift' && !giftRecipientEmail.includes('@'))) {
+  if (!purchaserEmail.includes('@') || !billingEmail.includes('@')) {
     res.status(400).json({ error: 'INVALID_PURCHASE_EMAIL' });
     return;
   }
@@ -853,9 +849,7 @@ app.post('/api/purchases', async (req, res) => {
     billingCity.length > 120 ||
     billingAddress.length > 240 ||
     billingTaxNumber.length > 80 ||
-    billingCompanyName.length > 200 ||
-    giftRecipientName.length > 160 ||
-    giftRecipientEmail.length > 240
+    billingCompanyName.length > 200
   ) {
     res.status(400).json({ error: 'PURCHASE_IDENTITY_TOO_LONG' });
     return;
@@ -951,8 +945,8 @@ app.post('/api/purchases', async (req, res) => {
         billingAddress,
         billingTaxNumber,
         billingCompanyName,
-        giftRecipientName,
-        giftRecipientEmail,
+        '',
+        '',
         paymentProvider,
       ]
     );
@@ -1189,9 +1183,7 @@ app.get('/api/gift-entitlements/:token', async (req, res) => {
          e.book_type AS "bookType",
          e.included_pages AS "includedPages",
          e.status,
-         e.assigned_user_id IS NOT NULL AS "claimed",
-         p.gift_recipient_name AS "recipientName",
-         p.gift_recipient_email AS "recipientEmail"
+         e.assigned_user_id IS NOT NULL AS "claimed"
        FROM book_entitlements e
        JOIN purchases p ON p.id = e.purchase_id
        WHERE e.gift_token = $1
@@ -1206,15 +1198,9 @@ app.get('/api/gift-entitlements/:token', async (req, res) => {
     }
 
     const row = result.rows[0];
-    const recipientEmail = String(row.recipientEmail || '');
-    const recipientEmailMasked = recipientEmail
-      ? recipientEmail.replace(/^(.{1,2}).*(@.*)$/, '$1***$2')
-      : null;
     res.status(200).json({
       bookType: row.bookType,
       includedPages: row.includedPages,
-      recipientName: row.recipientName || null,
-      recipientEmailMasked,
       claimStatus:
         row.status === 'redeemed'
           ? 'redeemed'
@@ -1249,8 +1235,7 @@ app.post('/api/gift-entitlements/:token/redeem', async (req, res) => {
          e.assigned_user_id AS "assignedUserId",
          e.status,
          e.book_type AS "bookType",
-         e.included_pages AS "includedPages",
-         p.gift_recipient_email AS "recipientEmail"
+         e.included_pages AS "includedPages"
        FROM book_entitlements e
        JOIN purchases p ON p.id = e.purchase_id
        WHERE e.gift_token = $1
@@ -1267,13 +1252,6 @@ app.post('/api/gift-entitlements/:token/redeem', async (req, res) => {
     }
 
     const entitlement = result.rows[0];
-    const designatedRecipientEmail = String(entitlement.recipientEmail || '').trim().toLowerCase();
-    const signedInEmail = String(session.user?.email || '').trim().toLowerCase();
-    if (designatedRecipientEmail && designatedRecipientEmail !== signedInEmail) {
-      await client.query('ROLLBACK');
-      res.status(403).json({ error: 'GIFT_RECIPIENT_ACCOUNT_MISMATCH' });
-      return;
-    }
     if (entitlement.status !== 'available') {
       await client.query('ROLLBACK');
       res.status(409).json({ error: 'GIFT_ENTITLEMENT_ALREADY_USED' });
