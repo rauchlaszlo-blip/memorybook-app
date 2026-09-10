@@ -11,7 +11,6 @@ const API_BASE =
     ? 'http://' + window.location.hostname + ':3001'
     : '';
 
-type UserData = { id: string; name?: string; email?: string };
 type BookSummary = {
   id: string;
   title: string;
@@ -34,7 +33,6 @@ export function MyBooksPage() {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
-  const [user, setUser] = useState<UserData | null>(null);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,8 +58,7 @@ export function MyBooksPage() {
           return;
         }
         if (!meResponse.ok) throw new Error('SESSION_LOAD_FAILED');
-        const meData = await meResponse.json();
-        setUser(meData.user ?? null);
+        await meResponse.json();
 
         const [booksResponse, entitlementsResponse] = await Promise.all([
           fetch(`${API_BASE}/api/my/books`, { credentials: 'include' }),
@@ -149,8 +146,10 @@ export function MyBooksPage() {
         <header style={styles.header}>
           <div>
             <div style={styles.brand}>MemoryBook</div>
-            <h1 style={styles.title}>{t('Saját könyveim')}</h1>
-            {user && <div style={styles.userLine}>{user.name || user.email || t('Bejelentkezett felhasználó')}</div>}
+            <div style={styles.titleRow}>
+              <h1 style={styles.title}>{t('Saját könyveim')}</h1>
+              <a href="/purchase" style={styles.purchaseLink}>{t('Új könyv vásárlása')}</a>
+            </div>
           </div>
           <div style={styles.headerActions}>
             <LanguageSwitcher />
@@ -159,15 +158,10 @@ export function MyBooksPage() {
           </div>
         </header>
 
-        {!loading && !error && (
+        {!loading && !error && availableEntitlements.length > 0 && (
           <section style={styles.createCard}>
-            {availableEntitlements.length > 0 ? (
-              <>
-                <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
-                <p style={styles.createText}>
-                  {f('{count} felhasználható könyvjogosultságod van. Egy jogosultság egy könyv létrehozására használható fel.', { count: availableEntitlements.length })}
-                </p>
-                <form onSubmit={createBook} style={styles.createForm}>
+            <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
+            <form onSubmit={createBook} style={styles.createForm}>
                   <select
                     value={selectedEntitlementId}
                     onChange={(event) => setSelectedEntitlementId(event.target.value)}
@@ -196,21 +190,8 @@ export function MyBooksPage() {
                   <button type="submit" disabled={creating} style={styles.createButton}>
                     {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
                   </button>
-                </form>
-                {createError && <div style={styles.createError}>{createError}</div>}
-              </>
-            ) : (
-              <>
-                <h2 style={styles.createTitle}>{t('Új emlékkönyv')}</h2>
-                <p style={styles.createText}>
-                  {t('Új könyvet vásárlási jogosultsággal lehet létrehozni. A normál könyv 30 oldallal indul, később bővíthető.')}
-                </p>
-                <a href="/purchase" style={styles.purchaseLink}>{t('Új könyv vásárlása')}</a>
-              </>
-            )}
-            {availableEntitlements.length > 0 && (
-              <div style={styles.purchaseMore}><a href="/purchase">{t('További könyv vásárlása vagy ajándékba vétele')}</a></div>
-            )}
+            </form>
+            {createError && <div style={styles.createError}>{createError}</div>}
           </section>
         )}
 
@@ -220,9 +201,6 @@ export function MyBooksPage() {
         {!loading && !error && books.length === 0 && (
           <div style={styles.emptyState}>
             <h2 style={styles.emptyTitle}>{t('Még nincs emlékkönyved')}</h2>
-            <p style={styles.emptyText}>
-              {t('Vásárolj könyvjogosultságot, vagy válts be egy ajándékba kapott jogosultságot. A könyv csak ezután hozható létre.')}
-            </p>
           </div>
         )}
 
@@ -268,8 +246,8 @@ const styles: Record<string, React.CSSProperties> = {
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' },
   headerActions: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   brand: { fontSize: 13, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#64748b' },
+  titleRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   title: { margin: '6px 0 4px', fontSize: 32, color: '#0f172a' },
-  userLine: { color: '#64748b', fontSize: 14, overflowWrap: 'anywhere' },
   secondaryButton: { minHeight: 44, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, cursor: 'pointer' },
   createCard: { marginBottom: 22, padding: 20, background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
   createTitle: { margin: '0 0 5px', color: '#0f172a', fontSize: 21 },
