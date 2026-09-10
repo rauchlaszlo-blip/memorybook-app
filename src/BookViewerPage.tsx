@@ -217,17 +217,32 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           </a>
         </div>
 
-        <h1 style={styles.title}>{bookTitle}</h1>
-        <div style={styles.topBar}>
-          <div style={styles.pageNumber}>
-            {isCover
-              ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
-              : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
+        <div style={styles.viewerStage}>
+          <div style={styles.topBar}>
+            <button
+              type="button"
+              onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+              disabled={currentIndex === 0 || loading}
+              style={{ ...styles.arrowButton, ...styles.arrowLeft }}
+              aria-label={t('Előző oldal')}
+            >
+              ←
+            </button>
+            <div style={styles.pageNumber}>
+              {isCover
+                ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
+                : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentIndex((index) => Math.min(totalItems - 1, index + 1))}
+              disabled={loading || currentIndex === totalItems - 1}
+              style={{ ...styles.arrowButton, ...styles.arrowRight }}
+              aria-label={t('Következő oldal')}
+            >
+              →
+            </button>
           </div>
-        </div>
-
-        {error && <div style={styles.error}>{error}</div>}
-
         <div
           style={isCover ? { ...styles.viewer, ...styles.editableCover } : styles.viewer}
           data-memory-content="true"
@@ -274,6 +289,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             </div>
           )}
         </div>
+        </div>\n\n        {error && <div style={styles.error}>{error}</div>}\n\n
 
         {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
@@ -376,43 +392,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     fontSize: 13,
   },
-  topBar: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 1000,
-    width: '100%',
-    maxWidth: 750,
-    margin: '0 auto 12px',
-    padding: '8px 0',
-    background: '#e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    boxSizing: 'border-box',
-  },
-  button: {
-    minHeight: 44,
-    minWidth: 92,
-    padding: '8px 10px',
-    border: '1px solid #cbd5e1',
-    borderRadius: 10,
-    background: 'white',
-    color: '#0f172a',
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: 'pointer',
-    touchAction: 'manipulation',
-  },
-  pageNumber: {
-    flex: 1,
-    minWidth: 0,
-    color: '#334155',
-    fontSize: 14,
-    fontWeight: 700,
-    textAlign: 'center',
-    whiteSpace: 'nowrap',
-  },
+  viewerStage: { position: 'relative', width: '100%', maxWidth: 750, margin: '0 auto' },
+  topBar: { position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none' },
+  arrowButton: { pointerEvents: 'auto', width: 48, height: 64, border: '1px solid #cbd5e1', borderRadius: 12, background: 'rgba(255,255,255,0.92)', color: '#0f172a', fontSize: 30, lineHeight: 1, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,23,42,0.16)', touchAction: 'manipulation' },
+  arrowLeft: { marginLeft: 8 },
+  arrowRight: { marginRight: 8 },
   viewer: {
     width: '100%',
     maxWidth: 750,
