@@ -66,27 +66,6 @@ body {
   margin: 0;
 }
 
-.books-grid {
-  display: grid;
-  gap: 16px;
-}
-
-.books-grid-single {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 620px;
-  margin-inline: auto;
-}
-
-.books-grid-multiple {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (max-width: 700px) {
-  .books-grid-multiple {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 h1,
 h2 {
   font-family: var(--heading);

@@ -11,7 +11,6 @@ const API_BASE =
     ? 'http://' + window.location.hostname + ':3001'
     : '';
 
-type UserData = { id: string; name?: string; email?: string };
 type BookSummary = {
   id: string;
   title: string;
@@ -34,7 +33,6 @@ export function MyBooksPage() {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
-  const [user, setUser] = useState<UserData | null>(null);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,8 +58,7 @@ export function MyBooksPage() {
           return;
         }
         if (!meResponse.ok) throw new Error('SESSION_LOAD_FAILED');
-        const meData = await meResponse.json();
-        setUser(meData.user ?? null);
+        await meResponse.json();
 
         const [booksResponse, entitlementsResponse] = await Promise.all([
           fetch(`${API_BASE}/api/my/books`, { credentials: 'include' }),
@@ -149,25 +146,22 @@ export function MyBooksPage() {
         <header style={styles.header}>
           <div>
             <div style={styles.brand}>MemoryBook</div>
-            <h1 style={styles.title}>{t('Saját könyveim')}</h1>
-            {user && <div style={styles.userLine}>{user.name || user.email || t('Bejelentkezett felhasználó')}</div>}
+            <div style={styles.titleRow}>
+              <h1 style={styles.title}>{t('Saját könyveim')}</h1>
+            </div>
           </div>
           <div style={styles.headerActions}>
-            <LanguageSwitcher />
+            <a href="/purchase" style={styles.headerPurchaseLink}>{t('Új könyv vásárlása')}</a>
+            <LanguageSwitcher compact />
             <button type="button" onClick={signOut} style={styles.secondaryButton}>{t('Kijelentkezés')}</button>
             <NotificationMenu />
           </div>
         </header>
 
-        {!loading && !error && (
+        {!loading && !error && availableEntitlements.length > 0 && (
           <section style={styles.createCard}>
-            {availableEntitlements.length > 0 ? (
-              <>
-                <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
-                <p style={styles.createText}>
-                  {f('{count} felhasználható könyvjogosultságod van. Egy jogosultság egy könyv létrehozására használható fel.', { count: availableEntitlements.length })}
-                </p>
-                <form onSubmit={createBook} style={styles.createForm}>
+            <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
+            <form onSubmit={createBook} style={styles.createForm}>
                   <select
                     value={selectedEntitlementId}
                     onChange={(event) => setSelectedEntitlementId(event.target.value)}
@@ -196,21 +190,8 @@ export function MyBooksPage() {
                   <button type="submit" disabled={creating} style={styles.createButton}>
                     {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
                   </button>
-                </form>
-                {createError && <div style={styles.createError}>{createError}</div>}
-              </>
-            ) : (
-              <>
-                <h2 style={styles.createTitle}>{t('Új emlékkönyv')}</h2>
-                <p style={styles.createText}>
-                  {t('Új könyvet vásárlási jogosultsággal lehet létrehozni. A normál könyv 30 oldallal indul, később bővíthető.')}
-                </p>
-                <a href="/purchase" style={styles.purchaseLink}>{t('Új könyv vásárlása')}</a>
-              </>
-            )}
-            {availableEntitlements.length > 0 && (
-              <div style={styles.purchaseMore}><a href="/purchase">{t('További könyv vásárlása vagy ajándékba vétele')}</a></div>
-            )}
+            </form>
+            {createError && <div style={styles.createError}>{createError}</div>}
           </section>
         )}
 
@@ -220,18 +201,17 @@ export function MyBooksPage() {
         {!loading && !error && books.length === 0 && (
           <div style={styles.emptyState}>
             <h2 style={styles.emptyTitle}>{t('Még nincs emlékkönyved')}</h2>
-            <p style={styles.emptyText}>
-              {t('Vásárolj könyvjogosultságot, vagy válts be egy ajándékba kapott jogosultságot. A könyv csak ezután hozható létre.')}
-            </p>
           </div>
         )}
 
         {!loading && !error && books.length > 0 && (
-          <div className={books.length > 1 ? 'books-grid books-grid-multiple' : 'books-grid books-grid-single'} style={styles.grid}>
-            {books.map((book) => (
-              <article key={book.id} style={styles.card}>
-                {book.bookType !== 'event' && (
-                  <a href={`/book/${encodeURIComponent(book.id)}/view`} style={{ ...styles.coverLink, width: books.length === 1 ? 'min(72%, 315px)' : 'min(72%, 210px)' }} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
+          <div style={styles.grid}>
+            {books.map((book) => {
+              const openPath = book.bookType === 'event'
+                ? `/my-books/${encodeURIComponent(book.id)}`
+                : `/book/${encodeURIComponent(book.id)}/view`;
+              return (
+                  <a key={book.id} href={openPath} style={styles.coverLink} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
                     {book.coverPreviewImageUrl ? (
                       <img src={book.coverPreviewImageUrl} alt={book.title} style={styles.coverImage} />
                     ) : (
@@ -241,20 +221,8 @@ export function MyBooksPage() {
                       </div>
                     )}
                   </a>
-                )}
-                <h2 style={styles.bookTitle}>{book.title}</h2>
-                <div style={styles.typeBadge}>{book.bookType === 'event' ? t('Rendezvény-vendégkönyv') : language === 'de' ? 'Normales Erinnerungsbuch' : language === 'en' ? 'Standard memory book' : 'Normál emlékkönyv'}</div>
-                <div style={styles.meta}>{book.bookType === 'event' ? f('{count} bejegyzés', { count: book.contributionCount }) : f('{count} oldal', { count: book.pageCount })}</div>
-                <div style={styles.actions}>
-                  <a href={`/my-books/${encodeURIComponent(book.id)}`} style={styles.primaryLink}>
-                    {book.bookType === 'event' ? t('Rendezvény kezelése') : t('Oldalak és meghívók')}
-                  </a>
-                  {book.bookType !== 'event' && <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.secondaryLink}>{t('Könyv megnyitása')}</a>}
-                  {book.bookType !== 'event' && <a href={`/my-books/${encodeURIComponent(book.id)}/cover`} style={styles.secondaryLink}>{language === 'de' ? 'Cover bearbeiten' : language === 'en' ? 'Edit cover' : 'Fedőlap szerkesztése'}</a>}
-                  {book.bookType === 'event' && <a href={`/organizer/${encodeURIComponent(book.id)}/contributions`} style={styles.secondaryLink}>{t('Beérkezett bejegyzések')}</a>}
-                </div>
-              </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -266,11 +234,12 @@ const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f1f5f9', padding: '24px 18px 48px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
   container: { width: '100%', maxWidth: 980, margin: '0 auto' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' },
-  headerActions: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  headerActions: { width: '100%', display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 6 },
   brand: { fontSize: 13, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#64748b' },
+  titleRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   title: { margin: '6px 0 4px', fontSize: 32, color: '#0f172a' },
-  userLine: { color: '#64748b', fontSize: 14, overflowWrap: 'anywhere' },
-  secondaryButton: { minHeight: 44, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, cursor: 'pointer' },
+  headerPurchaseLink: { minHeight: 40, padding: '6px 8px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap' },
+  secondaryButton: { minHeight: 40, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' },
   createCard: { marginBottom: 22, padding: 20, background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
   createTitle: { margin: '0 0 5px', color: '#0f172a', fontSize: 21 },
   createText: { margin: '0 0 16px', color: '#64748b', lineHeight: 1.5 },
@@ -286,9 +255,8 @@ const styles: Record<string, React.CSSProperties> = {
   emptyState: { padding: '42px 28px', textAlign: 'center', background: '#ffffff', borderRadius: 16, boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)' },
   emptyTitle: { margin: '0 0 8px', color: '#0f172a' },
   emptyText: { maxWidth: 560, margin: '0 auto', color: '#64748b', lineHeight: 1.6 },
-  grid: { display: 'grid', gap: 16 },
-  card: { padding: 20, background: '#ffffff', borderRadius: 14, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
-  coverLink: { display: 'block', width: 'min(72%, 210px)', margin: '0 auto 18px', textDecoration: 'none' },
+  grid: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 },
+  coverLink: { display: 'block', width: 'min(72%, 300px)', textDecoration: 'none' },
   coverImage: { display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 8, boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)' },
   defaultCover: { width: '100%', aspectRatio: '750 / 1064', padding: 18, boxSizing: 'border-box', borderRadius: 8, background: 'linear-gradient(145deg, #0f172a, #334155)', color: '#ffffff', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
   defaultCoverBrand: { position: 'absolute', opacity: 0, pointerEvents: 'none' },
