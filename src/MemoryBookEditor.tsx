@@ -1013,7 +1013,7 @@ export const MemoryBookEditor = forwardRef<
     : language === 'en'
       ? `${activeDrawingToolName} thickness`
       : `${activeDrawingToolName} vastagsága`;
-  const drawingColors = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#f59e0b'];
+  const drawingColors = ['#111827', '#dc2626', '#2563eb', '#16a34a'];
 
   const applyBackground = (background: string | fabric.Gradient<'linear'>) => {
     const canvas = fabricRef.current;
@@ -1219,9 +1219,14 @@ export const MemoryBookEditor = forwardRef<
         }
         @media (max-width: 600px) {
           .memorybook-editor-toolbar .memorybook-draw-menu {
-            left: 50%;
-            transform: translateX(-50%);
-            width: min(92vw, 360px);
+            position: fixed !important;
+            left: 50% !important;
+            top: 190px !important;
+            transform: translateX(-50%) !important;
+            width: calc(100vw - 24px) !important;
+            max-width: 360px;
+            max-height: calc(100vh - 210px);
+            overflow-y: auto;
           }
         }
       `}</style>
@@ -1341,6 +1346,14 @@ export const MemoryBookEditor = forwardRef<
                       }}
                     />
                   ))}
+                  <input
+                    type="color"
+                    aria-label={language === 'de' ? 'Eigene Farbe' : language === 'en' ? 'Custom color' : 'Egyedi szín'}
+                    title={language === 'de' ? 'Eigene Farbe' : language === 'en' ? 'Custom color' : 'Egyedi szín'}
+                    value={brushColor}
+                    onChange={(event) => setBrushColor(event.target.value)}
+                    style={{ width: 36, height: 36, minHeight: 36, padding: 2, border: '2px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
+                  />
                 </div>
               </div>
               <label style={{ ...editorStyles.toolMenuItem, display: 'grid', gap: 7 }}>
