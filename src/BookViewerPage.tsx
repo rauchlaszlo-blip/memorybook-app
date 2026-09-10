@@ -209,7 +209,6 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           {t('← Saját könyveim')}
         </a>
 
-        <div style={styles.eyebrow}>MemoryBook</div>
         <h1 style={styles.title}>{bookTitle}</h1>
         <div style={styles.topBar}>
           <div style={styles.pageNumber}>
