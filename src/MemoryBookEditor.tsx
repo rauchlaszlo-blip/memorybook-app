@@ -1373,6 +1373,23 @@ export const MemoryBookEditor = forwardRef<
               </button>
             </div>
           </details>
+          <button
+            type="button"
+            aria-pressed={isErasing}
+            onClick={(event) => {
+              event.currentTarget
+                .closest('.memorybook-editor-toolbar')
+                ?.querySelectorAll('details[open]')
+                .forEach((detail) => detail.removeAttribute('open'));
+              fabricRef.current?.discardActiveObject();
+              fabricRef.current?.requestRenderAll();
+              setIsDrawing(false);
+              setIsErasing((previous) => !previous);
+            }}
+            style={{ background: isErasing ? '#dbeafe' : '#fff' }}
+          >
+            {isErasing ? copy.stopEraser : copy.eraser}
+          </button>
           <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
 
           {compactLayout && (<><button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button><button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>↪</button><strong translate="no" style={{ whiteSpace: 'nowrap' }}>{saveStatus === 'saved' ? copy.saved : saveStatus === 'saving' ? copy.saving : saveStatus === 'conflict' ? copy.conflict : copy.unsaved}</strong></>)}
