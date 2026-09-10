@@ -1238,18 +1238,55 @@ export const MemoryBookEditor = forwardRef<
                   onChange={handleBackgroundImageUpload}
                 />
               </label>
-              <details style={{ width: '100%', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
-                <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: 800 }}>
+              <details style={{ position: 'relative' }}>
+                <summary
+                  style={{
+                    minHeight: 44,
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '6px 12px',
+                    boxSizing: 'border-box',
+                    border: '2px solid #0f172a',
+                    borderRadius: 7,
+                    cursor: 'pointer',
+                    fontWeight: 900,
+                    color: '#ffffff',
+                    background: '#0f172a',
+                    boxShadow: '0 3px 9px rgba(15, 23, 42, 0.2)',
+                  }}
+                >
                   {backgroundCopy.patterns}
                 </summary>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8, paddingTop: 8 }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    zIndex: 30,
+                    top: 'calc(100% + 7px)',
+                    left: 0,
+                    width: 'min(430px, calc(100vw - 48px))',
+                    maxHeight: 'min(68vh, 560px)',
+                    overflowY: 'auto',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))',
+                    gap: 8,
+                    padding: 10,
+                    boxSizing: 'border-box',
+                    border: '2px solid #0f172a',
+                    borderRadius: 10,
+                    background: '#ffffff',
+                    boxShadow: '0 14px 35px rgba(15, 23, 42, 0.28)',
+                  }}
+                >
                   {COVER_BACKGROUND_COLLECTION.map((background) => {
                     const name = background[language];
                     return (
                       <button
                         key={background.id}
                         type="button"
-                        onClick={() => applyBackgroundImage(background.src)}
+                        onClick={(event) => {
+                          applyBackgroundImage(background.src);
+                          event.currentTarget.closest('details')?.removeAttribute('open');
+                        }}
                         aria-label={name}
                         title={name}
                         style={{ padding: 5, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}
