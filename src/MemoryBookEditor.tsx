@@ -945,6 +945,7 @@ export const MemoryBookEditor = forwardRef<
         width: '100%',
         maxWidth: '100vw',
         overflowX: 'hidden',
+        touchAction: 'pan-y',
         background: '#f1f5f9',
         padding: 16,
         boxSizing: 'border-box',
@@ -952,6 +953,11 @@ export const MemoryBookEditor = forwardRef<
       }}
     >
       <style>{`
+        textarea[data-fabric='textarea'] {
+          position: fixed !important;
+          left: 50% !important;
+          top: 50% !important;
+        }
         .memorybook-editor-toolbar button,
         .memorybook-editor-toolbar label {
           min-height: 44px;
