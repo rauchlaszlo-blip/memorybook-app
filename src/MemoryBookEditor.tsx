@@ -1175,6 +1175,21 @@ export const MemoryBookEditor = forwardRef<
 
       <div
         className="memorybook-editor-toolbar"
+        onClickCapture={(event) => {
+          const summary = (event.target as HTMLElement).closest('summary');
+          if (!summary) return;
+          const keepOpen = new Set<HTMLElement>();
+          let ancestor: HTMLElement | null = summary.parentElement;
+          while (ancestor) {
+            if (ancestor.tagName === 'DETAILS') keepOpen.add(ancestor);
+            ancestor = ancestor.parentElement;
+          }
+          event.currentTarget.querySelectorAll('details[open]').forEach((detail) => {
+            if (!keepOpen.has(detail as HTMLElement)) {
+              detail.removeAttribute('open');
+            }
+          });
+        }}
         style={{
           maxWidth: 850,
           margin: compactLayout ? '0 auto 6px' : '0 auto 16px',
