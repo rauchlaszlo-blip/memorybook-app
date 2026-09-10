@@ -355,7 +355,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 700,
   },
-  bookActions: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 12px' },
+  bookActions: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '2px 0 12px' },
   inviteLink: { minHeight: 38, padding: '7px 11px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 14, fontWeight: 800 },
   eyebrow: {
     fontSize: 12,
