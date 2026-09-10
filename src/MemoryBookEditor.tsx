@@ -551,6 +551,31 @@ export const MemoryBookEditor = forwardRef<
     canvas.on('selection:created', syncSelectionState);
     canvas.on('selection:updated', syncSelectionState);
     canvas.on('selection:cleared', syncSelectionState);
+
+    let suppressedSelectionTarget: fabric.FabricObject | null = null;
+    canvas.on('mouse:down:before', (event) => {
+      const activeObject = canvas.getActiveObject();
+      const nextTarget = event.target;
+
+      if (activeObject && nextTarget && nextTarget !== activeObject) {
+        if (activeObject instanceof fabric.IText && activeObject.isEditing) {
+          activeObject.exitEditing();
+        }
+
+        // Egy másik elem első érintése csak az előző kijelölést oldja fel.
+        // Az érintett elem a következő külön koppintással választható ki.
+        suppressedSelectionTarget = nextTarget;
+        nextTarget.selectable = false;
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+      }
+    });
+    canvas.on('mouse:up', () => {
+      if (suppressedSelectionTarget) {
+        suppressedSelectionTarget.selectable = true;
+        suppressedSelectionTarget = null;
+      }
+    });
     canvas.on('object:moving', (event) => {
       if (event.target) keepTextInsideCanvas(event.target);
     });
