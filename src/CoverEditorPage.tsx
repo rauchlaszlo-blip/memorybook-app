@@ -86,7 +86,13 @@ export function CoverEditorPage({ bookId }: { bookId: string }) {
       <h1 style={styles.title}>{cover.title}</h1>
       <p style={styles.hint}>{copy.hint}</p>
     </section>
-    <MemoryBookEditor ref={editorRef} page={cover} onSavePage={saveCover} language={language} />
+    <MemoryBookEditor
+      ref={editorRef}
+      page={cover}
+      onSavePage={saveCover}
+      language={language}
+      enableBackgroundControls
+    />
   </main>;
 }
 
