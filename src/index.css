@@ -109,3 +109,10 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+
+@media (max-width: 700px) {
+  .book-navigation-arrows {
+    display: none !important;
+  }
+}

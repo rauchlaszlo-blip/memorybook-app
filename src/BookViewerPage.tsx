@@ -222,7 +222,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
               : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
           </div>
-          <div style={styles.topBar}>
+          <div className="book-navigation-arrows" style={styles.topBar}>
             <button
               type="button"
               onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
