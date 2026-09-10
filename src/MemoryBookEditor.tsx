@@ -38,6 +38,7 @@ interface MemoryBookEditorProps {
   newTextTop?: number;
   newTextAlign?: 'left' | 'center' | 'right';
   enableBackgroundControls?: boolean;
+  compactLayout?: boolean;
 }
 
 type PendingSave = {
@@ -133,7 +134,7 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -1128,13 +1129,13 @@ export const MemoryBookEditor = forwardRef<
   return (
     <div
       style={{
-        minHeight: '100vh',
+        minHeight: compactLayout ? 'auto' : '100vh',
         width: '100%',
         maxWidth: '100vw',
         overflowX: 'hidden',
         touchAction: 'pan-y',
         background: '#f1f5f9',
-        padding: 16,
+        padding: compactLayout ? 0 : 16,
         boxSizing: 'border-box',
         fontFamily: 'Arial, sans-serif',
       }}
@@ -1165,19 +1166,19 @@ export const MemoryBookEditor = forwardRef<
         className="memorybook-editor-toolbar"
         style={{
           maxWidth: 850,
-          margin: '0 auto 16px',
-          padding: 12,
+          margin: compactLayout ? '0 auto 6px' : '0 auto 16px',
+          padding: compactLayout ? 8 : 12,
           background: '#fff',
           border: '1px solid #e2e8f0',
           borderRadius: 12,
           display: 'flex',
           flexWrap: 'wrap',
-          gap: 8,
+          gap: compactLayout ? 6 : 8,
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: compactLayout ? 6 : 8 }}>
           <button onClick={handleAddText}>{copy.addText}</button>
 
           <label
