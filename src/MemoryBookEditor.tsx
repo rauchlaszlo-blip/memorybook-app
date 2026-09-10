@@ -570,12 +570,30 @@ export const MemoryBookEditor = forwardRef<
 
     canvas.on('selection:created', syncSelectionState);
     canvas.on('selection:updated', syncSelectionState);
-    canvas.on('selection:cleared', syncSelectionState);
 
+    let blankTapSnapshot: {
+      object: fabric.FabricObject;
+      left: number;
+      top: number;
+      scaleX: number;
+      scaleY: number;
+      angle: number;
+    } | null = null;
     let suppressedSelectionTarget: fabric.FabricObject | null = null;
     canvas.on('mouse:down:before', (event) => {
       const activeObject = canvas.getActiveObject();
       const nextTarget = event.target;
+
+      if (activeObject && !nextTarget) {
+        blankTapSnapshot = {
+          object: activeObject,
+          left: activeObject.left || 0,
+          top: activeObject.top || 0,
+          scaleX: activeObject.scaleX || 1,
+          scaleY: activeObject.scaleY || 1,
+          angle: activeObject.angle || 0,
+        };
+      }
 
       if (activeObject && nextTarget && nextTarget !== activeObject) {
         if (activeObject instanceof fabric.IText && activeObject.isEditing) {
@@ -590,11 +608,22 @@ export const MemoryBookEditor = forwardRef<
         canvas.requestRenderAll();
       }
     });
+    canvas.on('selection:cleared', () => {
+      if (blankTapSnapshot) {
+        const { object, left, top, scaleX, scaleY, angle } = blankTapSnapshot;
+        object.set({ left, top, scaleX, scaleY, angle });
+        object.setCoords();
+        canvas.requestRenderAll();
+        blankTapSnapshot = null;
+      }
+      syncSelectionState();
+    });
     canvas.on('mouse:up', () => {
       if (suppressedSelectionTarget) {
         suppressedSelectionTarget.selectable = true;
         suppressedSelectionTarget = null;
       }
+      blankTapSnapshot = null;
     });
     canvas.on('object:moving', (event) => {
       if (event.target) keepTextInsideCanvas(event.target);
