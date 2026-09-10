@@ -43,7 +43,6 @@ function buildInviteTitle(language: AppLanguage, bookTitle: string) {
 }
 
 function buildMessage(
-  bookTitle: string,
   pageUrl: string,
   language: AppLanguage,
   recipientName = ''
@@ -52,7 +51,7 @@ function buildMessage(
     return [
       buildGreeting(language, recipientName),
       '',
-      `Ich habe ein MemoryBook mit dem Titel „${bookTitle}“ erstellt. Ich würde mich freuen, wenn du eine eigene Seite dafür gestaltest.`,
+      'Ich habe ein MemoryBook erstellt. Ich würde mich freuen, wenn du eine eigene Seite dafür gestaltest.',
       '',
       'Deine Seite findest du hier:',
       pageUrl,
@@ -66,7 +65,7 @@ function buildMessage(
     return [
       buildGreeting(language, recipientName),
       '',
-      `I created a MemoryBook called “${bookTitle}”. I would like you to create your own page for it.`,
+      'I created a MemoryBook. I would like you to create your own page for it.',
       '',
       'Open your page here:',
       pageUrl,
@@ -79,7 +78,7 @@ function buildMessage(
   return [
     buildGreeting(language, recipientName),
     '',
-    `Készítettem egy MemoryBook emlékkönyvet: „${bookTitle}”. Szeretném, ha te is készítenél bele egy saját oldalt.`,
+    'Készítettem egy MemoryBook emlékkönyvet. Szeretném, ha te is készítenél bele egy saját oldalt.',
     '',
     'A saját oldalad itt éred el:',
     pageUrl,
@@ -116,7 +115,6 @@ export function InviteSendDialog({
     inviteLanguageChoice === 'inherit' ? bookLanguage : inviteLanguageChoice;
   const [message, setMessage] = useState(() =>
     buildMessage(
-      bookTitle,
       pageUrl,
       savedInviteLanguage || bookLanguage,
       savedRecipientName || ''
@@ -139,7 +137,7 @@ export function InviteSendDialog({
   const updateInviteLanguage = (choice: InviteLanguageChoice) => {
     setInviteLanguageChoice(choice);
     const language = choice === 'inherit' ? bookLanguage : choice;
-    setMessage(buildMessage(bookTitle, pageUrl, language, recipientName));
+    setMessage(buildMessage(pageUrl, language, recipientName));
   };
 
   const send = async (selectedPlatform: SendPlatform) => {
