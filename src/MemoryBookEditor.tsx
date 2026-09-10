@@ -152,6 +152,7 @@ export const MemoryBookEditor = forwardRef<
   const [isErasing, setIsErasing] = useState(false);
   const [brushColor, setBrushColor] = useState('#1F2937');
   const [brushWidth, setBrushWidth] = useState(5);
+  const [brushTool, setBrushTool] = useState<'pencil' | 'marker' | 'brush'>('pencil');
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'saving' | 'unsaved' | 'conflict'
   >('saved');
@@ -853,10 +854,13 @@ export const MemoryBookEditor = forwardRef<
     canvas.isDrawingMode = isDrawing || isErasing;
 
     if (canvas.freeDrawingBrush) {
+      const toolWidthMultiplier = brushTool === 'marker' ? 1.8 : brushTool === 'brush' ? 3 : 1;
       canvas.freeDrawingBrush.color = isErasing ? '#FFFFFF' : brushColor;
-      canvas.freeDrawingBrush.width = isErasing ? Math.max(brushWidth * 2, 12) : brushWidth;
+      canvas.freeDrawingBrush.width = isErasing
+        ? Math.max(brushWidth * 2, 12)
+        : Math.max(1, Math.round(brushWidth * toolWidthMultiplier));
     }
-  }, [isDrawing, isErasing, brushColor, brushWidth]);
+  }, [isDrawing, isErasing, brushColor, brushWidth, brushTool]);
 
   const handleAddText = () => {
     const canvas = fabricRef.current;
@@ -1239,16 +1243,56 @@ export const MemoryBookEditor = forwardRef<
 
           <details style={{ position: 'relative' }}>
             <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz'}</summary>
-            <div style={editorStyles.toolMenu}>
-              <button type="button" onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsDrawing((prev) => !prev); setIsErasing(false); }}>{isDrawing ? copy.stopDrawing : (language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz')}</button>
-              <button type="button" onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsErasing((prev) => !prev); setIsDrawing(false); }}>{isErasing ? copy.stopEraser : copy.eraser}</button>
+            <div style={{ ...editorStyles.toolMenu, minWidth: 250, gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {([
+                  ['pencil', language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza'],
+                  ['marker', language === 'de' ? 'Filzstift' : language === 'en' ? 'Marker' : 'Filctoll'],
+                  ['brush', language === 'de' ? 'Pinsel' : language === 'en' ? 'Brush' : 'Ecset'],
+                ] as const).map(([tool, label]) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    aria-pressed={brushTool === tool && isDrawing}
+                    onClick={() => {
+                      fabricRef.current?.discardActiveObject();
+                      fabricRef.current?.requestRenderAll();
+                      setBrushTool(tool);
+                      setIsErasing(false);
+                      setIsDrawing(true);
+                    }}
+                    style={{ flex: '1 1 30%', minWidth: 70, background: brushTool === tool && isDrawing ? '#dbeafe' : '#fff' }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <label style={{ ...editorStyles.toolMenuItem, justifyContent: 'space-between' }}>
+                <span>{copy.brushColor}</span>
+                <input type="color" aria-label={copy.brushColor} value={brushColor} onChange={(e) => setBrushColor(e.target.value)} style={{ width: 34, height: 34, padding: 1 }} />
+              </label>
+              <label style={{ ...editorStyles.toolMenuItem, justifyContent: 'space-between' }}>
+                <span>{copy.brushWidth}</span>
+                <input type="range" aria-label={copy.brushWidth} min="1" max="25" value={brushWidth} onChange={(e) => setBrushWidth(Number(e.target.value))} style={{ flex: 1, minWidth: 120 }} />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDrawing(false);
+                  setIsErasing(false);
+                  fabricRef.current?.discardActiveObject();
+                  fabricRef.current?.requestRenderAll();
+                }}
+              >
+                {copy.stopDrawing}
+              </button>
             </div>
           </details>
           <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
 
           {compactLayout && (<><button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button><button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>↪</button><strong translate="no" style={{ whiteSpace: 'nowrap' }}>{saveStatus === 'saved' ? copy.saved : saveStatus === 'saving' ? copy.saving : saveStatus === 'conflict' ? copy.conflict : copy.unsaved}</strong></>)}
 
-          {(isDrawing || isErasing) && (<><label style={editorStyles.toolMenuItem}>{!isErasing && <span>{copy.brushColor}</span>}<input type="color" aria-label={copy.brushColor} value={brushColor} onChange={(e) => setBrushColor(e.target.value)} style={{ width: 30, height: 30, padding: 1 }} /></label><input type="range" aria-label={copy.brushWidth} min="1" max="25" value={brushWidth} onChange={(e) => setBrushWidth(Number(e.target.value))} /></>)}
+
 
           {hasSelection && (<><button onClick={handleBringForward}>{copy.bringForward}</button><button onClick={handleSendBackwards}>{copy.sendBackward}</button><button onClick={handleDeleteSelected}>{copy.delete}</button></>)}
         </div>
