@@ -48,12 +48,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
+  const suppressCoverClickRef = useRef(false);
 
   const isCover = currentIndex === 0;
   const totalItems = pageIds.length + 1;
   const currentPageId = isCover ? undefined : pageIds[currentIndex - 1];
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    suppressCoverClickRef.current = false;
     touchStartXRef.current = event.touches[0]?.clientX ?? null;
   };
 
@@ -66,6 +68,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
     if (endX === undefined) return;
     const distance = endX - startX;
     if (Math.abs(distance) < 50) return;
+    suppressCoverClickRef.current = true;
 
     setCurrentIndex((index) =>
       distance < 0
@@ -205,9 +208,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   return (
     <main style={styles.page}>
       <section style={styles.container}>
-        <a href="/my-books" style={styles.backLink}>
-          {t('← Saját könyveim')}
-        </a>
+        <div style={styles.bookActions}>
+          <a href="/my-books" style={styles.backLink}>
+            {t('← Saját könyveim')}
+          </a>
+          <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.inviteLink}>
+            {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
+          </a>
+        </div>
 
         <h1 style={styles.title}>{bookTitle}</h1>
         <div style={styles.topBar}>
@@ -221,10 +229,26 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         {error && <div style={styles.error}>{error}</div>}
 
         <div
-          style={styles.viewer}
+          style={isCover ? { ...styles.viewer, ...styles.editableCover } : styles.viewer}
           data-memory-content="true"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
+          onClick={() => {
+            if (suppressCoverClickRef.current) {
+              suppressCoverClickRef.current = false;
+              return;
+            }
+            if (isCover) window.location.href = `/my-books/${encodeURIComponent(bookId)}/cover`;
+          }}
+          onKeyDown={(event) => {
+            if (isCover && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              window.location.href = `/my-books/${encodeURIComponent(bookId)}/cover`;
+            }
+          }}
+          role={isCover ? 'button' : undefined}
+          tabIndex={isCover ? 0 : undefined}
+          aria-label={isCover ? (language === 'de' ? 'Cover bearbeiten' : language === 'en' ? 'Edit cover' : 'Fedőlap szerkesztése') : undefined}
         >
           {!isCover && loading ? (
             <div style={styles.message}>{t('Oldal betöltése...')}</div>
@@ -326,12 +350,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   backLink: {
     display: 'inline-block',
-    margin: '2px 0 12px',
     color: '#475569',
     textDecoration: 'none',
     fontSize: 14,
     fontWeight: 700,
   },
+  bookActions: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 12px' },
+  inviteLink: { minHeight: 38, padding: '7px 11px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 14, fontWeight: 800 },
   eyebrow: {
     fontSize: 12,
     fontWeight: 700,
@@ -401,6 +426,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'visible',
     touchAction: 'pan-y',
   },
+  editableCover: { cursor: 'pointer' },
   image: {
     display: 'block',
     width: '100%',
