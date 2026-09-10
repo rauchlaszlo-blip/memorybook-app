@@ -63,7 +63,7 @@ const CANVAS_HEIGHT = 1064;
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
-const DEFAULT_TEXT_WIDTH = 420;
+const DEFAULT_TEXT_WIDTH = 560;
 const TEXT_KEYBOARD_GAP = 24;
 const MOBILE_CONTROL_SIZE = 64;
 
@@ -1190,13 +1190,9 @@ export const MemoryBookEditor = forwardRef<
         }}
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: compactLayout ? 6 : 8, alignItems: 'center' }}>
-          <details style={{ position: 'relative' }}>
-            <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Text' : language === 'en' ? 'Text' : 'Szöveg'}</summary>
-            <div style={editorStyles.toolMenu}>
-              <button type="button" onClick={(event) => { handleAddText(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{language === 'de' ? '⌨ Tastatur' : language === 'en' ? '⌨ Keyboard' : '⌨ Billentyűzet'}</button>
-              <button type="button" onClick={(event) => { handleAddText(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{language === 'de' ? '▣ Textfeld' : language === 'en' ? '▣ Text box' : '▣ Szövegdoboz'}</button>
-            </div>
-          </details>
+          <button type="button" onClick={handleAddText} aria-label={language === 'de' ? 'Text hinzufügen' : language === 'en' ? 'Add text' : 'Szöveg hozzáadása'}>
+            {language === 'de' ? 'Text' : language === 'en' ? 'Text' : 'Szöveg'}
+          </button>
 
           <details style={{ position: 'relative' }}>
             <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Bild' : language === 'en' ? 'Image' : 'Kép'}</summary>
