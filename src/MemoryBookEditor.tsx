@@ -998,6 +998,23 @@ export const MemoryBookEditor = forwardRef<
       ? { color: 'Background color', photo: 'Own image', patterns: 'Background collection' }
       : { color: 'Háttérszín', photo: 'Saját kép', patterns: 'Háttérgyűjtemény' };
 
+  const activeDrawingToolName = brushTool === 'pen'
+    ? (language === 'de' ? 'Stift' : language === 'en' ? 'Pen' : 'Toll')
+    : brushTool === 'pencil'
+      ? (language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza')
+      : (language === 'de' ? 'Pinsel' : language === 'en' ? 'Brush' : 'Ecset');
+  const drawingColorLabel = language === 'de'
+    ? `${activeDrawingToolName}farbe`
+    : language === 'en'
+      ? `${activeDrawingToolName} color`
+      : `${activeDrawingToolName} színe`;
+  const drawingWidthLabel = language === 'de'
+    ? `${activeDrawingToolName}stärke`
+    : language === 'en'
+      ? `${activeDrawingToolName} thickness`
+      : `${activeDrawingToolName} vastagsága`;
+  const drawingColors = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#f59e0b'];
+
   const applyBackground = (background: string | fabric.Gradient<'linear'>) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -1302,13 +1319,33 @@ export const MemoryBookEditor = forwardRef<
                   </button>
                 ))}
               </div>
-              <label style={{ ...editorStyles.toolMenuItem, justifyContent: 'space-between' }}>
-                <span>{copy.brushColor}</span>
-                <input type="color" aria-label={copy.brushColor} value={brushColor} onChange={(e) => setBrushColor(e.target.value)} style={{ width: 34, height: 34, padding: 1 }} />
-              </label>
-              <label style={{ ...editorStyles.toolMenuItem, justifyContent: 'space-between' }}>
-                <span>{copy.brushWidth}</span>
-                <input type="range" aria-label={copy.brushWidth} min="1" max="25" value={brushWidth} onChange={(e) => setBrushWidth(Number(e.target.value))} style={{ flex: 1, minWidth: 120 }} />
+              <div style={{ ...editorStyles.toolMenuItem, display: 'grid', gap: 7 }}>
+                <span>{drawingColorLabel}</span>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  {drawingColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={color}
+                      title={color}
+                      onClick={() => setBrushColor(color)}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        minHeight: 32,
+                        padding: 0,
+                        borderRadius: '50%',
+                        border: brushColor === color ? '3px solid #0f172a' : '2px solid #cbd5e1',
+                        background: color,
+                        boxShadow: brushColor === color ? '0 0 0 2px #fff inset' : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <label style={{ ...editorStyles.toolMenuItem, display: 'grid', gap: 7 }}>
+                <span>{drawingWidthLabel}</span>
+                <input type="range" aria-label={drawingWidthLabel} min="1" max="25" value={brushWidth} onChange={(e) => setBrushWidth(Number(e.target.value))} style={{ width: '100%', minWidth: 0 }} />
               </label>
               <button
                 type="button"
