@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 import type { AppLanguage } from './i18n';
 
@@ -47,35 +47,10 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [ownerNote, setOwnerNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
-  const touchStartXRef = useRef<number | null>(null);
-  const suppressCoverClickRef = useRef(false);
 
   const isCover = currentIndex === 0;
   const totalItems = pageIds.length + 1;
   const currentPageId = isCover ? undefined : pageIds[currentIndex - 1];
-
-  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    suppressCoverClickRef.current = false;
-    touchStartXRef.current = event.touches[0]?.clientX ?? null;
-  };
-
-  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-    const startX = touchStartXRef.current;
-    touchStartXRef.current = null;
-    if (startX === null) return;
-
-    const endX = event.changedTouches[0]?.clientX;
-    if (endX === undefined) return;
-    const distance = endX - startX;
-    if (Math.abs(distance) < 50) return;
-    suppressCoverClickRef.current = true;
-
-    setCurrentIndex((index) =>
-      distance < 0
-        ? Math.min(totalItems - 1, index + 1)
-        : Math.max(0, index - 1)
-    );
-  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -208,48 +183,50 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   return (
     <main style={styles.page}>
       <section style={styles.container}>
-        <div style={styles.bookActions}>
-          <a href="/my-books" style={styles.backLink}>
-            {t('← Saját könyveim')}
-          </a>
-          <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.inviteLink}>
-            {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
-          </a>
-        </div>
+        <a href="/my-books" style={styles.backLink}>
+          {t('← Saját könyveim')}
+        </a>
 
-        <h1 style={styles.title}>{bookTitle}</h1>
-        <div style={styles.topBar}>
+        <div style={styles.viewerStage}>
+          <div style={styles.topBar}>
+          <button
+            type="button"
+            onClick={() =>
+              setCurrentIndex((index) => Math.max(0, index - 1))
+            }
+            disabled={currentIndex === 0}
+            style={styles.button}
+            aria-label={t('Előző oldal')}
+          >
+            {t('← Előző')}
+          </button>
+
           <div style={styles.pageNumber}>
             {isCover
               ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
               : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
           </div>
-        </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+          <button
+            type="button"
+            onClick={() =>
+              setCurrentIndex((index) =>
+                Math.min(totalItems - 1, index + 1)
+              )
+            }
+            disabled={
+              currentIndex === totalItems - 1
+            }
+            style={styles.button}
+            aria-label={t('Következő oldal')}
+          >
+            {t('Következő →')}
+          </button>
+          </div>
 
-        <div
-          style={isCover ? { ...styles.viewer, ...styles.editableCover } : styles.viewer}
-          data-memory-content="true"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onClick={() => {
-            if (suppressCoverClickRef.current) {
-              suppressCoverClickRef.current = false;
-              return;
-            }
-            if (isCover) window.location.href = `/my-books/${encodeURIComponent(bookId)}/cover`;
-          }}
-          onKeyDown={(event) => {
-            if (isCover && (event.key === 'Enter' || event.key === ' ')) {
-              event.preventDefault();
-              window.location.href = `/my-books/${encodeURIComponent(bookId)}/cover`;
-            }
-          }}
-          role={isCover ? 'button' : undefined}
-          tabIndex={isCover ? 0 : undefined}
-          aria-label={isCover ? (language === 'de' ? 'Cover bearbeiten' : language === 'en' ? 'Edit cover' : 'Fedőlap szerkesztése') : undefined}
-        >
+          {error && <div style={styles.error}>{error}</div>}
+
+          <div style={styles.viewer} data-memory-content="true">
           {!isCover && loading ? (
             <div style={styles.message}>{t('Oldal betöltése...')}</div>
           ) : isCover ? (
@@ -273,6 +250,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               <div style={styles.emptyText}>{t('Ehhez az oldalhoz nincs előnézeti kép.')}</div>
             </div>
           )}
+          </div>
         </div>
 
         {!loading && page && !isCover && (
@@ -342,52 +320,35 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '12px 12px 28px',
     fontFamily: 'Arial, sans-serif',
     boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
   },
   container: {
     width: '100%',
     maxWidth: 850,
     margin: '0 auto',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
   },
   backLink: {
     display: 'inline-block',
+    margin: '2px 0 12px',
     color: '#475569',
     textDecoration: 'none',
     fontSize: 14,
     fontWeight: 700,
   },
-  bookActions: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '2px 0 12px' },
-  inviteLink: { minHeight: 38, padding: '7px 11px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 14, fontWeight: 800 },
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    color: '#64748b',
-  },
-  title: {
-    margin: '6px 0 4px',
-    color: '#0f172a',
-    fontSize: 'clamp(24px, 7vw, 34px)',
-    lineHeight: 1.15,
-    overflowWrap: 'anywhere',
-  },
-  meta: {
-    marginBottom: 12,
-    color: '#64748b',
-    fontSize: 13,
-  },
+  viewerStage: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' },
   topBar: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 1000,
     width: '100%',
-    maxWidth: 750,
-    margin: '0 auto 12px',
+    maxWidth: 600,
+    margin: '0 auto 10px',
     padding: '8px 0',
     background: '#e2e8f0',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     boxSizing: 'border-box',
   },
@@ -414,8 +375,9 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   viewer: {
-    width: '100%',
-    maxWidth: 750,
+    width: 'min(100%, 600px)',
+    height: 'min(calc(100svh - 190px), 760px)',
+    maxWidth: 600,
     aspectRatio: '750 / 1064',
     margin: '0 auto',
     background: 'white',
@@ -423,10 +385,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
-    touchAction: 'pan-y',
+    overflow: 'hidden',
   },
-  editableCover: { cursor: 'pointer' },
   image: {
     display: 'block',
     width: '100%',

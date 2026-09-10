@@ -436,13 +436,21 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
   };
 
+  const headerInvitePage = pages.find((page) => page.inviteStatus !== 'submitted');
+
   return (
     <main style={styles.page}>
       <section style={styles.container}>
         <div style={styles.topRow}>
-          <div>
+          <div style={styles.headerTools}>
             <a href="/my-books" style={styles.backLink}>{t('← Saját könyveim')}</a>
-            <div style={styles.brand}>MemoryBook</div>
+            {bookType === 'standard' && headerInvitePage && (
+              <button type="button" onClick={() => openInviteComposer(headerInvitePage)} disabled={workingPageId !== null} style={styles.headerInviteButton}>
+                {t('Meghívás')}
+              </button>
+            )}
+          </div>
+          <div>
             <h1 style={styles.title}>{bookTitle}</h1>
             <label style={styles.bookLanguageLabel}>
               {t('Könyv nyelve')}
@@ -712,22 +720,17 @@ const styles: Record<string, React.CSSProperties> = {
   topRow: {
     marginBottom: 18,
   },
+  headerTools: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
   backLink: {
     display: 'inline-flex',
     alignItems: 'center',
     minHeight: 44,
-    marginBottom: 10,
+    marginBottom: 0,
     color: '#475569',
     textDecoration: 'none',
     fontWeight: 700,
   },
-  brand: {
-    color: '#64748b',
-    fontSize: 13,
-    fontWeight: 800,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
+  headerInviteButton: { minHeight: 44, padding: '10px 16px', border: 0, borderRadius: 9, background: '#0f172a', color: '#ffffff', fontWeight: 800, cursor: 'pointer' },
   title: {
     margin: '6px 0',
     color: '#0f172a',
