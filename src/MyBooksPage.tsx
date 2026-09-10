@@ -206,10 +206,12 @@ export function MyBooksPage() {
 
         {!loading && !error && books.length > 0 && (
           <div style={styles.grid}>
-            {books.map((book) => (
-              <article key={book.id} style={styles.card}>
-                {book.bookType !== 'event' && (
-                  <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.coverLink} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
+            {books.map((book) => {
+              const openPath = book.bookType === 'event'
+                ? `/my-books/${encodeURIComponent(book.id)}`
+                : `/book/${encodeURIComponent(book.id)}/view`;
+              return (
+                  <a key={book.id} href={openPath} style={styles.coverLink} aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
                     {book.coverPreviewImageUrl ? (
                       <img src={book.coverPreviewImageUrl} alt={book.title} style={styles.coverImage} />
                     ) : (
@@ -219,20 +221,8 @@ export function MyBooksPage() {
                       </div>
                     )}
                   </a>
-                )}
-                <h2 style={styles.bookTitle}>{book.title}</h2>
-                <div style={styles.typeBadge}>{book.bookType === 'event' ? t('Rendezvény-vendégkönyv') : language === 'de' ? 'Normales Erinnerungsbuch' : language === 'en' ? 'Standard memory book' : 'Normál emlékkönyv'}</div>
-                <div style={styles.meta}>{book.bookType === 'event' ? f('{count} bejegyzés', { count: book.contributionCount }) : f('{count} oldal', { count: book.pageCount })}</div>
-                <div style={styles.actions}>
-                  <a href={`/my-books/${encodeURIComponent(book.id)}`} style={styles.primaryLink}>
-                    {book.bookType === 'event' ? t('Rendezvény kezelése') : t('Oldalak és meghívók')}
-                  </a>
-                  {book.bookType !== 'event' && <a href={`/book/${encodeURIComponent(book.id)}/view`} style={styles.secondaryLink}>{t('Könyv megnyitása')}</a>}
-                  {book.bookType !== 'event' && <a href={`/my-books/${encodeURIComponent(book.id)}/cover`} style={styles.secondaryLink}>{language === 'de' ? 'Cover bearbeiten' : language === 'en' ? 'Edit cover' : 'Fedőlap szerkesztése'}</a>}
-                  {book.bookType === 'event' && <a href={`/organizer/${encodeURIComponent(book.id)}/contributions`} style={styles.secondaryLink}>{t('Beérkezett bejegyzések')}</a>}
-                </div>
-              </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -265,9 +255,8 @@ const styles: Record<string, React.CSSProperties> = {
   emptyState: { padding: '42px 28px', textAlign: 'center', background: '#ffffff', borderRadius: 16, boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)' },
   emptyTitle: { margin: '0 0 8px', color: '#0f172a' },
   emptyText: { maxWidth: 560, margin: '0 auto', color: '#64748b', lineHeight: 1.6 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 16 },
-  card: { padding: 20, background: '#ffffff', borderRadius: 14, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
-  coverLink: { display: 'block', width: 'min(72%, 210px)', margin: '0 auto 18px', textDecoration: 'none' },
+  grid: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 },
+  coverLink: { display: 'block', width: 'min(72%, 300px)', textDecoration: 'none' },
   coverImage: { display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 8, boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)' },
   defaultCover: { width: '100%', aspectRatio: '750 / 1064', padding: 18, boxSizing: 'border-box', borderRadius: 8, background: 'linear-gradient(145deg, #0f172a, #334155)', color: '#ffffff', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
   defaultCoverBrand: { position: 'absolute', opacity: 0, pointerEvents: 'none' },
