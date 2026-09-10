@@ -526,18 +526,18 @@ export function PurchasePage() {
 
   return (
     <main style={styles.page}>
-      <section style={styles.card}>
-        <div style={styles.topRow}>
+      <section style={{ ...styles.card, ...(mode === 'gift' ? styles.giftCard : {}) }}>
+        <div style={{ ...styles.topRow, ...(mode === 'gift' ? styles.giftTopRow : {}) }}>
           <a href={user ? '/my-books' : '/login'} style={styles.back}>{t('← Vissza')}</a>
-          <LanguageSwitcher />
+          <LanguageSwitcher compact={mode === 'gift'} />
         </div>
-        <div style={styles.brand}>MemoryBook</div>
-        <h1 style={styles.title}>{t('Emlékkönyv vásárlása')}</h1>
+        <div style={{ ...styles.brand, ...(mode === 'gift' ? styles.giftBrand : {}) }}>MemoryBook</div>
+        <h1 style={{ ...styles.title, ...(mode === 'gift' ? styles.giftTitle : {}) }}>{t('Emlékkönyv vásárlása')}</h1>
 
-        <div style={styles.switcher}>
-          <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
-          <button type="button" onClick={() => setMode('gift')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.active : {}) }}>{t('Ajándékba')}</button>
-          <button type="button" onClick={() => setMode('organization')} style={{ ...styles.switchButton, ...(mode === 'organization' ? styles.active : {}) }}>{t('Cég / szervezet')}</button>
+        <div style={{ ...styles.switcher, ...(mode === 'gift' ? styles.giftSwitcher : {}) }}>
+          <button type="button" onClick={() => setMode('self')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.giftSwitchButton : {}), ...(mode === 'self' ? styles.active : {}) }}>{t('Magamnak')}</button>
+          <button type="button" onClick={() => setMode('gift')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.giftSwitchButton : {}), ...(mode === 'gift' ? styles.active : {}) }}>{t('Ajándékba')}</button>
+          <button type="button" onClick={() => setMode('organization')} style={{ ...styles.switchButton, ...(mode === 'gift' ? styles.giftSwitchButton : {}), ...(mode === 'organization' ? styles.active : {}) }}>{t('Cég / szervezet')}</button>
         </div>
 
         {!user && (
@@ -548,14 +548,14 @@ export function PurchasePage() {
         )}
 
         {user && (
-          <div style={styles.accountInfo}>
+          <div style={{ ...styles.accountInfo, ...(mode === 'gift' ? styles.giftAccountInfo : {}) }}>
             <strong>{t(mode === 'organization' ? 'Kapcsolattartó' : 'Vásárló')}</strong>
             <span>{user.name || purchaserName}</span>
             <span>{user.email || purchaserEmail}</span>
           </div>
         )}
 
-        <form onSubmit={submit} style={styles.form}>
+        <form onSubmit={submit} style={{ ...styles.form, ...(mode === 'gift' ? styles.giftForm : {}) }}>
           <label style={styles.label}>{t('Könyv típusa')}
             <select value={bookType} onChange={(event) => setBookType(event.target.value as BookType)} style={styles.input}>
               <option value="standard">{t('Normál emlékkönyv – 30 oldal')}</option>
@@ -634,7 +634,7 @@ export function PurchasePage() {
             </>
           )}
 
-          {mode === 'gift' && <div style={styles.giftInfo}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
+          {mode === 'gift' && <div style={{ ...styles.giftInfo, ...styles.giftInfoCompact }}>{t('Ajándék vásárlásnál a könyv nem a fizető fiókjában jön létre. Sikeres fizetés után továbbküldhető beváltó link készül.')}</div>}
           {notice && <div style={styles.notice}>{notice}</div>}
           {error && <div style={styles.error}>{error}</div>}
           <button type="submit" disabled={loading || !user} style={styles.primaryButton}>
@@ -676,25 +676,34 @@ const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', padding: '8px 8px 24px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
   topRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 3 },
   card: { width: '100%', maxWidth: 640, margin: '0 auto', padding: 11, background: '#fff', borderRadius: 12, boxSizing: 'border-box', boxShadow: '0 8px 24px rgba(15,23,42,.07)' },
+  giftCard: { padding: 7 },
+  giftTopRow: { marginBottom: 0 },
   back: { display: 'inline-flex', minHeight: 36, alignItems: 'center', color: '#475569', textDecoration: 'none', fontWeight: 700, fontSize: 14 },
   brand: { marginTop: 0, color: '#64748b', fontWeight: 800, fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase' },
+  giftBrand: { lineHeight: 1.1 },
   title: { margin: '3px 0', color: '#0f172a', fontSize: 'clamp(23px,7vw,32px)' },
+  giftTitle: { margin: '1px 0', fontSize: 'clamp(22px,6.5vw,29px)', lineHeight: 1.1 },
   lead: { margin: '0 0 9px', color: '#64748b', lineHeight: 1.35, fontSize: 14 },
   switcher: { display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 4, marginBottom: 8, padding: 2, background: '#e2e8f0', borderRadius: 9 },
+  giftSwitcher: { marginBottom: 5 },
   switchButton: { minHeight: 38, padding: '2px', border: 0, borderRadius: 7, background: 'transparent', fontWeight: 800, color: '#475569', fontSize: 11.5, lineHeight: 1.15 },
+  giftSwitchButton: { minHeight: 34 },
   active: { background: '#fff', color: '#0f172a', boxShadow: '0 1px 3px rgba(15,23,42,.12)' },
   notice: { marginBottom: 8, padding: 9, borderRadius: 8, background: '#fff7ed', color: '#9a3412', lineHeight: 1.35, fontSize: 13 },
   giftRecipientBox: { display: 'grid', gap: 6, padding: 9, borderRadius: 9, background: '#f8fafc', border: '1px solid #e2e8f0' },
   fieldHint: { gridColumn: '2', display: 'block', marginTop: 2, color: '#64748b', fontSize: 11.5, lineHeight: 1.3, fontWeight: 500 },
   fieldError: { gridColumn: '2', display: 'block', marginTop: 2, color: '#b91c1c', fontSize: 11.5, lineHeight: 1.3, fontWeight: 600 },
   accountInfo: { display: 'flex', flexWrap: 'wrap', gap: '2px 8px', marginBottom: 6, padding: '6px 8px', borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 12, overflowWrap: 'anywhere' },
+  giftAccountInfo: { marginBottom: 4, padding: '4px 7px' },
   inlineLink: { color: '#166534', fontWeight: 800 },
   form: { display: 'flex', flexDirection: 'column', gap: 5 },
+  giftForm: { gap: 4 },
   label: { display: 'grid', gridTemplateColumns: 'minmax(105px, 38%) minmax(0, 1fr)', alignItems: 'center', gap: '3px 8px', color: '#334155', fontSize: 12.5, lineHeight: 1.15, fontWeight: 700, minWidth: 0 },
   input: { width: '100%', minHeight: 34, padding: '4px 7px', border: '1px solid #cbd5e1', borderRadius: 7, boxSizing: 'border-box', fontSize: 14, background: '#fff' },
   sectionTitle: { marginTop: 2, color: '#0f172a', fontWeight: 800, fontSize: 15 },
   twoCols: { display: 'grid', gridTemplateColumns: '1fr', gap: 5 },
   giftInfo: { padding: 9, borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: 13, lineHeight: 1.35 },
+  giftInfoCompact: { padding: 6, fontSize: 12, lineHeight: 1.25 },
   error: { padding: 9, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   primaryButton: { minHeight: 44, border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, fontSize: 15 },
   success: { marginTop: 10, padding: 10, borderRadius: 9, background: '#ecfdf5', color: '#166534', lineHeight: 1.4, fontSize: 13, overflowWrap: 'anywhere' },
