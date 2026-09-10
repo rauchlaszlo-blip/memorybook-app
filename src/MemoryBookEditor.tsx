@@ -59,6 +59,37 @@ const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
 const DEFAULT_TEXT_WIDTH = 420;
 const TEXT_KEYBOARD_GAP = 24;
+const MOBILE_CONTROL_SIZE = 32;
+
+const configureObjectControls = (object: fabric.FabricObject) => {
+  object.set({
+    borderColor: '#2563eb',
+    cornerColor: '#ffffff',
+    cornerStrokeColor: '#2563eb',
+    cornerStyle: 'circle',
+    cornerSize: MOBILE_CONTROL_SIZE,
+    transparentCorners: false,
+    padding: 8,
+    centeredRotation: true,
+    lockRotation: false,
+  });
+  object.setControlsVisibility({
+    tl: true,
+    tr: true,
+    bl: true,
+    br: true,
+    ml: false,
+    mr: false,
+    mt: false,
+    mb: false,
+    mtr: true,
+  });
+  if (object.controls.mtr) {
+    object.controls.mtr.offsetY = -56;
+    object.controls.mtr.withConnection = true;
+  }
+  object.setCoords();
+};
 
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
@@ -414,6 +445,8 @@ export const MemoryBookEditor = forwardRef<
       height: CANVAS_HEIGHT,
       backgroundColor: '#FFFFFF',
       preserveObjectStacking: true,
+      selection: false,
+      selectionKey: [],
     });
 
     fabricRef.current = canvas;
@@ -470,33 +503,6 @@ export const MemoryBookEditor = forwardRef<
     canvas.on('text:editing:entered', scheduleKeyboardAlignment);
     window.visualViewport?.addEventListener('resize', scheduleKeyboardAlignment);
 
-    const configureTextObject = (object: fabric.FabricObject) => {
-      if (!(object instanceof fabric.IText)) return;
-
-      object.set({
-        borderColor: '#2563eb',
-        cornerColor: '#ffffff',
-        cornerStrokeColor: '#2563eb',
-        cornerStyle: 'circle',
-        cornerSize: 20,
-        transparentCorners: false,
-        padding: 8,
-        centeredRotation: true,
-      });
-      object.setControlsVisibility({
-        tl: true,
-        tr: true,
-        bl: true,
-        br: true,
-        ml: false,
-        mr: false,
-        mt: false,
-        mb: false,
-        mtr: true,
-      });
-      object.setCoords();
-    };
-
     const keepTextInsideCanvas = (object: fabric.FabricObject) => {
       if (!(object instanceof fabric.IText)) return;
 
@@ -539,7 +545,7 @@ export const MemoryBookEditor = forwardRef<
     const syncSelectionState = () => {
       const activeObject = canvas.getActiveObject();
       setHasSelection(canvas.getActiveObjects().length > 0);
-      if (activeObject) configureTextObject(activeObject);
+      if (activeObject) configureObjectControls(activeObject);
     };
 
     canvas.on('selection:created', syncSelectionState);
@@ -639,25 +645,7 @@ export const MemoryBookEditor = forwardRef<
 
         if (abortController.signal.aborted) return;
 
-        canvas.getObjects().forEach((object) => {
-          if (object instanceof fabric.IText) {
-            object.set({
-              borderColor: '#2563eb',
-              cornerColor: '#ffffff',
-              cornerStrokeColor: '#2563eb',
-              cornerStyle: 'circle',
-              cornerSize: 20,
-              transparentCorners: false,
-              padding: 8,
-              centeredRotation: true,
-            });
-            object.setControlsVisibility({
-              tl: true, tr: true, bl: true, br: true,
-              ml: false, mr: false, mt: false, mb: false, mtr: true,
-            });
-            object.setCoords();
-          }
-        });
+        canvas.getObjects().forEach(configureObjectControls);
         canvas.renderAll();
 
         const initialJson = JSON.stringify(canvas.toJSON());
@@ -755,17 +743,7 @@ export const MemoryBookEditor = forwardRef<
       padding: 8,
       centeredRotation: true,
     });
-    text.setControlsVisibility({
-      tl: true,
-      tr: true,
-      bl: true,
-      br: true,
-      ml: false,
-      mr: false,
-      mt: false,
-      mb: false,
-      mtr: true,
-    });
+    configureObjectControls(text);
 
     canvas.add(text);
     canvas.setActiveObject(text);
@@ -1025,6 +1003,8 @@ export const MemoryBookEditor = forwardRef<
 
           <button
             onClick={() => {
+              fabricRef.current?.discardActiveObject();
+              fabricRef.current?.requestRenderAll();
               setIsDrawing((prev) => !prev);
               setIsErasing(false);
             }}
@@ -1034,6 +1014,8 @@ export const MemoryBookEditor = forwardRef<
 
           <button
             onClick={() => {
+              fabricRef.current?.discardActiveObject();
+              fabricRef.current?.requestRenderAll();
               setIsErasing((prev) => !prev);
               setIsDrawing(false);
             }}
