@@ -131,6 +131,14 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
   object.setCoords();
 };
 
+const editorStyles: Record<string, React.CSSProperties> = {
+  toolSummary: { listStyle: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center', padding: '9px 12px', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 7, background: '#ffffff', cursor: 'pointer', fontSize: 14, fontWeight: 700 },
+  toolMenu: { position: 'absolute', zIndex: 40, top: 'calc(100% + 6px)', left: 0, minWidth: 190, display: 'grid', gap: 6, padding: 8, boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 9, background: '#ffffff', boxShadow: '0 12px 28px rgba(15,23,42,.2)' },
+  toolMenuItem: { minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', boxSizing: 'border-box', border: '1px solid #e2e8f0', borderRadius: 7, background: '#ffffff', cursor: 'pointer', fontSize: 14, fontWeight: 700 },
+  collectionMenu: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, padding: 8, border: '1px solid #cbd5e1', borderRadius: 8, background: '#f8fafc' },
+  collectionButton: { padding: 5, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', cursor: 'pointer' },
+};
+
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
@@ -1181,232 +1189,51 @@ export const MemoryBookEditor = forwardRef<
           justifyContent: 'space-between',
         }}
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: compactLayout ? 6 : 8 }}>
-          <button onClick={handleAddText}>{copy.addText}</button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: compactLayout ? 6 : 8, alignItems: 'center' }}>
+          <details style={{ position: 'relative' }}>
+            <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Text' : language === 'en' ? 'Text' : 'Szöveg'}</summary>
+            <div style={editorStyles.toolMenu}>
+              <button type="button" onClick={(event) => { handleAddText(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{language === 'de' ? '⌨ Tastatur' : language === 'en' ? '⌨ Keyboard' : '⌨ Billentyűzet'}</button>
+              <button type="button" onClick={(event) => { handleAddText(); event.currentTarget.closest('details')?.removeAttribute('open'); }}>{language === 'de' ? '▣ Textfeld' : language === 'en' ? '▣ Text box' : '▣ Szövegdoboz'}</button>
+            </div>
+          </details>
 
-          <label
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 6,
-              padding: '6px 10px',
-              cursor: 'pointer',
-              background: '#fff',
-            }}
-          >
-            {copy.addPhoto}
-            <input
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleImageUpload}
-            />
-          </label>
+          <details style={{ position: 'relative' }}>
+            <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Bild' : language === 'en' ? 'Image' : 'Kép'}</summary>
+            <div style={editorStyles.toolMenu}>
+              <label style={editorStyles.toolMenuItem}>{language === 'de' ? '📷 Kamera' : language === 'en' ? '📷 Camera' : '📷 Fényképezőgép'}<input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleImageUpload} /></label>
+              <label style={editorStyles.toolMenuItem}>{language === 'de' ? '🖼 Eigenes Bild' : language === 'en' ? '🖼 Own image' : '🖼 Saját kép választása'}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} /></label>
+            </div>
+          </details>
 
           {enableBackgroundControls && (
-            <>
-              <label
-                title={backgroundCopy.color}
-                style={{
-                  minHeight: 44,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  padding: '6px 10px',
-                  background: '#fff',
-                }}
-              >
-                {backgroundCopy.color}
-                <input
-                  type="color"
-                  defaultValue="#0f172a"
-                  onChange={(event) => applyBackground(event.target.value)}
-                  style={{ width: 30, height: 30, padding: 0, border: 0, background: 'transparent' }}
-                />
-              </label>
-              <label
-                style={{
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 6,
-                  padding: '6px 10px',
-                  cursor: 'pointer',
-                  background: '#fff',
-                }}
-              >
-                {backgroundCopy.photo}
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={handleBackgroundImageUpload}
-                />
-              </label>
-              <details style={{ position: 'relative' }}>
-                <summary
-                  style={{
-                    minHeight: 44,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '6px 12px',
-                    boxSizing: 'border-box',
-                    border: '2px solid #0f172a',
-                    borderRadius: 7,
-                    cursor: 'pointer',
-                    fontWeight: 900,
-                    color: '#ffffff',
-                    background: '#0f172a',
-                    boxShadow: '0 3px 9px rgba(15, 23, 42, 0.2)',
-                  }}
-                >
-                  {backgroundCopy.patterns}
-                </summary>
-                <div
-                  style={{
-                    position: 'absolute',
-                    zIndex: 30,
-                    top: 'calc(100% + 7px)',
-                    left: 0,
-                    width: 'min(430px, calc(100vw - 48px))',
-                    maxHeight: 'min(68vh, 560px)',
-                    overflowY: 'auto',
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))',
-                    gap: 8,
-                    padding: 10,
-                    boxSizing: 'border-box',
-                    border: '2px solid #0f172a',
-                    borderRadius: 10,
-                    background: '#ffffff',
-                    boxShadow: '0 14px 35px rgba(15, 23, 42, 0.28)',
-                  }}
-                >
-                  {COVER_BACKGROUND_COLLECTION.map((background) => {
-                    const name = background[language];
-                    return (
-                      <button
-                        key={background.id}
-                        type="button"
-                        onClick={(event) => {
-                          applyBackgroundImage(background.src);
-                          event.currentTarget.closest('details')?.removeAttribute('open');
-                        }}
-                        aria-label={name}
-                        title={name}
-                        style={{ padding: 5, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}
-                      >
-                        <img src={background.src} alt="" style={{ display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 5 }} />
-                        <span style={{ display: 'block', marginTop: 5, fontSize: 12 }}>{name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </details>
-            </>
+            <details style={{ position: 'relative' }}>
+              <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Hintergrund' : language === 'en' ? 'Background' : 'Háttér'}</summary>
+              <div style={editorStyles.toolMenu}>
+                <label style={editorStyles.toolMenuItem}>{language === 'de' ? '📷 Kamera' : language === 'en' ? '📷 Camera' : '📷 Fényképezőgép'}<input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleBackgroundImageUpload} /></label>
+                <label style={editorStyles.toolMenuItem}>{backgroundCopy.photo}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBackgroundImageUpload} /></label>
+                <details>
+                  <summary style={editorStyles.toolMenuItem}>{backgroundCopy.patterns}</summary>
+                  <div style={editorStyles.collectionMenu}>
+                    {COVER_BACKGROUND_COLLECTION.map((background) => {
+                      const name = background[language];
+                      return <button key={background.id} type="button" onClick={(event) => { applyBackgroundImage(background.src); event.currentTarget.closest('details')?.parentElement?.closest('details')?.removeAttribute('open'); }} aria-label={name} title={name} style={editorStyles.collectionButton}><img src={background.src} alt="" style={{ display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 5 }} /><span style={{ display: 'block', marginTop: 5, fontSize: 12 }}>{name}</span></button>;
+                    })}
+                  </div>
+                </details>
+                <label style={editorStyles.toolMenuItem}>{backgroundCopy.color}<input type="color" defaultValue="#0f172a" onChange={(event) => applyBackground(event.target.value)} style={{ width: 30, height: 30, padding: 0, border: 0 }} /></label>
+              </div>
+            </details>
           )}
 
-          <button
-            onClick={handleSelectMode}
-            aria-pressed={!isDrawing && !isErasing}
-            style={
-              !isDrawing && !isErasing
-                ? { background: '#dbeafe', border: '2px solid #2563eb' }
-                : undefined
-            }
-          >
-            {copy.select}
-          </button>
+          <button onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsDrawing((prev) => !prev); setIsErasing(false); }}>{isDrawing ? copy.stopDrawing : (language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz')}</button>
+          <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
 
-          <div style={{ display: 'inline-flex', flexWrap: 'nowrap', gap: compactLayout ? 6 : 8, alignItems: 'center' }}>
-            <button
-              onClick={() => {
-                fabricRef.current?.discardActiveObject();
-                fabricRef.current?.requestRenderAll();
-                setIsDrawing((prev) => !prev);
-                setIsErasing(false);
-              }}
-            >
-              {isDrawing ? copy.stopDrawing : copy.startDrawing}
-            </button>
+          {compactLayout && (<><button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button><button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>↪</button><strong translate="no" style={{ whiteSpace: 'nowrap' }}>{saveStatus === 'saved' ? copy.saved : saveStatus === 'saving' ? copy.saving : saveStatus === 'conflict' ? copy.conflict : copy.unsaved}</strong></>)}
 
-            <button
-              onClick={() => {
-                fabricRef.current?.discardActiveObject();
-                fabricRef.current?.requestRenderAll();
-                setIsErasing((prev) => !prev);
-                setIsDrawing(false);
-              }}
-            >
-              {isErasing ? copy.stopEraser : copy.eraser}
-            </button>
+          {(isDrawing || isErasing) && (<><label style={editorStyles.toolMenuItem}>{!isErasing && <span>{copy.brushColor}</span>}<input type="color" aria-label={copy.brushColor} value={brushColor} onChange={(e) => setBrushColor(e.target.value)} style={{ width: 30, height: 30, padding: 1 }} /></label><input type="range" aria-label={copy.brushWidth} min="1" max="25" value={brushWidth} onChange={(e) => setBrushWidth(Number(e.target.value))} /></>)}
 
-            {compactLayout && (
-              <>
-                <button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button>
-                <strong translate="no" style={{ whiteSpace: 'nowrap' }}>
-                  {saveStatus === 'saved'
-                    ? copy.saved
-                    : saveStatus === 'saving'
-                      ? copy.saving
-                      : saveStatus === 'conflict'
-                        ? copy.conflict
-                        : copy.unsaved}
-                </strong>
-              </>
-            )}
-          </div>
-
-          {(isDrawing || isErasing) && (
-            <>
-              {!isErasing && (
-                <label
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '0 10px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: 6,
-                    background: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span>{copy.brushColor}</span>
-                  <input
-                    type="color"
-                    aria-label={copy.brushColor}
-                    value={brushColor}
-                    onChange={(e) => setBrushColor(e.target.value)}
-                    style={{
-                      width: 38,
-                      height: 30,
-                      padding: 1,
-                      border: '1px solid #94a3b8',
-                      borderRadius: 5,
-                      background: '#fff',
-                      cursor: 'pointer',
-                    }}
-                  />
-                </label>
-              )}
-              <input
-                type="range"
-                aria-label={copy.brushWidth}
-                min="1"
-                max="25"
-                value={brushWidth}
-                onChange={(e) => setBrushWidth(Number(e.target.value))}
-              />
-            </>
-          )}
-
-          {hasSelection && (
-            <>
-              <button onClick={handleBringForward}>{copy.bringForward}</button>
-              <button onClick={handleSendBackwards}>{copy.sendBackward}</button>
-              <button onClick={handleDeleteSelected}>{copy.delete}</button>
-            </>
-          )}
+          {hasSelection && (<><button onClick={handleBringForward}>{copy.bringForward}</button><button onClick={handleSendBackwards}>{copy.sendBackward}</button><button onClick={handleDeleteSelected}>{copy.delete}</button></>)}
         </div>
 
         {!compactLayout && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
