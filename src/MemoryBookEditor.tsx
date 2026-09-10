@@ -59,7 +59,7 @@ const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
 const DEFAULT_TEXT_WIDTH = 420;
 const TEXT_KEYBOARD_GAP = 24;
-const MOBILE_CONTROL_SIZE = 32;
+const MOBILE_CONTROL_SIZE = 64;
 
 const configureObjectControls = (object: fabric.FabricObject) => {
   object.set({
