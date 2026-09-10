@@ -1226,7 +1226,13 @@ export const MemoryBookEditor = forwardRef<
             </details>
           )}
 
-          <button onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsDrawing((prev) => !prev); setIsErasing(false); }}>{isDrawing ? copy.stopDrawing : (language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz')}</button>
+          <details style={{ position: 'relative' }}>
+            <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz'}</summary>
+            <div style={editorStyles.toolMenu}>
+              <button type="button" onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsDrawing((prev) => !prev); setIsErasing(false); }}>{isDrawing ? copy.stopDrawing : (language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz')}</button>
+              <button type="button" onClick={() => { fabricRef.current?.discardActiveObject(); fabricRef.current?.requestRenderAll(); setIsErasing((prev) => !prev); setIsDrawing(false); }}>{isErasing ? copy.stopEraser : copy.eraser}</button>
+            </div>
+          </details>
           <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
 
           {compactLayout && (<><button onClick={handleUndo} disabled={!canUndo} aria-label={copy.undo}>↩</button><button onClick={handleRedo} disabled={!canRedo} aria-label={copy.redo}>↪</button><strong translate="no" style={{ whiteSpace: 'nowrap' }}>{saveStatus === 'saved' ? copy.saved : saveStatus === 'saving' ? copy.saving : saveStatus === 'conflict' ? copy.conflict : copy.unsaved}</strong></>)}
