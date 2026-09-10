@@ -235,16 +235,15 @@ export function InviteSendDialog({
               : t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
           </div>
         )}
-        <div style={styles.stepLabel}>{t('1. Meghívó nyelve')}</div>
-        <label style={styles.label}>
-          {t('Nyelv')}
+        <label style={styles.inlineLabel}>
+          <span>{t('Megszólítás')}</span>
           <select
             value={inviteLanguageChoice}
             onChange={(event) => updateInviteLanguage(event.target.value as InviteLanguageChoice)}
-            style={styles.input}
+            style={styles.inlineInput}
             aria-label={t('Meghívó nyelve')}
           >
-            <option value="inherit">{f('Könyv nyelve ({language})', { language: languageLabel(bookLanguage) })}</option>
+            <option value="inherit">{f('Automatikus – {language}', { language: languageLabel(bookLanguage) })}</option>
             <option value="hu">Magyar</option>
             <option value="en">English</option>
             <option value="de">Deutsch</option>
@@ -391,6 +390,26 @@ const styles: Record<string, React.CSSProperties> = {
   },
   platformHint: { display: 'block', marginTop: 5, color: '#64748b', fontSize: 12, fontWeight: 500, lineHeight: 1.35 },
   label: { display: 'block', marginTop: 12, color: '#334155', fontSize: 13, fontWeight: 800 },
+  inlineLabel: {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  inlineInput: {
+    width: '100%',
+    minHeight: 44,
+    padding: '8px 10px',
+    boxSizing: 'border-box',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    background: '#ffffff',
+    fontSize: 16,
+  },
   input: {
     width: '100%',
     minHeight: 46,
