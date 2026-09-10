@@ -78,15 +78,16 @@ const configureObjectControls = (object: fabric.FabricObject) => {
     centeredRotation: true,
     lockRotation: false,
   });
+  const isTextbox = object instanceof fabric.Textbox;
   object.setControlsVisibility({
     tl: true,
     tr: true,
     bl: true,
     br: true,
-    ml: false,
-    mr: false,
-    mt: false,
-    mb: false,
+    ml: isTextbox,
+    mr: isTextbox,
+    mt: isTextbox,
+    mb: isTextbox,
     mtr: true,
   });
   if (object.controls.mtr) {
