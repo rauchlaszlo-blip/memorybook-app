@@ -66,6 +66,14 @@ const DEFAULT_TEXT_WIDTH = 420;
 const TEXT_KEYBOARD_GAP = 24;
 const MOBILE_CONTROL_SIZE = 64;
 
+const COVER_BACKGROUND_COLLECTION = [
+  { id: 'tropical-light', src: '/cover-backgrounds/tropical-light.webp', hu: 'Trópusi világos', en: 'Light tropical', de: 'Tropisch hell' },
+  { id: 'tropical-night', src: '/cover-backgrounds/tropical-night.webp', hu: 'Trópusi éjszaka', en: 'Tropical night', de: 'Tropische Nacht' },
+  { id: 'romantic-hearts', src: '/cover-backgrounds/romantic-hearts.webp', hu: 'Romantikus', en: 'Romantic', de: 'Romantisch' },
+  { id: 'botanical-sage', src: '/cover-backgrounds/botanical-sage.webp', hu: 'Botanikus', en: 'Botanical', de: 'Botanisch' },
+  { id: 'celebration', src: '/cover-backgrounds/celebration.webp', hu: 'Ünnepi', en: 'Celebration', de: 'Festlich' },
+] as const;
+
 const configureObjectControls = (object: fabric.FabricObject) => {
   object.set({
     borderColor: '#2563eb',
@@ -956,10 +964,10 @@ export const MemoryBookEditor = forwardRef<
   };
 
   const backgroundCopy = language === 'de'
-    ? { color: 'Hintergrundfarbe', photo: 'Hintergrundbild', patterns: 'Muster' }
+    ? { color: 'Hintergrundfarbe', photo: 'Eigenes Bild', patterns: 'Hintergrundsammlung' }
     : language === 'en'
-      ? { color: 'Background color', photo: 'Background image', patterns: 'Patterns' }
-      : { color: 'Háttérszín', photo: 'Háttérkép', patterns: 'Minták' };
+      ? { color: 'Background color', photo: 'Own image', patterns: 'Background collection' }
+      : { color: 'Háttérszín', photo: 'Saját kép', patterns: 'Háttérgyűjtemény' };
 
   const applyBackground = (background: string | fabric.Gradient<'linear'>) => {
     const canvas = fabricRef.current;
@@ -1003,15 +1011,29 @@ export const MemoryBookEditor = forwardRef<
     e.target.value = '';
   };
 
-  const applyBackgroundPattern = (colors: [string, string]) => {
-    applyBackground(new fabric.Gradient({
-      type: 'linear',
-      coords: { x1: 0, y1: 0, x2: CANVAS_WIDTH, y2: CANVAS_HEIGHT },
-      colorStops: [
-        { offset: 0, color: colors[0] },
-        { offset: 1, color: colors[1] },
-      ],
-    }));
+  const applyBackgroundImage = (src: string) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const imgElement = new Image();
+    imgElement.onload = () => {
+      const currentCanvas = fabricRef.current;
+      if (!currentCanvas) return;
+      const scale = Math.max(CANVAS_WIDTH / imgElement.width, CANVAS_HEIGHT / imgElement.height);
+      const backgroundImage = new fabric.FabricImage(imgElement, {
+        left: CANVAS_WIDTH / 2,
+        top: CANVAS_HEIGHT / 2,
+        originX: 'center',
+        originY: 'center',
+        scaleX: scale,
+        scaleY: scale,
+        selectable: false,
+        evented: false,
+      });
+      currentCanvas.set({ backgroundImage });
+      currentCanvas.requestRenderAll();
+      handleStructuralMutation();
+    };
+    imgElement.src = src;
   };
 
   const handleDeleteSelected = () => {
@@ -1216,29 +1238,29 @@ export const MemoryBookEditor = forwardRef<
                   onChange={handleBackgroundImageUpload}
                 />
               </label>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} aria-label={backgroundCopy.patterns}>
-                {([
-                  ['#0f172a', '#334155'],
-                  ['#3f1d2e', '#b45309'],
-                  ['#0f3d3e', '#84a98c'],
-                  ['#312e81', '#a78bfa'],
-                ] as [string, string][]).map((colors, index) => (
-                  <button
-                    key={colors.join('-')}
-                    type="button"
-                    onClick={() => applyBackgroundPattern(colors)}
-                    title={`${backgroundCopy.patterns} ${index + 1}`}
-                    aria-label={`${backgroundCopy.patterns} ${index + 1}`}
-                    style={{
-                      width: 44,
-                      minWidth: 44,
-                      padding: 0,
-                      borderRadius: 8,
-                      background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
-                    }}
-                  />
-                ))}
-              </span>
+              <details style={{ width: '100%', borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+                <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: 800 }}>
+                  {backgroundCopy.patterns}
+                </summary>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8, paddingTop: 8 }}>
+                  {COVER_BACKGROUND_COLLECTION.map((background) => {
+                    const name = background[language];
+                    return (
+                      <button
+                        key={background.id}
+                        type="button"
+                        onClick={() => applyBackgroundImage(background.src)}
+                        aria-label={name}
+                        title={name}
+                        style={{ padding: 5, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}
+                      >
+                        <img src={background.src} alt="" style={{ display: 'block', width: '100%', aspectRatio: '750 / 1064', objectFit: 'cover', borderRadius: 5 }} />
+                        <span style={{ display: 'block', marginTop: 5, fontSize: 12 }}>{name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </details>
             </>
           )}
 
