@@ -57,6 +57,18 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     () => new URLSearchParams(window.location.search).get('page'),
     []
   );
+  const displayedPages = useMemo(() => {
+    if (targetPageId) {
+      return pages.filter((page) => page.id === targetPageId);
+    }
+    if (bookType === 'standard') {
+      const nextEmptyPage = pages
+        .filter((page) => page.inviteStatus === 'empty')
+        .sort((a, b) => a.pageNumber - b.pageNumber)[0];
+      return nextEmptyPage ? [nextEmptyPage] : [];
+    }
+    return pages;
+  }, [bookType, pages, targetPageId]);
 
   useEffect(() => {
     const load = async () => {
@@ -461,7 +473,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             <p style={styles.subtitle}>
               {bookType === 'event'
                 ? t('A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.')
-                : t('Minden meghívó egyetlen konkrét oldalhoz tartozik. A beküldött oldalakat megtarthatod, archiválhatod vagy végleg törölheted.')}
+                : t('A következő üres oldalhoz innen küldhetsz meghívót.')}
             </p>
           </div>
         </div>
@@ -486,7 +498,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
 
         {!loading && bookType === 'standard' && (
           <div style={styles.grid}>
-            {pages.map((page) => {
+            {displayedPages.map((page) => {
               const hasInvite = Boolean(page.inviteToken);
               const isSubmitted = page.inviteStatus === 'submitted';
               const isArchived = page.ownerVisibility === 'archived';
@@ -623,6 +635,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                 </article>
               );
             })}
+            {displayedPages.length === 0 && !targetPageId && (
+              <div style={styles.panel}>{t('Nincs több üres, meghívható oldal.')}</div>
+            )}
           </div>
         )}
       </section>

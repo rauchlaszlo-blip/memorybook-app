@@ -103,17 +103,23 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         }
 
         const data = await response.json();
+        const statusOrder: Record<string, number> = {
+          submitted: 0,
+          draft: 1,
+          invited: 2,
+          empty: 3,
+        };
         const visiblePages = Array.isArray(data.pages)
           ? data.pages
               .filter(
-                (item: BookPageSummary) =>
-                  item.inviteStatus === 'submitted' &&
-                  item.ownerVisibility !== 'archived'
+                (item: BookPageSummary) => item.ownerVisibility !== 'archived'
               )
-              .sort(
-                (a: BookPageSummary, b: BookPageSummary) =>
-                  a.pageNumber - b.pageNumber
-              )
+              .sort((a: BookPageSummary, b: BookPageSummary) => {
+                const statusDifference =
+                  (statusOrder[a.inviteStatus] ?? 4) -
+                  (statusOrder[b.inviteStatus] ?? 4);
+                return statusDifference || a.pageNumber - b.pageNumber;
+              })
           : [];
         const ids = visiblePages.map((item: BookPageSummary) => String(item.id));
 
@@ -213,7 +219,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           <a href="/my-books" style={styles.backLink}>
             {t('← Saját könyveim')}
           </a>
-          <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.inviteLink}>
+          <a href={`/my-books/${encodeURIComponent(bookId)}?nextEmpty=1`} style={styles.inviteLink}>
             {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
           </a>
         </div>

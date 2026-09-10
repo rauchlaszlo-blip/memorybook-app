@@ -8,6 +8,8 @@ import {
 type Translation = { en: string; de: string };
 
 const translations: Record<string, Translation> = {
+  'A következő üres oldalhoz innen küldhetsz meghívót.': { en: 'Send an invitation for the next empty page from here.', de: 'Von hier kannst du eine Einladung für die nächste leere Seite senden.' },
+  'Nincs több üres, meghívható oldal.': { en: 'There are no more empty pages available for invitation.', de: 'Es gibt keine weiteren leeren Seiten zum Einladen.' },
   'Nem sikerült betölteni a könyveidet.': { en: 'Could not load your books.', de: 'Deine Bücher konnten nicht geladen werden.' },
   'Adj nevet az emlékkönyvnek.': { en: 'Give the memory book a name.', de: 'Gib dem Erinnerungsbuch einen Namen.' },
   'A könyv létrehozásához felhasználható vásárlási jogosultság kell.': { en: 'An available purchase entitlement is required to create a book.', de: 'Zum Erstellen eines Buches wird eine verfügbare Kaufberechtigung benötigt.' },
