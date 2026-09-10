@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 import type { AppLanguage } from './i18n';
 
@@ -47,10 +47,32 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [ownerNote, setOwnerNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+  const touchStartXRef = useRef<number | null>(null);
 
   const isCover = currentIndex === 0;
   const totalItems = pageIds.length + 1;
   const currentPageId = isCover ? undefined : pageIds[currentIndex - 1];
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartXRef.current = event.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const startX = touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (startX === null) return;
+
+    const endX = event.changedTouches[0]?.clientX;
+    if (endX === undefined) return;
+    const distance = endX - startX;
+    if (Math.abs(distance) < 50) return;
+
+    setCurrentIndex((index) =>
+      distance < 0
+        ? Math.min(totalItems - 1, index + 1)
+        : Math.max(0, index - 1)
+    );
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -190,44 +212,21 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         <div style={styles.eyebrow}>MemoryBook</div>
         <h1 style={styles.title}>{bookTitle}</h1>
         <div style={styles.topBar}>
-          <button
-            type="button"
-            onClick={() =>
-              setCurrentIndex((index) => Math.max(0, index - 1))
-            }
-            disabled={currentIndex === 0}
-            style={styles.button}
-            aria-label={t('Előző oldal')}
-          >
-            {t('← Előző')}
-          </button>
-
           <div style={styles.pageNumber}>
             {isCover
               ? (language === 'de' ? `Cover · 1 / ${totalItems}` : language === 'en' ? `Cover · 1 / ${totalItems}` : `Fedőlap · 1 / ${totalItems}`)
               : f('{current} / {total} oldal', { current: currentIndex + 1, total: totalItems })}
           </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setCurrentIndex((index) =>
-                Math.min(totalItems - 1, index + 1)
-              )
-            }
-            disabled={
-              currentIndex === totalItems - 1
-            }
-            style={styles.button}
-            aria-label={t('Következő oldal')}
-          >
-            {t('Következő →')}
-          </button>
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
 
-        <div style={styles.viewer} data-memory-content="true">
+        <div
+          style={styles.viewer}
+          data-memory-content="true"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {!isCover && loading ? (
             <div style={styles.message}>{t('Oldal betöltése...')}</div>
           ) : isCover ? (
@@ -364,7 +363,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#e2e8f0',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: 8,
     boxSizing: 'border-box',
   },
@@ -401,6 +400,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
+    touchAction: 'pan-y',
   },
   image: {
     display: 'block',
