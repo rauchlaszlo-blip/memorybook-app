@@ -106,7 +106,6 @@ export function InviteSendDialog({
   const hasSavedIdentity = Boolean(savedRecipientName || savedRecipientEmail);
   const identityLocked = isResend && hasSavedIdentity;
   const lockedRecipientLabel = savedRecipientName || savedRecipientEmail || '';
-  const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [recipientName, setRecipientName] = useState(savedRecipientName || '');
   const [inviteLanguageChoice, setInviteLanguageChoice] = useState<InviteLanguageChoice>(
     savedInviteLanguage || 'inherit'
@@ -122,8 +121,12 @@ export function InviteSendDialog({
   );
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const mobileShareAvailable = useMemo(
-    () => typeof navigator.share === 'function' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent),
+  const nativeShareAvailable = useMemo(
+    () => typeof navigator.share === 'function',
+    []
+  );
+  const isMobileDevice = useMemo(
+    () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent),
     []
   );
 
@@ -141,7 +144,6 @@ export function InviteSendDialog({
   };
 
   const send = async (selectedPlatform: SendPlatform) => {
-    setSendMenuOpen(false);
     setSendError(null);
 
     if (selectedPlatform === 'share' && !recipientName.trim()) {
@@ -165,9 +167,9 @@ export function InviteSendDialog({
     if (selectedPlatform === 'email') {
       try {
         const subject = buildInviteTitle(effectiveInviteLanguage, bookTitle);
-        const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
         await onSent(metadata);
-        window.location.href = mailto;
+        window.open(gmailComposeUrl, '_blank', 'noopener,noreferrer');
         onClose();
       } catch (err) {
         console.error(err);
@@ -180,7 +182,7 @@ export function InviteSendDialog({
       return;
     }
 
-    if (!mobileShareAvailable) {
+    if (!nativeShareAvailable) {
       setSendError(t('Ezen az eszközön a rendszer megosztás nem érhető el. Válaszd az E-mail lehetőséget.'));
       return;
     }
@@ -275,32 +277,22 @@ export function InviteSendDialog({
         <div style={styles.actions}>
           <button type="button" onClick={onClose} style={styles.secondaryButton}>{t('Mégse')}</button>
           <div style={styles.sendMenuWrap}>
-            {!mobileShareAvailable && sendMenuOpen && (
-              <div style={styles.sendMenu} role="menu">
-                <button type="button" onClick={() => void send('share')} style={styles.sendMenuButton} role="menuitem">
-                  <strong>{t('Megosztás…')}</strong>
-                  <span style={styles.platformHint}>{t('Messenger, WhatsApp, SMS és más telepített app')}</span>
-                </button>
-                <button type="button" onClick={() => void send('email')} style={styles.sendMenuButton} role="menuitem">
-                  <strong>E-mail</strong>
-                  <span style={styles.platformHint}>{t('Közvetlenül a levelező alkalmazásban')}</span>
-                </button>
-              </div>
-            )}
             <button
               type="button"
-              onClick={() => {
-                if (mobileShareAvailable) {
-                  void send('share');
-                } else {
-                  setSendMenuOpen((open) => !open);
-                }
-              }}
+              onClick={() => void send('share')}
               style={styles.primaryButton}
-              aria-expanded={!mobileShareAvailable && sendMenuOpen}
             >
               {t('Küldés')}
             </button>
+            {!isMobileDevice && (
+              <button
+                type="button"
+                onClick={() => void send('email')}
+                style={styles.secondaryButton}
+              >
+                {t('E-mail')}
+              </button>
+            )}
           </div>
         </div>
       </section>
