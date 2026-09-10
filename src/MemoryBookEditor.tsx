@@ -56,6 +56,8 @@ const CANVAS_WIDTH = 750;
 const CANVAS_HEIGHT = 1064;
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const MAX_IMAGE_INITIAL_DIM = 400;
+const DEFAULT_TEXT_FONT_SIZE = 33;
+const TEXT_KEYBOARD_GAP = 24;
 
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
@@ -436,6 +438,36 @@ export const MemoryBookEditor = forwardRef<
       handlersRef.current.pushToHistory()
     );
 
+    let keyboardAlignmentTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const alignEditingTextAboveKeyboard = () => {
+      const activeObject = canvas.getActiveObject();
+      const visualViewport = window.visualViewport;
+      if (!(activeObject instanceof fabric.IText) || !activeObject.isEditing || !visualViewport) {
+        return;
+      }
+
+      const canvasRect = canvas.upperCanvasEl.getBoundingClientRect();
+      const textBounds = activeObject.getBoundingRect();
+      const visibleScale = canvasRect.width / CANVAS_WIDTH;
+      const textBottom =
+        canvasRect.top + (textBounds.top + textBounds.height) * visibleScale;
+      const targetBottom = visualViewport.offsetTop + visualViewport.height - TEXT_KEYBOARD_GAP;
+
+      window.scrollBy({
+        top: textBottom - targetBottom,
+        behavior: 'smooth',
+      });
+    };
+
+    const scheduleKeyboardAlignment = () => {
+      if (keyboardAlignmentTimer) clearTimeout(keyboardAlignmentTimer);
+      keyboardAlignmentTimer = setTimeout(alignEditingTextAboveKeyboard, 180);
+    };
+
+    canvas.on('text:editing:entered', scheduleKeyboardAlignment);
+    window.visualViewport?.addEventListener('resize', scheduleKeyboardAlignment);
+
     const configureTextObject = (object: fabric.FabricObject) => {
       if (!(object instanceof fabric.IText)) return;
 
@@ -522,6 +554,8 @@ export const MemoryBookEditor = forwardRef<
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
+      if (keyboardAlignmentTimer) clearTimeout(keyboardAlignmentTimer);
+      window.visualViewport?.removeEventListener('resize', scheduleKeyboardAlignment);
 
       canvas.dispose();
       fabricRef.current = null;
@@ -697,10 +731,10 @@ export const MemoryBookEditor = forwardRef<
     if (!canvas) return;
 
     const text = new fabric.IText(copy.textPlaceholder, {
-      left: CANVAS_WIDTH / 2 - 140,
+      left: CANVAS_WIDTH / 2 - 210,
       top: 150,
       fontFamily: 'sans-serif',
-      fontSize: 22,
+      fontSize: DEFAULT_TEXT_FONT_SIZE,
       fill: '#1F2937',
       editable: true,
       borderColor: '#2563eb',
@@ -1071,4 +1105,3 @@ export const MemoryBookEditor = forwardRef<
 });
 
 MemoryBookEditor.displayName = 'MemoryBookEditor';
-
