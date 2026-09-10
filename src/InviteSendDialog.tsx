@@ -275,7 +275,7 @@ export function InviteSendDialog({
         <div style={styles.actions}>
           <button type="button" onClick={onClose} style={styles.secondaryButton}>{t('Mégse')}</button>
           <div style={styles.sendMenuWrap}>
-            {sendMenuOpen && (
+            {!nativeShareAvailable && sendMenuOpen && (
               <div style={styles.sendMenu} role="menu">
                 <button type="button" onClick={() => void send('share')} style={styles.sendMenuButton} role="menuitem">
                   <strong>{t('Megosztás…')}</strong>
@@ -289,9 +289,15 @@ export function InviteSendDialog({
             )}
             <button
               type="button"
-              onClick={() => setSendMenuOpen((open) => !open)}
+              onClick={() => {
+                if (nativeShareAvailable) {
+                  void send('share');
+                } else {
+                  setSendMenuOpen((open) => !open);
+                }
+              }}
               style={styles.primaryButton}
-              aria-expanded={sendMenuOpen}
+              aria-expanded={!nativeShareAvailable && sendMenuOpen}
             >
               {t('Küldés')}
             </button>
