@@ -122,8 +122,8 @@ export function InviteSendDialog({
   );
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const nativeShareAvailable = useMemo(
-    () => typeof navigator.share === 'function',
+  const mobileShareAvailable = useMemo(
+    () => typeof navigator.share === 'function' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent),
     []
   );
 
@@ -180,7 +180,7 @@ export function InviteSendDialog({
       return;
     }
 
-    if (!nativeShareAvailable) {
+    if (!mobileShareAvailable) {
       setSendError(t('Ezen az eszközön a rendszer megosztás nem érhető el. Válaszd az E-mail lehetőséget.'));
       return;
     }
@@ -275,7 +275,7 @@ export function InviteSendDialog({
         <div style={styles.actions}>
           <button type="button" onClick={onClose} style={styles.secondaryButton}>{t('Mégse')}</button>
           <div style={styles.sendMenuWrap}>
-            {!nativeShareAvailable && sendMenuOpen && (
+            {!mobileShareAvailable && sendMenuOpen && (
               <div style={styles.sendMenu} role="menu">
                 <button type="button" onClick={() => void send('share')} style={styles.sendMenuButton} role="menuitem">
                   <strong>{t('Megosztás…')}</strong>
@@ -290,14 +290,14 @@ export function InviteSendDialog({
             <button
               type="button"
               onClick={() => {
-                if (nativeShareAvailable) {
+                if (mobileShareAvailable) {
                   void send('share');
                 } else {
                   setSendMenuOpen((open) => !open);
                 }
               }}
               style={styles.primaryButton}
-              aria-expanded={!nativeShareAvailable && sendMenuOpen}
+              aria-expanded={!mobileShareAvailable && sendMenuOpen}
             >
               {t('Küldés')}
             </button>
