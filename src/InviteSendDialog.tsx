@@ -109,7 +109,6 @@ export function InviteSendDialog({
   const lockedRecipientLabel = savedRecipientName || savedRecipientEmail || '';
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [recipientName, setRecipientName] = useState(savedRecipientName || '');
-  const [email, setEmail] = useState(savedRecipientEmail || '');
   const [inviteLanguageChoice, setInviteLanguageChoice] = useState<InviteLanguageChoice>(
     savedInviteLanguage || 'inherit'
   );
@@ -151,14 +150,9 @@ export function InviteSendDialog({
       setSendError(t('Megosztásnál add meg a címzett nevét, hogy az emlék később is azonosítható legyen.'));
       return;
     }
-    if (selectedPlatform === 'email' && !email.trim()) {
-      setSendError(t('E-mail küldésnél add meg a címzett e-mail címét.'));
-      return;
-    }
-
     const metadata = {
       recipientName: recipientName.trim(),
-      recipientEmail: email.trim(),
+      recipientEmail: '',
       deliveryMethod: selectedPlatform,
       inviteLanguage: inviteLanguageChoice === 'inherit' ? null : inviteLanguageChoice,
     } as const;
@@ -173,7 +167,7 @@ export function InviteSendDialog({
     if (selectedPlatform === 'email') {
       try {
         const subject = buildInviteTitle(effectiveInviteLanguage, bookTitle);
-        const mailto = `mailto:${encodeURIComponent(email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
         await onSent(metadata);
         window.location.href = mailto;
         onClose();
@@ -255,21 +249,9 @@ export function InviteSendDialog({
           <input
             value={recipientName}
             onChange={(event) => updateRecipientName(event.target.value)}
-            placeholder={t('pl. Gertrúd')}
+            placeholder={t('pl. Virág')}
             style={styles.inlineInput}
             maxLength={120}
-            readOnly={identityLocked}
-          />
-        </label>
-
-        <label style={styles.label}>
-          {t('E-mail cím')} {t('(az E-mail küldéshez)')}
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="nev@example.com"
-            style={styles.input}
             readOnly={identityLocked}
           />
         </label>
