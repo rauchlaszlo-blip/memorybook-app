@@ -152,7 +152,7 @@ export const MemoryBookEditor = forwardRef<
   const [isErasing, setIsErasing] = useState(false);
   const [brushColor, setBrushColor] = useState('#1F2937');
   const [brushWidth, setBrushWidth] = useState(5);
-  const [brushTool, setBrushTool] = useState<'pencil' | 'marker' | 'brush'>('pencil');
+  const [brushTool, setBrushTool] = useState<'pen' | 'pencil' | 'brush'>('pen');
   const [saveStatus, setSaveStatus] = useState<
     'saved' | 'saving' | 'unsaved' | 'conflict'
   >('saved');
@@ -854,11 +854,24 @@ export const MemoryBookEditor = forwardRef<
     canvas.isDrawingMode = isDrawing || isErasing;
 
     if (canvas.freeDrawingBrush) {
-      const toolWidthMultiplier = brushTool === 'marker' ? 1.8 : brushTool === 'brush' ? 3 : 1;
-      canvas.freeDrawingBrush.color = isErasing ? '#FFFFFF' : brushColor;
+      const profile = brushTool === 'pen'
+        ? { widthMultiplier: 1.15, alpha: 1 }
+        : brushTool === 'pencil'
+          ? { widthMultiplier: 0.55, alpha: 0.62 }
+          : { widthMultiplier: 2.6, alpha: 0.72 };
+      const selectedColor = brushColor.startsWith('#') && brushColor.length === 7
+        ? (() => {
+            const red = parseInt(brushColor.slice(1, 3), 16);
+            const green = parseInt(brushColor.slice(3, 5), 16);
+            const blue = parseInt(brushColor.slice(5, 7), 16);
+            return 'rgba(' + red + ', ' + green + ', ' + blue + ', ' + profile.alpha + ')';
+          })()
+        : brushColor;
+      canvas.freeDrawingBrush.color = isErasing ? '#FFFFFF' : selectedColor;
       canvas.freeDrawingBrush.width = isErasing
         ? Math.max(brushWidth * 2, 12)
-        : Math.max(1, Math.round(brushWidth * toolWidthMultiplier));
+        : Math.max(1, Math.round(brushWidth * profile.widthMultiplier));
+      (canvas.freeDrawingBrush as any).strokeLineCap = brushTool === 'brush' ? 'round' : 'butt';
     }
   }, [isDrawing, isErasing, brushColor, brushWidth, brushTool]);
 
@@ -1265,8 +1278,8 @@ export const MemoryBookEditor = forwardRef<
             <div className="memorybook-draw-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
                 {([
-                  ['pencil', language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza', '✎'],
-                  ['marker', language === 'de' ? 'Filzstift' : language === 'en' ? 'Marker' : 'Filctoll', '▰'],
+                  ['pen', language === 'de' ? 'Stift' : language === 'en' ? 'Pen' : 'Toll', '🖊️'],
+                  ['pencil', language === 'de' ? 'Bleistift' : language === 'en' ? 'Pencil' : 'Ceruza', '✏️'],
                   ['brush', language === 'de' ? 'Pinsel' : language === 'en' ? 'Brush' : 'Ecset', '🖌️'],
                 ] as const).map(([tool, label, icon]) => (
                   <button
