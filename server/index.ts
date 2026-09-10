@@ -1913,11 +1913,6 @@ app.post('/api/my/books/:bookId/pages/:pageId/invite/sent', async (req, res) => 
     res.status(400).json({ error: 'INVITE_RECIPIENT_NAME_REQUIRED' });
     return;
   }
-  if (deliveryMethod === 'email' && !recipientEmail) {
-    res.status(400).json({ error: 'INVITE_RECIPIENT_EMAIL_REQUIRED' });
-    return;
-  }
-
   try {
     const session = await getSession(req);
     if (!session) {
