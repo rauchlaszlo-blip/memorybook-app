@@ -197,6 +197,7 @@ const translations: Record<string, Translation> = {
   '1. Küldési mód': { en: '1. Delivery method', de: '1. Versandart' },
   'Megosztás…': { en: 'Share…', de: 'Teilen…' },
   'Messenger, WhatsApp, SMS, e-mail és más telepített app': { en: 'Messenger, WhatsApp, SMS, email and other installed apps', de: 'Messenger, WhatsApp, SMS, E-Mail und andere installierte Apps' },
+  'Messenger, WhatsApp, SMS és más telepített app': { en: 'Messenger, WhatsApp, SMS and other installed apps', de: 'Messenger, WhatsApp, SMS und andere installierte Apps' },
   'Közvetlenül a levelező alkalmazásban': { en: 'Directly in your email app', de: 'Direkt in der E-Mail-App' },
   '2. Meghívó nyelve': { en: '2. Invitation language', de: '2. Sprache der Einladung' },
   'Nyelv': { en: 'Language', de: 'Sprache' },
@@ -208,12 +209,17 @@ const translations: Record<string, Translation> = {
   '(opcionális)': { en: '(optional)', de: '(optional)' },
   'pl. Rubinszky Gertrúd': { en: 'e.g. Gertrud Rubinszky', de: 'z. B. Gertrud Rubinszky' },
   'E-mail cím (kötelező)': { en: 'Email address (required)', de: 'E-Mail-Adresse (erforderlich)' },
+  'E-mail cím': { en: 'Email address', de: 'E-Mail-Adresse' },
+  '(az E-mail küldéshez)': { en: '(for sending by email)', de: '(für den E-Mail-Versand)' },
   'Meghívó üzenet': { en: 'Invitation message', de: 'Einladungstext' },
   'A címzett az aktív 14 napos időablak alatt ehhez az oldalhoz rögzült. Lejárat után az oldal új címzettnek adható.': { en: 'During the active 14-day window, this page is assigned to this recipient. After expiry, the page can be assigned to someone new.', de: 'Während des aktiven 14-Tage-Zeitraums ist diese Seite diesem Empfänger zugeordnet. Nach Ablauf kann die Seite einem neuen Empfänger zugewiesen werden.' },
   'A „Nekem is kell emlékkönyv” rész a meghívóban marad, így a címzett saját MemoryBookot is indíthat.': { en: 'The “Create your own MemoryBook” section remains in the invitation so the recipient can start their own MemoryBook.', de: 'Der Abschnitt „Eigenes MemoryBook erstellen“ bleibt in der Einladung, damit der Empfänger ein eigenes MemoryBook starten kann.' },
   'Mégse': { en: 'Cancel', de: 'Abbrechen' },
   'E-mail megnyitása': { en: 'Open email', de: 'E-Mail öffnen' },
   'Címzett és app kiválasztása': { en: 'Choose recipient and app', de: 'Empfänger und App auswählen' },
+  '1. Meghívó nyelve': { en: '1. Invitation language', de: '1. Sprache der Einladung' },
+  '2. Személyre szabás': { en: '2. Personalization', de: '2. Personalisierung' },
+  'Küldés': { en: 'Send', de: 'Senden' },
 };
 
 export function ownerText(language: AppLanguage, key: string): string {
