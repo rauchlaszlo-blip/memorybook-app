@@ -780,6 +780,23 @@ export const MemoryBookEditor = forwardRef<
     canvas.requestRenderAll();
   };
 
+  const handleSelectMode = () => {
+    const canvas = fabricRef.current;
+    setIsDrawing(false);
+    setIsErasing(false);
+
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+
+    const activeObject = canvas.getActiveObject();
+    if (activeObject instanceof fabric.IText && activeObject.isEditing) {
+      activeObject.exitEditing();
+      canvas.setActiveObject(activeObject);
+    }
+
+    canvas.requestRenderAll();
+  };
+
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -987,6 +1004,18 @@ export const MemoryBookEditor = forwardRef<
               onChange={handleImageUpload}
             />
           </label>
+
+          <button
+            onClick={handleSelectMode}
+            aria-pressed={!isDrawing && !isErasing}
+            style={
+              !isDrawing && !isErasing
+                ? { background: '#dbeafe', border: '2px solid #2563eb' }
+                : undefined
+            }
+          >
+            {copy.select}
+          </button>
 
           <button
             onClick={() => {
