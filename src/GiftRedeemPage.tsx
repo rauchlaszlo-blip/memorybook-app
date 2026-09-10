@@ -10,8 +10,6 @@ type GiftInfo = {
   bookType: 'standard' | 'event' | string;
   includedPages: number;
   claimStatus: 'available' | 'claimed' | 'redeemed' | string;
-  recipientName?: string | null;
-  recipientEmailMasked?: string | null;
 };
 
 export function GiftRedeemPage({ token }: { token: string }) {
@@ -52,9 +50,7 @@ export function GiftRedeemPage({ token }: { token: string }) {
     } catch (err: any) {
       console.error(err);
       setError(
-        err?.message === 'GIFT_RECIPIENT_ACCOUNT_MISMATCH'
-          ? t('Ezt az ajándékot másik e-mail címhez rendelték. A megadott Google-fiókkal lépj be.')
-          : err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED'
+        err?.message === 'GIFT_ENTITLEMENT_ALREADY_CLAIMED'
             ? t('Ezt az ajándékot már másik fiók beváltotta.')
             : t('Az ajándék beváltása nem sikerült.')
       );
@@ -76,8 +72,6 @@ export function GiftRedeemPage({ token }: { token: string }) {
             <p style={styles.text}>
               {info.bookType === 'event' ? t('Rendezvény-vendégkönyv') : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}
             </p>
-            {info.recipientName && <p style={styles.text}><strong>{f('Ajándékozott: {name}', { name: info.recipientName })}</strong></p>}
-            {info.recipientEmailMasked && <p style={styles.text}>{f('A megadott Google-fiókkal váltható be: {email}', { email: info.recipientEmailMasked })}</p>}
             {info.claimStatus === 'available' ? (
               loggedIn ? (
                 <button type="button" onClick={redeem} disabled={working} style={styles.primaryButton}>{working ? t('Beváltás...') : t('Ajándék beváltása')}</button>
