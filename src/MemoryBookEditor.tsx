@@ -1211,6 +1211,11 @@ export const MemoryBookEditor = forwardRef<
           min-width: 0 !important;
           box-sizing: border-box;
         }
+        .memorybook-eraser-menu {
+          width: 220px;
+          min-width: 0 !important;
+          box-sizing: border-box;
+        }
         .memorybook-draw-tool {
           flex: 1 1 0;
           min-width: 0 !important;
@@ -1228,6 +1233,13 @@ export const MemoryBookEditor = forwardRef<
             max-width: 360px;
             max-height: calc(100vh - 210px);
             overflow-y: auto;
+          }
+          .memorybook-editor-toolbar .memorybook-eraser-menu {
+            position: fixed !important;
+            left: 50% !important;
+            top: 190px !important;
+            transform: translateX(-50%) !important;
+            width: min(220px, calc(100vw - 24px)) !important;
           }
         }
       `}</style>
@@ -1377,9 +1389,8 @@ export const MemoryBookEditor = forwardRef<
           <details
             style={{ position: 'relative' }}
             onToggle={(event) => {
-              const enabled = event.currentTarget.open;
-              setIsErasing(enabled);
-              if (enabled) {
+              if (event.currentTarget.open) {
+                setIsErasing(true);
                 setIsDrawing(false);
                 fabricRef.current?.discardActiveObject();
                 fabricRef.current?.requestRenderAll();
@@ -1389,7 +1400,7 @@ export const MemoryBookEditor = forwardRef<
             <summary style={{ ...editorStyles.toolSummary, background: isErasing ? '#dbeafe' : '#fff' }}>
               {copy.eraser}
             </summary>
-            <div className="memorybook-draw-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
+            <div className="memorybook-eraser-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
               <label style={{ ...editorStyles.toolMenuItem, display: 'grid', gap: 7 }}>
                 <span>{language === 'de' ? 'Radierergröße' : language === 'en' ? 'Eraser size' : 'Radír mérete'}</span>
                 <input
@@ -1402,12 +1413,6 @@ export const MemoryBookEditor = forwardRef<
                   style={{ width: '100%', minWidth: 0 }}
                 />
               </label>
-              <button
-                type="button"
-                onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
-              >
-                {copy.stopEraser}
-              </button>
             </div>
           </details>
           <button onClick={handleSelectMode} aria-pressed={!isDrawing && !isErasing}>{copy.select}</button>
