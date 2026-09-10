@@ -602,13 +602,13 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
                     </div>
                   ) : (
                     <div>
-                      {hasInvite && page.inviteExpiresAt && (
+                      {hasInvite && page.inviteExpiresAt && (isInviteExpired(page) || Boolean(page.inviteSentAt && (page.inviteRecipientName || page.inviteRecipientEmail))) && (
                         <div style={styles.inviteMeta}>
                           {isInviteExpired(page)
                             ? t('A meghívó lejárt. Az oldal új címzettnek kiadható.')
-                            : f('A meghívó 14 napig használható. Lejár: {date}', { date: formatInviteExpiry(page.inviteExpiresAt, uiLanguage) })}
+                            : null}
                           {!isInviteExpired(page) && page.inviteSentAt && (page.inviteRecipientName || page.inviteRecipientEmail) && (
-                            <><br /><strong>{f('Aktív címzett: {name}', { name: page.inviteRecipientName || page.inviteRecipientEmail || '' })}</strong></>
+                            <strong>{f('Aktív címzett: {name}', { name: page.inviteRecipientName || page.inviteRecipientEmail || '' })}</strong>
                           )}
                         </div>
                       )}
@@ -648,11 +648,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           bookTitle={bookTitle}
           pageNumber={inviteComposerPage.pageNumber}
           pageUrl={`${origin}/p/${inviteComposerPage.inviteToken}`}
-          ctaUrl={`${origin}/nekem-is-kell`}
           bookLanguage={bookLanguage}
           savedInviteLanguage={inviteComposerPage.inviteLanguage || null}
           isResend={Boolean(inviteComposerPage.inviteSentAt)}
-          expiresAt={inviteComposerPage.inviteExpiresAt || null}
           savedRecipientName={inviteComposerPage.inviteRecipientName || null}
           savedRecipientEmail={inviteComposerPage.inviteRecipientEmail || null}
           savedDeliveryMethod={

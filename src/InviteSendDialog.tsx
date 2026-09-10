@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { AppLanguage } from './i18n';
-import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
+import { ownerFormat, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 type InviteSendDialogProps = {
   bookTitle: string;
   pageNumber: number;
   pageUrl: string;
-  ctaUrl: string;
   bookLanguage: AppLanguage;
   savedInviteLanguage?: AppLanguage | null;
   isResend?: boolean;
-  expiresAt?: string | null;
   savedRecipientName?: string | null;
   savedRecipientEmail?: string | null;
   savedDeliveryMethod?: 'share' | 'email' | null;
@@ -47,7 +45,6 @@ function buildInviteTitle(language: AppLanguage, bookTitle: string) {
 function buildMessage(
   bookTitle: string,
   pageUrl: string,
-  ctaUrl: string,
   language: AppLanguage,
   recipientName = ''
 ) {
@@ -62,8 +59,6 @@ function buildMessage(
       '',
       'Dieser Link gehört nur zu deiner Seite. Wenn du fertig bist, reiche sie unten auf der Seite ein.',
       'Die Einladung ist 14 Tage gültig.',
-      '',
-      `👉 Eigenes MemoryBook erstellen: ${ctaUrl}`,
     ].join('\n');
   }
 
@@ -78,8 +73,6 @@ function buildMessage(
       '',
       'This link belongs only to your page. When you are finished, submit it at the bottom of the page.',
       'The invitation is valid for 14 days.',
-      '',
-      `👉 Create your own MemoryBook: ${ctaUrl}`,
     ].join('\n');
   }
 
@@ -93,8 +86,6 @@ function buildMessage(
     '',
     'A link csak a te oldaladhoz tartozik. Ha elkészültél, az oldal alján küldd be.',
     'A meghívó 14 napig használható.',
-    '',
-    `👉 Nekem is kell emlékkönyv: ${ctaUrl}`,
   ].join('\n');
 }
 
@@ -102,11 +93,9 @@ export function InviteSendDialog({
   bookTitle,
   pageNumber,
   pageUrl,
-  ctaUrl,
   bookLanguage,
   savedInviteLanguage = null,
   isResend = false,
-  expiresAt = null,
   savedRecipientName = null,
   savedRecipientEmail = null,
   savedDeliveryMethod = null,
@@ -133,7 +122,6 @@ export function InviteSendDialog({
     buildMessage(
       bookTitle,
       pageUrl,
-      ctaUrl,
       savedInviteLanguage || bookLanguage,
       savedRecipientName || ''
     )
@@ -155,7 +143,7 @@ export function InviteSendDialog({
   const updateInviteLanguage = (choice: InviteLanguageChoice) => {
     setInviteLanguageChoice(choice);
     const language = choice === 'inherit' ? bookLanguage : choice;
-    setMessage(buildMessage(bookTitle, pageUrl, ctaUrl, language, recipientName));
+    setMessage(buildMessage(bookTitle, pageUrl, language, recipientName));
   };
 
   const send = async () => {
@@ -249,10 +237,6 @@ export function InviteSendDialog({
               : t('Ezt a meghívót már kiküldted. Az újraküldést ugyanannak a személynek szánjuk.')}
           </div>
         )}
-        <div style={styles.expiryNote}>
-          {f('A meghívó 14 napig használható{expiry}.', { expiry: expiresAt ? f(', lejár: {date}', { date: new Date(expiresAt).toLocaleDateString(ownerLocale(uiLanguage)) }) : '' })}
-        </div>
-
         <div style={styles.stepLabel}>{t('1. Küldési mód')}</div>
         <div style={styles.platformGrid}>
           <button
@@ -334,10 +318,6 @@ export function InviteSendDialog({
             {t('A címzett az aktív 14 napos időablak alatt ehhez az oldalhoz rögzült. Lejárat után az oldal új címzettnek adható.')}
           </div>
         )}
-        <div style={styles.note}>
-          {t('A „Nekem is kell emlékkönyv” rész a meghívóban marad, így a címzett saját MemoryBookot is indíthat.')}
-        </div>
-
         {sendError && <div style={styles.error}>{sendError}</div>}
 
         <div style={styles.actions}>
