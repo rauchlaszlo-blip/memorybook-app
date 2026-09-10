@@ -57,6 +57,7 @@ const CANVAS_HEIGHT = 1064;
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
+const DEFAULT_TEXT_WIDTH = 420;
 const TEXT_KEYBOARD_GAP = 24;
 
 export const MemoryBookEditor = forwardRef<
@@ -454,8 +455,9 @@ export const MemoryBookEditor = forwardRef<
         canvasRect.top + (textBounds.top + textBounds.height) * visibleScale;
       const targetBottom = visualViewport.offsetTop + visualViewport.height - TEXT_KEYBOARD_GAP;
 
-      window.scrollBy({
-        top: textBottom - targetBottom,
+      window.scrollTo({
+        left: 0,
+        top: window.scrollY + textBottom - targetBottom,
         behavior: 'smooth',
       });
     };
@@ -730,9 +732,16 @@ export const MemoryBookEditor = forwardRef<
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    const text = new fabric.IText(copy.textPlaceholder, {
-      left: CANVAS_WIDTH / 2 - 210,
+    // A szöveg beszúrása mindig kijelölési módra vált. Így a korábban
+    // használt rajz vagy radír nem aktiválódik újra a szerkesztés végén.
+    setIsDrawing(false);
+    setIsErasing(false);
+    canvas.isDrawingMode = false;
+
+    const text = new fabric.Textbox(copy.textPlaceholder, {
+      left: (CANVAS_WIDTH - DEFAULT_TEXT_WIDTH) / 2,
       top: 150,
+      width: DEFAULT_TEXT_WIDTH,
       fontFamily: 'sans-serif',
       fontSize: DEFAULT_TEXT_FONT_SIZE,
       fill: '#1F2937',
@@ -916,6 +925,9 @@ export const MemoryBookEditor = forwardRef<
     <div
       style={{
         minHeight: '100vh',
+        width: '100%',
+        maxWidth: '100vw',
+        overflowX: 'hidden',
         background: '#f1f5f9',
         padding: 16,
         boxSizing: 'border-box',
@@ -1074,6 +1086,7 @@ export const MemoryBookEditor = forwardRef<
           width: '100%',
           maxWidth: CANVAS_WIDTH,
           margin: '0 auto',
+          overflowX: 'hidden',
         }}
       >
         <div
