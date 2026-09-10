@@ -222,6 +222,7 @@ const translations: Record<string, Translation> = {
   'Küldés': { en: 'Send', de: 'Senden' },
   'Megszólítás': { en: 'Greeting', de: 'Anrede' },
   'pl. Gertrúd': { en: 'e.g. Gertrud', de: 'z. B. Gertrud' },
+  'pl. Virág': { en: 'e.g. Virag', de: 'z. B. Virag' },
   'Automatikus – {language}': { en: 'Automatic – {language}', de: 'Automatisch – {language}' },
 };
 
