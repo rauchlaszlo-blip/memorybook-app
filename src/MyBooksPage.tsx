@@ -148,11 +148,11 @@ export function MyBooksPage() {
             <div style={styles.brand}>MemoryBook</div>
             <div style={styles.titleRow}>
               <h1 style={styles.title}>{t('Saját könyveim')}</h1>
-              <a href="/purchase" style={styles.purchaseLink}>{t('Új könyv vásárlása')}</a>
             </div>
           </div>
           <div style={styles.headerActions}>
-            <LanguageSwitcher />
+            <a href="/purchase" style={styles.headerPurchaseLink}>{t('Új könyv vásárlása')}</a>
+            <LanguageSwitcher compact />
             <button type="button" onClick={signOut} style={styles.secondaryButton}>{t('Kijelentkezés')}</button>
             <NotificationMenu />
           </div>
@@ -244,11 +244,12 @@ const styles: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f1f5f9', padding: '24px 18px 48px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
   container: { width: '100%', maxWidth: 980, margin: '0 auto' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' },
-  headerActions: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  headerActions: { width: '100%', display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 6 },
   brand: { fontSize: 13, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#64748b' },
   titleRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   title: { margin: '6px 0 4px', fontSize: 32, color: '#0f172a' },
-  secondaryButton: { minHeight: 44, padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, cursor: 'pointer' },
+  headerPurchaseLink: { minHeight: 40, padding: '6px 8px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap' },
+  secondaryButton: { minHeight: 40, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' },
   createCard: { marginBottom: 22, padding: 20, background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
   createTitle: { margin: '0 0 5px', color: '#0f172a', fontSize: 21 },
   createText: { margin: '0 0 16px', color: '#64748b', lineHeight: 1.5 },
