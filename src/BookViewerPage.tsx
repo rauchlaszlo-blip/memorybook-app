@@ -18,6 +18,13 @@ type PageData = {
   inviteRecipientEmail?: string | null;
   inviteDeliveryMethod?: string | null;
   submittedAt?: string | null;
+  eventGuestData?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    festivalId?: string;
+    ticketId?: string;
+  } | null;
   ownerNote?: string | null;
   canvasData?: {
     type?: string;
@@ -57,6 +64,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const isCover = currentIndex === 0;
   const totalItems = pageIds.length + 1;
   const currentPageId = isCover ? undefined : pageIds[currentIndex - 1];
+  const guestData = page?.eventGuestData || {};
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     suppressCoverClickRef.current = false;
@@ -322,24 +330,40 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             )}
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
             <h2 style={styles.identityTitle}>
-              {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
+              {guestData.name || page.inviteRecipientName || guestData.email || page.inviteRecipientEmail || t('Nincs azonosítva')}
             </h2>
             <div style={styles.identityGrid}>
+              {guestData.email && guestData.name && (
+                <div><span style={styles.identityLabel}>E-mail</span>{guestData.email}</div>
+              )}
+              {guestData.phone && (
+                <div><span style={styles.identityLabel}>{t('Telefonszám')}</span>{guestData.phone}</div>
+              )}
+              {guestData.festivalId && (
+                <div><span style={styles.identityLabel}>{t('Fesztiválazonosító')}</span>{guestData.festivalId}</div>
+              )}
+              {guestData.ticketId && (
+                <div><span style={styles.identityLabel}>{t('Belépőjegy-azonosító')}</span>{guestData.ticketId}</div>
+              )}
               {page.inviteRecipientName && page.inviteRecipientEmail && (
                 <div><span style={styles.identityLabel}>E-mail</span>{page.inviteRecipientEmail}</div>
               )}
-              <div>
-                <span style={styles.identityLabel}>{t('Küldési mód')}</span>
-                {page.inviteDeliveryMethod === 'email'
-                  ? 'E-mail'
-                  : page.inviteDeliveryMethod === 'share'
-                    ? t('Megosztás')
-                    : t('Nincs rögzítve')}
-              </div>
-              <div>
-                <span style={styles.identityLabel}>{t('Meghívás dátuma')}</span>
-                {formatDate(page.inviteSentAt, language)}
-              </div>
+              {bookType !== 'event' && (
+                <>
+                  <div>
+                    <span style={styles.identityLabel}>{t('Küldési mód')}</span>
+                    {page.inviteDeliveryMethod === 'email'
+                      ? 'E-mail'
+                      : page.inviteDeliveryMethod === 'share'
+                        ? t('Megosztás')
+                        : t('Nincs rögzítve')}
+                  </div>
+                  <div>
+                    <span style={styles.identityLabel}>{t('Meghívás dátuma')}</span>
+                    {formatDate(page.inviteSentAt, language)}
+                  </div>
+                </>
+              )}
               <div>
                 <span style={styles.identityLabel}>{t('Beküldés dátuma')}</span>
                 {formatDate(page.submittedAt, language)}
