@@ -100,7 +100,7 @@ const translations: Record<string, Translation> = {
   'Belépés / regisztráció': { en: 'Sign in / register', de: 'Anmelden / registrieren' },
   'Könyv típusa': { en: 'Book type', de: 'Buchtyp' },
   'Normál emlékkönyv – 30 oldal': { en: 'Standard memory book – 30 pages', de: 'Normales Erinnerungsbuch – 30 Seiten' },
-  'Rendezvény-vendégkönyv': { en: 'Event guestbook', de: 'Veranstaltungs-Gästebuch' },
+  'QR-kódos vendégkönyv': { en: 'QR code guestbook', de: 'QR-Code-Gästebuch' },
   'Dedikálás – 30 oldal': { en: 'Dedication book – 30 pages', de: 'Widmungsbuch – 30 Seiten' },
   'Fizetési mód': { en: 'Payment method', de: 'Zahlungsart' },
   'Vásárló azonosítása': { en: 'Buyer information', de: 'Angaben zum Käufer' },

@@ -194,7 +194,7 @@ export function MyBooksPage() {
                     {availableEntitlements.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.bookType === 'event'
-                          ? t('Rendezvény-vendégkönyv')
+                          ? t('QR-kódos vendégkönyv')
                           : item.bookType === 'dedication'
                             ? f('Dedikálás – {count} oldal', { count: item.includedPages })
                             : f('Normál emlékkönyv – {count} oldal', { count: item.includedPages })}
