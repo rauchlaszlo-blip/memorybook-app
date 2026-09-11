@@ -498,7 +498,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
           <div style={styles.eventActions}>
             <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>{t('QR-kód megnyitása')}</a>
-            <a href={`/organizer/${encodeURIComponent(bookId)}/contributions`} style={styles.eventSecondaryButton}>{t('Beérkezett bejegyzések')}</a>
+            <a href={`/book/${encodeURIComponent(bookId)}/view`} style={styles.eventSecondaryButton}>{t('Könyv megnyitása')}</a>
           </div>
         </section>
       )}
