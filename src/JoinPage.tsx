@@ -75,6 +75,8 @@ export function JoinPage({ token }: JoinPageProps) {
       );
       const sessionData = await sessionResponse.json().catch(() => null);
       if (!sessionResponse.ok) {
+        if (sessionData?.error === 'EVENT_GUESTBOOK_CLOSED') throw new Error('EVENT_CLOSED');
+        if (sessionResponse.status === 429) throw new Error('RATE_LIMITED');
         if (sessionData?.error === 'DEVICE_CONTRIBUTION_LIMIT_REACHED') {
           throw new Error('DEVICE_LIMIT_REACHED');
         }
@@ -95,7 +97,11 @@ export function JoinPage({ token }: JoinPageProps) {
           ? t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.')
           : err instanceof Error && err.message === 'INVALID_EMAIL'
             ? t('Adj meg érvényes e-mail-címet.')
-            : t('A rajzlapot nem sikerült megnyitni. Próbáld újra.')
+            : err instanceof Error && err.message === 'EVENT_CLOSED'
+              ? t('Ez a vendégkönyv már lezárult.')
+              : err instanceof Error && err.message === 'RATE_LIMITED'
+                ? t('Túl sok kérés érkezett. Várj egy percet, majd próbáld újra.')
+                : t('A rajzlapot nem sikerült megnyitni. Próbáld újra.')
       );
       setStartingEditor(false);
       return false;
@@ -107,7 +113,12 @@ export function JoinPage({ token }: JoinPageProps) {
       let redirectingToEditor = false;
       try {
         const response = await fetch(`${API_BASE}/api/invites/${encodeURIComponent(token)}`);
-        if (!response.ok) throw new Error('INVITE_LOAD_FAILED');
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          if (data?.error === 'EVENT_GUESTBOOK_CLOSED') throw new Error('EVENT_CLOSED');
+          if (response.status === 429) throw new Error('RATE_LIMITED');
+          throw new Error('INVITE_LOAD_FAILED');
+        }
         const data: InviteData = await response.json();
         setInvite(data);
 
@@ -123,7 +134,11 @@ export function JoinPage({ token }: JoinPageProps) {
         setError(
           err instanceof Error && err.message === 'DEVICE_LIMIT_REACHED'
             ? t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.')
-            : t('Ez a vendégkönyv-meghívó nem érhető el.')
+            : err instanceof Error && err.message === 'EVENT_CLOSED'
+              ? t('Ez a vendégkönyv már lezárult.')
+              : err instanceof Error && err.message === 'RATE_LIMITED'
+                ? t('Túl sok kérés érkezett. Várj egy percet, majd próbáld újra.')
+                : t('Ez a vendégkönyv-meghívó nem érhető el.')
         );
       } finally {
         if (!redirectingToEditor) setLoading(false);

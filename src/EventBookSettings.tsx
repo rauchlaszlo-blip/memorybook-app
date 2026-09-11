@@ -10,6 +10,8 @@ type Props = { bookId: string };
 type SettingsResponse = {
   deviceLimit: number;
   requiredFields?: RequiredField[];
+  eventIsOpen: boolean;
+  eventClosesAt?: string | null;
 };
 
 type RequiredField = 'name' | 'email' | 'phone' | 'festivalId' | 'ticketId';
@@ -22,11 +24,19 @@ const REQUIRED_FIELD_OPTIONS: Array<{ value: RequiredField; label: string }> = [
   { value: 'ticketId', label: 'Belépőjegy-azonosító' },
 ];
 
+function toLocalDateTimeValue(value: string): string {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export function EventBookSettings({ bookId }: Props) {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const [deviceLimit, setDeviceLimit] = useState(1);
   const [requiredFields, setRequiredFields] = useState<RequiredField[]>([]);
+  const [eventIsOpen, setEventIsOpen] = useState(true);
+  const [eventClosesAt, setEventClosesAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,6 +57,8 @@ export function EventBookSettings({ bookId }: Props) {
         const data: SettingsResponse = await response.json();
         setDeviceLimit(data.deviceLimit || 1);
         setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
+        setEventIsOpen(data.eventIsOpen !== false);
+        setEventClosesAt(data.eventClosesAt ? toLocalDateTimeValue(data.eventClosesAt) : '');
       } catch (err) {
         console.error(err);
         setError(t('A rendezvény beállításait nem sikerült betölteni.'));
@@ -70,7 +82,12 @@ export function EventBookSettings({ bookId }: Props) {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceLimit: nextLimit, requiredFields }),
+          body: JSON.stringify({
+            deviceLimit: nextLimit,
+            requiredFields,
+            eventIsOpen,
+            eventClosesAt: eventClosesAt ? new Date(eventClosesAt).toISOString() : null,
+          }),
         }
       );
       if (response.status === 401) {
@@ -81,6 +98,8 @@ export function EventBookSettings({ bookId }: Props) {
       if (!response.ok || !data) throw new Error('SAVE_FAILED');
       setDeviceLimit(data.deviceLimit);
       setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
+      setEventIsOpen(data.eventIsOpen !== false);
+      setEventClosesAt(data.eventClosesAt ? toLocalDateTimeValue(data.eventClosesAt) : '');
       setMessage(t('Beállítás mentve.'));
     } catch (err) {
       console.error(err);
@@ -101,6 +120,27 @@ export function EventBookSettings({ bookId }: Props) {
       </p>
 
       <form onSubmit={save} style={styles.form}>
+        <fieldset style={styles.fieldset}>
+          <legend style={styles.legend}>{t('Vendégkönyv elérhetősége')}</legend>
+          <label style={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={eventIsOpen}
+              onChange={(event) => setEventIsOpen(event.target.checked)}
+            />
+            <span>{t('A vendégkönyv nyitva van')}</span>
+          </label>
+          <label style={{ ...styles.label, display: 'block', marginTop: 10 }}>
+            {t('Automatikus lezárás (opcionális)')}
+            <input
+              type="datetime-local"
+              value={eventClosesAt}
+              onChange={(event) => setEventClosesAt(event.target.value)}
+              style={{ ...styles.input, width: '100%' }}
+            />
+          </label>
+          <div style={styles.fieldHint}>{t('Ha nem adsz meg időpontot, a vendégkönyv addig marad nyitva, amíg kézzel le nem zárod.')}</div>
+        </fieldset>
         <label style={styles.label}>
           {t('Bejegyzések száma egy eszközről')}
           <input

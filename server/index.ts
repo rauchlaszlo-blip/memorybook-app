@@ -1,4 +1,5 @@
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { v2 as cloudinary } from 'cloudinary';
@@ -36,6 +37,7 @@ cloudinary.config({
 });
 
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(
   cors({
@@ -71,6 +73,47 @@ const DEFAULT_BOOK_PAGE_COUNT = 30;
 const PAGE_INVITE_VALID_DAYS = 14;
 const DEMO_BOOK_ID = 'book-12b';
 const postalLookupCache = new Map<string, string>();
+
+type RateLimitEntry = { count: number; resetAt: number };
+const publicRateLimits = new Map<string, RateLimitEntry>();
+
+function publicRateLimit(options: { windowMs: number; max: number; scope: string }) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const clientIp = String(req.ip || req.socket?.remoteAddress || 'unknown');
+    const token = String(req.params?.token || '');
+    const key = `${options.scope}:${clientIp}:${token}`;
+    const current = publicRateLimits.get(key);
+    const entry = !current || current.resetAt <= now
+      ? { count: 0, resetAt: now + options.windowMs }
+      : current;
+    entry.count += 1;
+    publicRateLimits.set(key, entry);
+    res.setHeader('RateLimit-Limit', String(options.max));
+    res.setHeader('RateLimit-Remaining', String(Math.max(0, options.max - entry.count)));
+    res.setHeader('RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
+    if (entry.count > options.max) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((entry.resetAt - now) / 1000))));
+      res.status(429).json({ error: 'RATE_LIMIT_EXCEEDED' });
+      return;
+    }
+    next();
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of publicRateLimits) {
+    if (entry.resetAt <= now) publicRateLimits.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
+
+function isEventBookAvailable(book: { eventIsOpen?: boolean; eventClosesAt?: string | Date | null }): boolean {
+  if (book.eventIsOpen === false) return false;
+  if (!book.eventClosesAt) return true;
+  const closesAt = new Date(book.eventClosesAt).getTime();
+  return Number.isFinite(closesAt) && Date.now() < closesAt;
+}
 
 async function getSession(req: any) {
   if (!auth) return null;
@@ -1711,7 +1754,9 @@ app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
       `SELECT
          event_device_limit AS "deviceLimit",
          event_identity_mode AS "identityMode",
-         event_required_fields AS "requiredFields"
+         event_required_fields AS "requiredFields",
+         event_is_open AS "eventIsOpen",
+         event_closes_at AS "eventClosesAt"
        FROM books
        WHERE id = $1
          AND owner_user_id = $2
@@ -1743,6 +1788,21 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
     return;
   }
   const requiredFields = req.body?.requiredFields;
+  const eventIsOpen = req.body?.eventIsOpen;
+  const rawEventClosesAt = req.body?.eventClosesAt;
+  if (typeof eventIsOpen !== 'boolean') {
+    res.status(400).json({ error: 'INVALID_EVENT_OPEN_STATE' });
+    return;
+  }
+  let eventClosesAt: string | null = null;
+  if (rawEventClosesAt !== null && rawEventClosesAt !== undefined && rawEventClosesAt !== '') {
+    const parsed = new Date(rawEventClosesAt);
+    if (!Number.isFinite(parsed.getTime())) {
+      res.status(400).json({ error: 'INVALID_EVENT_CLOSE_TIME' });
+      return;
+    }
+    eventClosesAt = parsed.toISOString();
+  }
   if (
     !Array.isArray(requiredFields) ||
     requiredFields.some((field) => typeof field !== 'string' || !EVENT_REQUIRED_FIELDS.has(field)) ||
@@ -1763,15 +1823,19 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
       `UPDATE books
        SET event_device_limit = $1,
            event_required_fields = $2::jsonb,
+           event_is_open = $3,
+           event_closes_at = $4,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-         AND owner_user_id = $4
+       WHERE id = $5
+         AND owner_user_id = $6
          AND book_type = 'event'
        RETURNING
          event_device_limit AS "deviceLimit",
          event_identity_mode AS "identityMode",
-         event_required_fields AS "requiredFields"`,
-      [deviceLimit, JSON.stringify(requiredFields), req.params.bookId, session.user.id]
+         event_required_fields AS "requiredFields",
+         event_is_open AS "eventIsOpen",
+         event_closes_at AS "eventClosesAt"`,
+      [deviceLimit, JSON.stringify(requiredFields), eventIsOpen, eventClosesAt, req.params.bookId, session.user.id]
     );
 
     if (result.rowCount === 0) {
@@ -2879,7 +2943,7 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-app.get('/api/invites/:token', async (req, res) => {
+app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, scope: 'invite-read' }), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
@@ -2888,7 +2952,9 @@ app.get('/api/invites/:token', async (req, res) => {
          book_type AS "bookType",
          event_device_limit AS "deviceLimit",
          event_identity_mode AS "identityMode",
-         event_required_fields AS "requiredFields"
+         event_required_fields AS "requiredFields",
+         event_is_open AS "eventIsOpen",
+         event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1`,
       [req.params.token]
@@ -2901,6 +2967,11 @@ app.get('/api/invites/:token', async (req, res) => {
 
     if (result.rows[0].bookType !== 'event' && result.rows[0].id !== DEMO_BOOK_ID) {
       res.status(404).json({ error: 'INVITE_NOT_FOUND' });
+      return;
+    }
+
+    if (result.rows[0].bookType === 'event' && !isEventBookAvailable(result.rows[0])) {
+      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
       return;
     }
 
@@ -2918,7 +2989,7 @@ app.get('/api/invites/:token', async (req, res) => {
   }
 });
 
-app.post('/api/invites/:token/page-session', async (req, res) => {
+app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000, max: 10, scope: 'page-session' }), async (req, res) => {
   const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
   const guestData = req.body?.guestData;
   if (deviceId.length < 8 || deviceId.length > 200) {
@@ -2935,7 +3006,9 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
          id,
          language,
          event_device_limit AS "deviceLimit",
-         event_required_fields AS "requiredFields"
+         event_required_fields AS "requiredFields",
+         event_is_open AS "eventIsOpen",
+         event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1
          AND book_type = 'event'
@@ -2950,6 +3023,11 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
     }
 
     const book = bookResult.rows[0];
+    if (!isEventBookAvailable(book)) {
+      await client.query('ROLLBACK');
+      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
+      return;
+    }
     const requiredFields = Array.isArray(book.requiredFields) ? book.requiredFields : [];
     const sanitizedGuestData: Record<string, string> = {};
     if (guestData !== undefined && (typeof guestData !== 'object' || guestData === null || Array.isArray(guestData))) {
@@ -3110,7 +3188,7 @@ app.get('/api/books/:bookId/contributions', async (req, res) => {
   }
 });
 
-app.post('/api/invites/:token/contributions', async (req, res) => {
+app.post('/api/invites/:token/contributions', publicRateLimit({ windowMs: 60_000, max: 10, scope: 'contribution' }), async (req, res) => {
   const { contributorName, memoryText, photoDataUrl, deviceId } = req.body;
 
   if (!contributorName || typeof contributorName !== 'string' || !contributorName.trim()) {
@@ -3151,7 +3229,9 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
          id,
          book_type AS "bookType",
          event_device_limit AS "deviceLimit",
-         event_identity_mode AS "identityMode"
+         event_identity_mode AS "identityMode",
+         event_is_open AS "eventIsOpen",
+         event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1`,
       [req.params.token]
@@ -3164,6 +3244,11 @@ app.post('/api/invites/:token/contributions', async (req, res) => {
 
     if (bookResult.rows[0].bookType !== 'event' && bookResult.rows[0].id !== DEMO_BOOK_ID) {
       res.status(404).json({ error: 'INVITE_NOT_FOUND' });
+      return;
+    }
+
+    if (bookResult.rows[0].bookType === 'event' && !isEventBookAvailable(bookResult.rows[0])) {
+      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
       return;
     }
 
@@ -3886,6 +3971,8 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_device_limit INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_required_fields JSONB NOT NULL DEFAULT '[]'::jsonb`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_is_open BOOLEAN NOT NULL DEFAULT TRUE`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_closes_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_canvas_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
