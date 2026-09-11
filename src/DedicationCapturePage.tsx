@@ -23,8 +23,11 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoAccepted, setPhotoAccepted] = useState(false);
   const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
+  const [hasSignature, setHasSignature] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -57,6 +60,54 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     setPhotoAccepted(false);
     if (photoSource === 'gallery') openGallery();
     else openCamera();
+  };
+
+  const signaturePoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - bounds.left) * (canvas.width / bounds.width),
+      y: (event.clientY - bounds.top) * (canvas.height / bounds.height),
+    };
+  };
+
+  const startSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const point = signaturePoint(event);
+    drawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.lineWidth = 7;
+    context.strokeStyle = '#000000';
+  };
+
+  const drawSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const context = event.currentTarget.getContext('2d');
+    if (!context) return;
+    const point = signaturePoint(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    setHasSignature(true);
+  };
+
+  const stopSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    drawingRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
   };
 
   useEffect(() => {
@@ -155,13 +206,31 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
             )}
 
             {photoUrl && photoAccepted && (
-              <div style={styles.acceptedPanel}>
-                <strong>{t('A fénykép rendben.')}</strong>
-                <span>{t('Az aláírási felület következik.')}</span>
-                <button type="button" style={styles.secondaryCompactButton} onClick={() => setPhotoAccepted(false)}>
-                  {t('Vissza a fényképhez')}
-                </button>
-              </div>
+              <>
+                <h2 style={styles.signatureTitle}>{t('Aláírás')}</h2>
+                <div style={styles.signatureHint}>{t('Írj alá ujjal közvetlenül a fényképen.')}</div>
+                <div style={styles.signatureFrame}>
+                  <img src={photoUrl} alt={t('Dedikálási fénykép előnézete')} style={styles.photo} />
+                  <canvas
+                    ref={signatureCanvasRef}
+                    width={720}
+                    height={960}
+                    style={styles.signatureCanvas}
+                    onPointerDown={startSignature}
+                    onPointerMove={drawSignature}
+                    onPointerUp={stopSignature}
+                    onPointerCancel={stopSignature}
+                  />
+                </div>
+                <div style={styles.signatureActions}>
+                  <button type="button" style={styles.secondaryCompactButton} onClick={() => setPhotoAccepted(false)}>
+                    {t('Vissza a fényképhez')}
+                  </button>
+                  <button type="button" style={styles.secondaryCompactButton} onClick={clearSignature} disabled={!hasSignature}>
+                    {t('Újraírás')}
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
@@ -188,6 +257,11 @@ const styles: Record<string, React.CSSProperties> = {
   primaryCompactButton: { minHeight: 50, border: 0, borderRadius: 10, background: '#0f172a', color: '#ffffff', fontSize: 16, fontWeight: 800 },
   secondaryCompactButton: { minHeight: 50, border: '1px solid #94a3b8', borderRadius: 10, background: '#ffffff', color: '#334155', fontSize: 16, fontWeight: 800 },
   acceptedPanel: { display: 'grid', gap: 12, padding: '28px 18px', borderRadius: 13, background: '#f0fdf4', color: '#166534', textAlign: 'center' },
+  signatureTitle: { margin: '0 0 4px', color: '#0f172a', fontSize: 21, textAlign: 'center' },
+  signatureHint: { marginBottom: 12, color: '#475569', fontSize: 14, textAlign: 'center' },
+  signatureFrame: { position: 'relative', width: 'min(100%, 360px)', aspectRatio: '3 / 4', margin: '0 auto', overflow: 'hidden', borderRadius: 12, background: '#e2e8f0', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)' },
+  signatureCanvas: { position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair' },
+  signatureActions: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 },
   hint: { marginTop: 16, color: '#64748b', fontSize: 13, lineHeight: 1.45, textAlign: 'center' },
   message: { padding: 20, color: '#64748b', textAlign: 'center' },
   error: { padding: 14, borderRadius: 10, background: '#fef2f2', color: '#991b1b', textAlign: 'center' },
