@@ -261,6 +261,36 @@ async function processAndSaveContributionPhoto(
   return result.secure_url;
 }
 
+async function processAndSaveDedicationLayer(
+  pageId: string,
+  layer: 'photo' | 'signature',
+  dataUrl: string
+): Promise<string> {
+  const match = dataUrl.match(
+    /^data:image\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/
+  );
+
+  if (!match || (layer === 'photo' && match[1] !== 'jpeg') || (layer === 'signature' && match[1] !== 'png')) {
+    throw new Error('INVALID_DEDICATION_LAYER_FORMAT');
+  }
+
+  const imageBuffer = Buffer.from(match[2], 'base64');
+  if (imageBuffer.length > MAX_CONTRIBUTION_PHOTO_SIZE_BYTES) {
+    throw new Error('DEDICATION_LAYER_TOO_LARGE');
+  }
+
+  const result = await cloudinary.uploader.upload(dataUrl, {
+    folder: 'memorybook/dedications',
+    public_id: `page-${pageId}-${layer}`,
+    resource_type: 'image',
+    format: layer === 'photo' ? 'jpg' : 'png',
+    overwrite: true,
+    invalidate: true,
+  });
+
+  return result.secure_url;
+}
+
 async function savePageVersioned(
   pageId: string,
   canvasData: Record<string, any>,
@@ -1801,6 +1831,113 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
   } catch (err) {
     console.error('Owner pages load error:', err);
     res.status(500).json({ error: 'OWNER_PAGE_LIST_LOAD_FAILED' });
+  }
+});
+
+app.post('/api/my/books/:bookId/dedications/:pageId/complete', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  const { photoDataUrl, signatureDataUrl, previewDataUrl, signatureColor, expectedVersion } = req.body;
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    res.status(400).json({ error: 'INVALID_EXPECTED_VERSION' });
+    return;
+  }
+  if (
+    typeof photoDataUrl !== 'string' ||
+    typeof signatureDataUrl !== 'string' ||
+    typeof previewDataUrl !== 'string' ||
+    typeof signatureColor !== 'string' ||
+    !/^#[0-9a-f]{6}$/i.test(signatureColor)
+  ) {
+    res.status(400).json({ error: 'INVALID_DEDICATION_DATA' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    await client.query('BEGIN');
+    const pageResult = await client.query(
+      `SELECT p.id, p.version, p.invite_status AS "inviteStatus"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.id = $1
+         AND p.book_id = $2
+         AND b.owner_user_id = $3
+         AND b.book_type = 'dedication'
+       FOR UPDATE`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+
+    if (pageResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'DEDICATION_PAGE_NOT_FOUND' });
+      return;
+    }
+    const page = pageResult.rows[0];
+    if (page.inviteStatus !== 'empty') {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'DEDICATION_PAGE_ALREADY_COMPLETED' });
+      return;
+    }
+    if (page.version !== expectedVersion) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'PAGE_CONFLICT', latestRemoteVersion: page.version });
+      return;
+    }
+
+    const photoUrl = await processAndSaveDedicationLayer(page.id, 'photo', photoDataUrl);
+    const signatureUrl = await processAndSaveDedicationLayer(page.id, 'signature', signatureDataUrl);
+    const previewImageUrl = await processAndSavePreview(page.id, previewDataUrl);
+    const canvasData = {
+      type: 'dedication',
+      schemaVersion: 1,
+      width: 720,
+      height: 960,
+      photo: { url: photoUrl, fit: 'cover', position: 'center' },
+      signature: { url: signatureUrl, color: signatureColor },
+    };
+
+    const result = await client.query(
+      `UPDATE pages
+       SET canvas_json = $1,
+           preview_image_url = $2,
+           version = version + 1,
+           invite_status = 'submitted',
+           owner_visibility = 'active',
+           submitted_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING version, preview_image_url AS "previewImageUrl", submitted_at AS "submittedAt"`,
+      [canvasData, previewImageUrl, page.id]
+    );
+
+    await client.query('COMMIT');
+    res.status(200).json({ success: true, ...result.rows[0] });
+  } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Dedication completion error:', err);
+    if (
+      err?.message === 'INVALID_DEDICATION_LAYER_FORMAT' ||
+      err?.message === 'DEDICATION_LAYER_TOO_LARGE' ||
+      err?.message === 'INVALID_PREVIEW_FORMAT' ||
+      err?.message === 'INVALID_PREVIEW_JPEG' ||
+      err?.message === 'PREVIEW_TOO_LARGE'
+    ) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: 'DEDICATION_COMPLETE_FAILED' });
+  } finally {
+    client.release();
   }
 });
 

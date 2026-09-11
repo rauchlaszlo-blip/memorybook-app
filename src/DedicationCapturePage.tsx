@@ -26,6 +26,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     ownerFormat(language, key, values);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [pageNumber, setPageNumber] = useState<number | null>(null);
+  const [pageVersion, setPageVersion] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -33,6 +34,8 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
   const [hasSignature, setHasSignature] = useState(false);
   const [signatureColor, setSignatureColor] = useState('#000000');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -131,6 +134,62 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     context.restore();
   };
 
+  const createDedicationAssets = async () => {
+    if (!photoUrl || !signatureCanvasRef.current) throw new Error('MISSING_DEDICATION_ASSETS');
+    const image = new Image();
+    image.src = photoUrl;
+    await image.decode();
+
+    const photoCanvas = document.createElement('canvas');
+    photoCanvas.width = 720;
+    photoCanvas.height = 960;
+    const photoContext = photoCanvas.getContext('2d');
+    if (!photoContext) throw new Error('CANVAS_NOT_AVAILABLE');
+    const scale = Math.max(photoCanvas.width / image.naturalWidth, photoCanvas.height / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    photoContext.drawImage(image, (photoCanvas.width - width) / 2, (photoCanvas.height - height) / 2, width, height);
+
+    const compositeCanvas = document.createElement('canvas');
+    compositeCanvas.width = 720;
+    compositeCanvas.height = 960;
+    const compositeContext = compositeCanvas.getContext('2d');
+    if (!compositeContext) throw new Error('CANVAS_NOT_AVAILABLE');
+    compositeContext.drawImage(photoCanvas, 0, 0);
+    compositeContext.drawImage(signatureCanvasRef.current, 0, 0);
+
+    return {
+      photoDataUrl: photoCanvas.toDataURL('image/jpeg', 0.86),
+      signatureDataUrl: signatureCanvasRef.current.toDataURL('image/png'),
+      previewDataUrl: compositeCanvas.toDataURL('image/jpeg', 0.82),
+    };
+  };
+
+  const completeDedication = async () => {
+    if (!hasSignature || pageVersion === null || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const assets = await createDedicationAssets();
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/dedications/${encodeURIComponent(pageId)}/complete`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...assets, signatureColor, expectedVersion: pageVersion }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'DEDICATION_COMPLETE_FAILED');
+      window.location.href = `/my-books/${encodeURIComponent(bookId)}`;
+    } catch (saveFailure) {
+      console.error(saveFailure);
+      setSaveError(t('A dedikálást nem sikerült elmenteni. Próbáld újra.'));
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -154,6 +213,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
         }
         setBookTitle(data.book.title || 'MemoryBook');
         setPageNumber(Number(page.pageNumber));
+        setPageVersion(Number(page.version));
       } catch (loadError) {
         console.error(loadError);
         setError(t('A dedikálási oldal nem nyitható meg.'));
@@ -276,7 +336,16 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
                   <button type="button" style={styles.secondaryCompactButton} onClick={clearSignature} disabled={!hasSignature}>
                     {t('Újraírás')}
                   </button>
+                  <button
+                    type="button"
+                    style={{ ...styles.primaryCompactButton, gridColumn: '1 / -1' }}
+                    onClick={completeDedication}
+                    disabled={!hasSignature || saving}
+                  >
+                    {saving ? t('Mentés...') : t('Kész')}
+                  </button>
                 </div>
+                {saveError && <div style={styles.error}>{saveError}</div>}
               </>
             )}
           </>
