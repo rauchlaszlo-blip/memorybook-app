@@ -3972,7 +3972,14 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_required_fields JSONB NOT NULL DEFAULT '["name"]'::jsonb`);
   await pool.query(`ALTER TABLE books ALTER COLUMN event_required_fields SET DEFAULT '["name"]'::jsonb`);
-  await pool.query(`UPDATE books SET event_required_fields = '["name"]'::jsonb WHERE book_type = 'event' AND event_required_fields = '[]'::jsonb`);
+  await pool.query(`
+    UPDATE books
+    SET event_device_limit = 1,
+        event_required_fields = '["name"]'::jsonb
+    WHERE book_type = 'event'
+      AND updated_at < TIMESTAMPTZ '2026-09-11 12:10:00+00'
+      AND (event_device_limit <> 1 OR event_required_fields <> '["name"]'::jsonb)
+  `);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_is_open BOOLEAN NOT NULL DEFAULT TRUE`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_closes_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
