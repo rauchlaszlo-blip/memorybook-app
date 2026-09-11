@@ -136,6 +136,9 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
 };
 
 const fitTextboxWidthToText = (object: fabric.Textbox) => {
+  // A felső él maradjon a helyén, amikor a gépelés megváltoztatja
+  // a doboz szélességét, tördelését és ezáltal a magasságát.
+  const fixedTopCenter = object.getPointByOrigin('center', 'top');
   const maxWidth = getTextboxMaxWidth(object);
   const minimumWidth = Math.min(120, maxWidth);
   const logicalLines = String(object.text || '').split('\n');
@@ -156,6 +159,7 @@ const fitTextboxWidthToText = (object: fabric.Textbox) => {
     width: Math.min(maxWidth, Math.max(minimumWidth, measuredWidth + 24)),
   });
   object.initDimensions();
+  object.setPositionByOrigin(fixedTopCenter, 'center', 'top');
   object.setCoords();
 };
 
