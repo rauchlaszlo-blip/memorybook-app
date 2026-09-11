@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { NotificationMenu } from './NotificationMenu';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getAppLanguage, type AppLanguage } from './i18n';
-import { ownerFormat, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
+import { ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -30,9 +30,9 @@ type Entitlement = {
 };
 
 export function MyBooksPage() {
+  const requestedEntitlementId = new URLSearchParams(window.location.search).get('entitlementId') || '';
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
-  const f = (key: string, values: Record<string, string | number>) => ownerFormat(language, key, values);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,11 @@ export function MyBooksPage() {
           ? entitlementData.entitlements
           : [];
         setEntitlements(nextEntitlements);
-        const firstAvailable = nextEntitlements.find((item: Entitlement) => item.status === 'available');
+        const firstAvailable =
+          nextEntitlements.find(
+            (item: Entitlement) =>
+              item.status === 'available' && item.id === requestedEntitlementId
+          ) || nextEntitlements.find((item: Entitlement) => item.status === 'available');
         setSelectedEntitlementId(firstAvailable?.id || '');
       } catch (err) {
         console.error(err);
@@ -184,28 +188,9 @@ export function MyBooksPage() {
           <section id="create-book" style={styles.createCard}>
             <h2 style={styles.createTitle}>{t('Adj nevet az emlékkönyvnek.')}</h2>
             <form onSubmit={createBook} style={styles.createForm}>
-              {availableEntitlements.length > 1 && (
-                <label style={styles.entitlementLabel}>
-                  <select
-                    value={selectedEntitlementId}
-                    onChange={(event) => setSelectedEntitlementId(event.target.value)}
-                    disabled={creating}
-                    style={styles.select}
-                    aria-label={t('Vásárlási jogosultság')}
-                  >
-                    {availableEntitlements.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.bookType === 'event'
-                          ? t('QR-kódos vendégkönyv')
-                          : item.bookType === 'dedication'
-                            ? f('Dedikálás – {count} oldal', { count: item.includedPages })
-                            : f('Normál emlékkönyv – {count} oldal', { count: item.includedPages })}
-                        {item.wasGift ? ` ${t('· ajándék')}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              <button type="submit" disabled={creating} style={styles.createButton}>
+                {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
+              </button>
               <div style={styles.newCover}>
                 <div style={styles.newCoverBrand}>MemoryBook</div>
                   <input
@@ -217,12 +202,8 @@ export function MyBooksPage() {
                     disabled={creating}
                     style={styles.coverTitleInput}
                     aria-label={t('Adj nevet az emlékkönyvnek.')}
-                    autoFocus
                   />
               </div>
-                  <button type="submit" disabled={creating} style={styles.createButton}>
-                    {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
-                  </button>
             </form>
             {createError && <div style={styles.createError}>{createError}</div>}
           </section>
@@ -275,8 +256,6 @@ const styles: Record<string, React.CSSProperties> = {
   createTitle: { margin: '0 0 16px', color: '#0f172a', fontSize: 23 },
   createText: { margin: '0 0 16px', color: '#64748b', lineHeight: 1.5 },
   createForm: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 },
-  entitlementLabel: { width: 'min(100%, 360px)' },
-  select: { width: '100%', minHeight: 46, padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 15, background: '#ffffff', boxSizing: 'border-box' },
   input: { flex: '1 1 280px', minWidth: 0, minHeight: 46, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 16, boxSizing: 'border-box' },
   newCover: { position: 'relative', width: 'min(72vw, 300px)', aspectRatio: '750 / 1064', padding: 20, boxSizing: 'border-box', borderRadius: 8, background: 'linear-gradient(145deg, #0f172a, #334155)', boxShadow: '0 10px 25px rgba(15, 23, 42, 0.24)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   newCoverBrand: { position: 'absolute', top: 18, left: 0, right: 0, color: '#cbd5e1', fontSize: 13, fontWeight: 900, letterSpacing: 1.4, textTransform: 'uppercase' },
