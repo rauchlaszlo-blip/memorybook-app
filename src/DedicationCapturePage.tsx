@@ -11,6 +11,14 @@ type DedicationCapturePageProps = {
   pageId: string;
 };
 
+const SIGNATURE_COLORS = [
+  { value: '#000000', label: 'Fekete' },
+  { value: '#ffffff', label: 'Fehér' },
+  { value: '#dc2626', label: 'Piros' },
+  { value: '#2563eb', label: 'Kék' },
+  { value: '#d4af37', label: 'Arany' },
+] as const;
+
 export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageProps) {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
@@ -24,6 +32,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [photoAccepted, setPhotoAccepted] = useState(false);
   const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
   const [hasSignature, setHasSignature] = useState(false);
+  const [signatureColor, setSignatureColor] = useState('#000000');
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,7 +92,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     context.lineCap = 'round';
     context.lineJoin = 'round';
     context.lineWidth = 7;
-    context.strokeStyle = '#000000';
+    context.strokeStyle = signatureColor;
   };
 
   const drawSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -108,6 +117,18 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     const context = canvas?.getContext('2d');
     if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
+  };
+
+  const changeSignatureColor = (color: string) => {
+    setSignatureColor(color);
+    const canvas = signatureCanvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context || !hasSignature) return;
+    context.save();
+    context.globalCompositeOperation = 'source-in';
+    context.fillStyle = color;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.restore();
   };
 
   useEffect(() => {
@@ -209,6 +230,32 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
               <>
                 <h2 style={styles.signatureTitle}>{t('Aláírás')}</h2>
                 <div style={styles.signatureHint}>{t('Írj alá ujjal közvetlenül a fényképen.')}</div>
+                <div style={styles.colorRow} aria-label={t('Aláírás színe')}>
+                  {SIGNATURE_COLORS.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      aria-label={t(color.label)}
+                      title={t(color.label)}
+                      onClick={() => changeSignatureColor(color.value)}
+                      style={{
+                        ...styles.colorButton,
+                        background: color.value,
+                        outline: signatureColor === color.value ? '3px solid #0f172a' : '1px solid #94a3b8',
+                      }}
+                    />
+                  ))}
+                  <label style={styles.customColorLabel} title={t('Egyedi szín')}>
+                    <span>{t('Egyedi')}</span>
+                    <input
+                      type="color"
+                      value={signatureColor}
+                      aria-label={t('Egyedi szín')}
+                      onChange={(event) => changeSignatureColor(event.target.value)}
+                      style={styles.customColorInput}
+                    />
+                  </label>
+                </div>
                 <div style={styles.signatureFrame}>
                   <img src={photoUrl} alt={t('Dedikálási fénykép előnézete')} style={styles.photo} />
                   <canvas
@@ -259,6 +306,10 @@ const styles: Record<string, React.CSSProperties> = {
   acceptedPanel: { display: 'grid', gap: 12, padding: '28px 18px', borderRadius: 13, background: '#f0fdf4', color: '#166534', textAlign: 'center' },
   signatureTitle: { margin: '0 0 4px', color: '#0f172a', fontSize: 21, textAlign: 'center' },
   signatureHint: { marginBottom: 12, color: '#475569', fontSize: 14, textAlign: 'center' },
+  colorRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  colorButton: { width: 34, height: 34, padding: 0, border: 0, borderRadius: '50%', outlineOffset: 2 },
+  customColorLabel: { display: 'flex', alignItems: 'center', gap: 5, color: '#334155', fontSize: 13, fontWeight: 700 },
+  customColorInput: { width: 38, height: 34, padding: 1, border: '1px solid #94a3b8', borderRadius: 7, background: '#ffffff' },
   signatureFrame: { position: 'relative', width: 'min(100%, 360px)', aspectRatio: '3 / 4', margin: '0 auto', overflow: 'hidden', borderRadius: 12, background: '#e2e8f0', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)' },
   signatureCanvas: { position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair' },
   signatureActions: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 },
