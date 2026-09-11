@@ -329,7 +329,12 @@ export function PurchasePage() {
           if (data?.paymentStatus === 'paid') {
             const giftRedeemPath = data?.giftRedeemPath || null;
             if (!giftRedeemPath) {
-              window.location.replace('/my-books#create-book');
+              const entitlementId = String(data?.entitlement?.id || '');
+              window.location.replace(
+                entitlementId
+                  ? `/my-books?entitlementId=${encodeURIComponent(entitlementId)}#create-book`
+                  : '/my-books#create-book'
+              );
               return;
             }
             setPaymentSuccess({ purchaseId: returnedPurchaseId, provider: 'simplepay', giftRedeemPath });
@@ -398,7 +403,12 @@ export function PurchasePage() {
         setPurchaseId(returnedPurchaseId);
         const giftRedeemPath = data?.giftRedeemPath || null;
         if (!giftRedeemPath) {
-          window.location.replace('/my-books#create-book');
+          const entitlementId = String(data?.entitlement?.id || '');
+              window.location.replace(
+                entitlementId
+                  ? `/my-books?entitlementId=${encodeURIComponent(entitlementId)}#create-book`
+                  : '/my-books#create-book'
+              );
           return;
         }
         setPaymentSuccess({ purchaseId: returnedPurchaseId, provider: 'paypal', giftRedeemPath });
@@ -467,7 +477,12 @@ export function PurchasePage() {
         if (!testResponse.ok) throw new Error(testData?.error || 'TEST_PURCHASE_COMPLETE_FAILED');
         const giftRedeemPath = testData?.giftRedeemPath || null;
         if (!giftRedeemPath) {
-          window.location.replace('/my-books#create-book');
+          const entitlementId = String(testData?.entitlement?.id || '');
+              window.location.replace(
+                entitlementId
+                  ? `/my-books?entitlementId=${encodeURIComponent(entitlementId)}#create-book`
+                  : '/my-books#create-book'
+              );
           return;
         }
         setPaymentSuccess({ purchaseId: nextPurchaseId, provider: 'test', giftRedeemPath });
