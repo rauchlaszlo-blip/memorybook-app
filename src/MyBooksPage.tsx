@@ -115,6 +115,10 @@ export function MyBooksPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'BOOK_CREATE_FAILED');
+      if (data.book?.id && requestedEntitlementId) {
+        window.location.replace(`/book/${encodeURIComponent(data.book.id)}/view`);
+        return;
+      }
       if (data.book) setBooks((current) => [data.book, ...current]);
       setEntitlements((current) =>
         current.map((item) =>
@@ -143,6 +147,34 @@ export function MyBooksPage() {
       window.location.href = '/login';
     }
   };
+
+  if (requestedEntitlementId) {
+    return (
+      <main style={styles.namingPage}>
+        <section style={styles.namingCard}>
+          <h1 style={styles.namingTitle}>{t('Adj nevet az emlékkönyvednek.')}</h1>
+          <form onSubmit={createBook} style={styles.namingForm}>
+            <button type="submit" disabled={loading || creating || !selectedEntitlementId} style={styles.namingSaveButton}>
+              {creating ? t('Mentés...') : t('Mentés')}
+            </button>
+            <input
+              type="text"
+              value={newBookTitle}
+              onChange={(event) => setNewBookTitle(event.target.value)}
+              placeholder={t('Az emlékkönyv neve')}
+              maxLength={120}
+              disabled={creating}
+              style={styles.namingInput}
+              aria-label={t('Adj nevet az emlékkönyvednek.')}
+              autoFocus
+            />
+          </form>
+          {createError && <div style={styles.namingError}>{createError}</div>}
+          {error && <div style={styles.namingError}>{error}</div>}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main style={styles.page}>
@@ -243,6 +275,13 @@ export function MyBooksPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  namingPage: { minHeight: '100dvh', background: '#f1f5f9', padding: '18px 16px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
+  namingCard: { width: '100%', maxWidth: 420, margin: '0 auto', padding: '18px 16px', background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)', boxSizing: 'border-box', textAlign: 'center' },
+  namingTitle: { margin: '0 0 14px', color: '#0f172a', fontSize: 24, lineHeight: 1.2 },
+  namingForm: { display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 12 },
+  namingSaveButton: { width: '100%', minHeight: 50, border: 0, borderRadius: 10, padding: '12px 16px', background: '#0f172a', color: '#ffffff', fontSize: 17, fontWeight: 800, cursor: 'pointer' },
+  namingInput: { width: '100%', minHeight: 58, padding: '13px 14px', border: '2px solid #0f172a', borderRadius: 10, background: '#ffffff', color: '#0f172a', boxSizing: 'border-box', fontSize: 18, fontWeight: 700, textAlign: 'center', outlineColor: '#38bdf8' },
+  namingError: { marginTop: 10, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 14 },
   page: { minHeight: '100vh', background: '#f1f5f9', padding: '24px 18px 48px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' },
   container: { width: '100%', maxWidth: 980, margin: '0 auto' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' },
