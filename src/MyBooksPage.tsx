@@ -182,8 +182,10 @@ export function MyBooksPage() {
 
         {!loading && !error && availableEntitlements.length > 0 && (
           <section id="create-book" style={styles.createCard}>
-            <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
+            <h2 style={styles.createTitle}>{t('Adj nevet az emlékkönyvnek.')}</h2>
             <form onSubmit={createBook} style={styles.createForm}>
+              {availableEntitlements.length > 1 && (
+                <label style={styles.entitlementLabel}>
                   <select
                     value={selectedEntitlementId}
                     onChange={(event) => setSelectedEntitlementId(event.target.value)}
@@ -202,6 +204,10 @@ export function MyBooksPage() {
                       </option>
                     ))}
                   </select>
+                </label>
+              )}
+              <div style={styles.newCover}>
+                <div style={styles.newCoverBrand}>MemoryBook</div>
                   <input
                     type="text"
                     value={newBookTitle}
@@ -209,8 +215,11 @@ export function MyBooksPage() {
                     placeholder={t('Például: Anna 40. születésnapja')}
                     maxLength={120}
                     disabled={creating}
-                    style={styles.input}
+                    style={styles.coverTitleInput}
+                    aria-label={t('Adj nevet az emlékkönyvnek.')}
+                    autoFocus
                   />
+              </div>
                   <button type="submit" disabled={creating} style={styles.createButton}>
                     {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
                   </button>
@@ -262,13 +271,17 @@ const styles: Record<string, React.CSSProperties> = {
   title: { margin: '6px 0 4px', fontSize: 32, color: '#0f172a' },
   headerPurchaseLink: { minHeight: 40, padding: '6px 8px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap' },
   secondaryButton: { minHeight: 40, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' },
-  createCard: { marginBottom: 22, padding: 20, background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)' },
-  createTitle: { margin: '0 0 5px', color: '#0f172a', fontSize: 21 },
+  createCard: { marginBottom: 22, padding: '22px 16px', background: '#ffffff', borderRadius: 16, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)', textAlign: 'center' },
+  createTitle: { margin: '0 0 16px', color: '#0f172a', fontSize: 23 },
   createText: { margin: '0 0 16px', color: '#64748b', lineHeight: 1.5 },
-  createForm: { display: 'flex', flexWrap: 'wrap', gap: 10 },
-  select: { flex: '1 1 240px', minHeight: 46, padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 15, background: '#ffffff', boxSizing: 'border-box' },
+  createForm: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 },
+  entitlementLabel: { width: 'min(100%, 360px)' },
+  select: { width: '100%', minHeight: 46, padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 15, background: '#ffffff', boxSizing: 'border-box' },
   input: { flex: '1 1 280px', minWidth: 0, minHeight: 46, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 9, fontSize: 16, boxSizing: 'border-box' },
-  createButton: { minHeight: 46, border: 0, borderRadius: 9, padding: '12px 16px', background: '#0f172a', color: '#ffffff', fontSize: 15, fontWeight: 800, cursor: 'pointer' },
+  newCover: { position: 'relative', width: 'min(72vw, 300px)', aspectRatio: '750 / 1064', padding: 20, boxSizing: 'border-box', borderRadius: 8, background: 'linear-gradient(145deg, #0f172a, #334155)', boxShadow: '0 10px 25px rgba(15, 23, 42, 0.24)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  newCoverBrand: { position: 'absolute', top: 18, left: 0, right: 0, color: '#cbd5e1', fontSize: 13, fontWeight: 900, letterSpacing: 1.4, textTransform: 'uppercase' },
+  coverTitleInput: { width: '100%', minHeight: 58, padding: '12px 13px', border: '2px solid #ffffff', borderRadius: 10, background: 'rgba(255,255,255,0.96)', color: '#0f172a', boxSizing: 'border-box', fontSize: 18, fontWeight: 800, textAlign: 'center', boxShadow: '0 6px 18px rgba(15,23,42,.28)', outlineColor: '#38bdf8' },
+  createButton: { width: 'min(100%, 300px)', minHeight: 48, border: 0, borderRadius: 9, padding: '12px 16px', background: '#0f172a', color: '#ffffff', fontSize: 15, fontWeight: 800, cursor: 'pointer' },
   createError: { marginTop: 12, padding: 11, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 14 },
   purchaseLink: { display: 'inline-flex', alignItems: 'center', minHeight: 46, padding: '10px 14px', borderRadius: 9, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontWeight: 800 },
   purchaseMore: { marginTop: 14, fontSize: 14 },
