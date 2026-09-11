@@ -159,6 +159,9 @@ export function MyBooksPage() {
             </button>
             <input
               type="text"
+              inputMode="text"
+              enterKeyHint="done"
+              onPointerDown={(event) => event.currentTarget.focus()}
               value={newBookTitle}
               onChange={(event) => setNewBookTitle(event.target.value)}
               placeholder={t('Az emlékkönyv neve')}
