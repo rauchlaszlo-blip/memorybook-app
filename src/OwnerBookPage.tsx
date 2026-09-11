@@ -69,6 +69,12 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
     }
     return pages;
   }, [bookType, pages, targetPageId]);
+  const nextDedicationPage = useMemo(
+    () => pages
+      .filter((page) => page.inviteStatus === 'empty')
+      .sort((a, b) => a.pageNumber - b.pageNumber)[0] ?? null,
+    [pages]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -505,7 +511,15 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
               <strong style={styles.eventPanelTitle}>{t('Dedikálás')}</strong>
               <div style={styles.eventPanelText}>{t('A következő üres oldal automatikusan nyílik majd meg.')}</div>
             </div>
-            <button type="button" style={styles.eventQrButton} disabled={!pages.some((page) => page.inviteStatus === 'empty')}>
+            <button
+              type="button"
+              style={styles.eventQrButton}
+              disabled={!nextDedicationPage}
+              onClick={() => {
+                if (!nextDedicationPage) return;
+                window.location.href = `/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(nextDedicationPage.id)}`;
+              }}
+            >
               {t('Következő dedikálás')}
             </button>
           </section>

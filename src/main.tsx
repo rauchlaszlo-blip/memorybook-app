@@ -15,6 +15,7 @@ import { EventGuestbookQrPage } from './EventGuestbookQrPage.tsx'
 import { PurchasePage } from './PurchasePage.tsx'
 import { GiftRedeemPage } from './GiftRedeemPage.tsx'
 import { CoverEditorPage } from './CoverEditorPage.tsx'
+import { DedicationCapturePage } from './DedicationCapturePage.tsx'
 import { initializeAppLanguage } from './i18n'
 
 initializeAppLanguage()
@@ -29,6 +30,7 @@ const bookViewMatch = path.match(/^\/book\/([^/]+)\/view$/)
 const eventQrMatch = path.match(/^\/my-books\/([^/]+)\/event-qr$/)
 const giftMatch = path.match(/^\/gift\/([^/]+)$/)
 const coverEditorMatch = path.match(/^\/my-books\/([^/]+)\/cover$/)
+const dedicationCaptureMatch = path.match(/^\/my-books\/([^/]+)\/dedication\/([^/]+)$/)
 
 const root = path === '/'
   ? <LandingPage />
@@ -42,6 +44,8 @@ const root = path === '/'
     ? <GiftRedeemPage token={decodeURIComponent(giftMatch[1])} />
   : coverEditorMatch
     ? <CoverEditorPage bookId={decodeURIComponent(coverEditorMatch[1])} />
+  : dedicationCaptureMatch
+    ? <DedicationCapturePage bookId={decodeURIComponent(dedicationCaptureMatch[1])} pageId={decodeURIComponent(dedicationCaptureMatch[2])} />
   : eventQrMatch
     ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
   : path === '/my-books'
