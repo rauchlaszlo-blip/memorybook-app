@@ -33,6 +33,8 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
   const [hasSignature, setHasSignature] = useState(false);
   const [signatureColor, setSignatureColor] = useState('#000000');
+  const [signatureTool, setSignatureTool] = useState<'pen' | 'eraser'>('pen');
+  const [eraserSize, setEraserSize] = useState(36);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -91,8 +93,9 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     context.moveTo(point.x, point.y);
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.lineWidth = 7;
+    context.lineWidth = signatureTool === 'eraser' ? eraserSize : 7;
     context.strokeStyle = signatureColor;
+    context.globalCompositeOperation = signatureTool === 'eraser' ? 'destination-out' : 'source-over';
   };
 
   const drawSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -256,6 +259,37 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
                     />
                   </label>
                 </div>
+                <div style={styles.toolRow}>
+                  <button
+                    type="button"
+                    onClick={() => setSignatureTool('pen')}
+                    style={signatureTool === 'pen' ? styles.activeToolButton : styles.toolButton}
+                  >
+                    {t('Írás')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSignatureTool('eraser')}
+                    style={signatureTool === 'eraser' ? styles.activeToolButton : styles.toolButton}
+                  >
+                    {t('Radír')}
+                  </button>
+                  {signatureTool === 'eraser' && (
+                    <label style={styles.eraserSizeLabel}>
+                      <span>{t('Méret')}</span>
+                      <input
+                        type="range"
+                        min="18"
+                        max="90"
+                        step="6"
+                        value={eraserSize}
+                        onChange={(event) => setEraserSize(Number(event.target.value))}
+                        aria-label={t('Radír mérete')}
+                        style={styles.eraserSlider}
+                      />
+                    </label>
+                  )}
+                </div>
                 <div style={styles.signatureFrame}>
                   <img src={photoUrl} alt={t('Dedikálási fénykép előnézete')} style={styles.photo} />
                   <canvas
@@ -310,6 +344,11 @@ const styles: Record<string, React.CSSProperties> = {
   colorButton: { width: 34, height: 34, padding: 0, border: 0, borderRadius: '50%', outlineOffset: 2 },
   customColorLabel: { display: 'flex', alignItems: 'center', gap: 5, color: '#334155', fontSize: 13, fontWeight: 700 },
   customColorInput: { width: 38, height: 34, padding: 1, border: '1px solid #94a3b8', borderRadius: 7, background: '#ffffff' },
+  toolRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  toolButton: { minHeight: 38, padding: '7px 15px', border: '1px solid #94a3b8', borderRadius: 9, background: '#ffffff', color: '#334155', fontWeight: 800 },
+  activeToolButton: { minHeight: 38, padding: '7px 15px', border: '1px solid #0f172a', borderRadius: 9, background: '#0f172a', color: '#ffffff', fontWeight: 800 },
+  eraserSizeLabel: { display: 'flex', alignItems: 'center', gap: 7, color: '#475569', fontSize: 13, fontWeight: 700 },
+  eraserSlider: { width: 100 },
   signatureFrame: { position: 'relative', width: 'min(100%, 360px)', aspectRatio: '3 / 4', margin: '0 auto', overflow: 'hidden', borderRadius: 12, background: '#e2e8f0', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)' },
   signatureCanvas: { position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair' },
   signatureActions: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 },
