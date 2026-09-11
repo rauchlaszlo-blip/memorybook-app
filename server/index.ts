@@ -408,7 +408,7 @@ async function saveBookCoverVersioned(
          cover_preview_image_url = COALESCE($2, cover_preview_image_url),
          cover_version = cover_version + 1,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $3 AND owner_user_id = $4 AND book_type = 'standard' AND cover_version = $5
+     WHERE id = $3 AND owner_user_id = $4 AND book_type IN ('standard', 'dedication') AND cover_version = $5
      RETURNING cover_version AS "version",
                cover_preview_image_url AS "previewImageUrl",
                updated_at AS "updatedAt"`,
@@ -418,7 +418,7 @@ async function saveBookCoverVersioned(
   if (result.rowCount === 0) {
     const check = await pool.query(
       `SELECT cover_version AS "version" FROM books
-       WHERE id = $1 AND owner_user_id = $2 AND book_type = 'standard'`,
+       WHERE id = $1 AND owner_user_id = $2 AND book_type IN ('standard', 'dedication')`,
       [bookId, ownerUserId]
     );
     const error: any = new Error(check.rowCount === 0 ? 'BOOK_NOT_FOUND' : 'COVER_CONFLICT');
@@ -1626,7 +1626,7 @@ app.get('/api/my/books/:bookId/cover', async (req, res) => {
               cover_preview_image_url AS "previewImageUrl",
               cover_version AS "version"
        FROM books
-       WHERE id = $1 AND owner_user_id = $2 AND book_type = 'standard'`,
+       WHERE id = $1 AND owner_user_id = $2 AND book_type IN ('standard', 'dedication')`,
       [req.params.bookId, session.user.id]
     );
     if (result.rowCount === 0) {
