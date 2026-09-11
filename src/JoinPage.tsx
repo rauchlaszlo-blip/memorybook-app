@@ -15,8 +15,18 @@ type InviteData = {
   bookType?: string;
   deviceLimit?: number;
   identityMode?: string;
+  requiredFields?: RequiredField[];
 };
 type JoinPageProps = { token: string };
+type RequiredField = 'name' | 'email' | 'phone' | 'festivalId' | 'ticketId';
+
+const REQUIRED_FIELD_OPTIONS: Record<RequiredField, { label: string; type: string; autoComplete?: string }> = {
+  name: { label: 'Név', type: 'text', autoComplete: 'name' },
+  email: { label: 'E-mail-cím', type: 'email', autoComplete: 'email' },
+  phone: { label: 'Telefonszám', type: 'tel', autoComplete: 'tel' },
+  festivalId: { label: 'Fesztiválazonosító', type: 'text' },
+  ticketId: { label: 'Belépőjegy-azonosító', type: 'text' },
+};
 
 function getOrCreateDeviceId(): string {
   try {
@@ -48,6 +58,49 @@ export function JoinPage({ token }: JoinPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [guestData, setGuestData] = useState<Record<string, string>>({});
+  const [startingEditor, setStartingEditor] = useState(false);
+
+  const openEventEditor = async (data: Record<string, string>) => {
+    setStartingEditor(true);
+    setError(null);
+    try {
+      const sessionResponse = await fetch(
+        `${API_BASE}/api/invites/${encodeURIComponent(token)}/page-session`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId: getOrCreateDeviceId(), guestData: data }),
+        }
+      );
+      const sessionData = await sessionResponse.json().catch(() => null);
+      if (!sessionResponse.ok) {
+        if (sessionData?.error === 'DEVICE_CONTRIBUTION_LIMIT_REACHED') {
+          throw new Error('DEVICE_LIMIT_REACHED');
+        }
+        if (sessionData?.error === 'INVALID_EVENT_GUEST_EMAIL') {
+          throw new Error('INVALID_EMAIL');
+        }
+        throw new Error('PAGE_SESSION_CREATE_FAILED');
+      }
+      if (typeof sessionData?.invitePath !== 'string') {
+        throw new Error('PAGE_SESSION_CREATE_FAILED');
+      }
+      window.location.replace(sessionData.invitePath);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error && err.message === 'DEVICE_LIMIT_REACHED'
+          ? t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.')
+          : err instanceof Error && err.message === 'INVALID_EMAIL'
+            ? t('Adj meg érvényes e-mail-címet.')
+            : t('A rajzlapot nem sikerült megnyitni. Próbáld újra.')
+      );
+      setStartingEditor(false);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const loadInvite = async () => {
@@ -59,26 +112,10 @@ export function JoinPage({ token }: JoinPageProps) {
         setInvite(data);
 
         if (data.bookType === 'event') {
-          const sessionResponse = await fetch(
-            `${API_BASE}/api/invites/${encodeURIComponent(token)}/page-session`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ deviceId: getOrCreateDeviceId() }),
-            }
-          );
-          const sessionData = await sessionResponse.json().catch(() => null);
-          if (!sessionResponse.ok) {
-            if (sessionData?.error === 'DEVICE_CONTRIBUTION_LIMIT_REACHED') {
-              throw new Error('DEVICE_LIMIT_REACHED');
-            }
-            throw new Error('PAGE_SESSION_CREATE_FAILED');
+          const requiredFields = Array.isArray(data.requiredFields) ? data.requiredFields : [];
+          if (requiredFields.length === 0) {
+            redirectingToEditor = await openEventEditor({});
           }
-          if (typeof sessionData?.invitePath !== 'string') {
-            throw new Error('PAGE_SESSION_CREATE_FAILED');
-          }
-          redirectingToEditor = true;
-          window.location.replace(sessionData.invitePath);
           return;
         }
       } catch (err) {
@@ -190,6 +227,49 @@ export function JoinPage({ token }: JoinPageProps) {
   if (!invite) return <div style={styles.message}>{t('A vendégkönyv nem található.')}</div>;
 
   const deviceLimit = Math.max(1, Number(invite.deviceLimit) || 1);
+
+  if (invite.bookType === 'event') {
+    const requiredFields = Array.isArray(invite.requiredFields) ? invite.requiredFields : [];
+    return (
+      <main style={styles.page}>
+        <section style={styles.card}>
+          <div style={styles.languageRow}><LanguageSwitcher /></div>
+          <div style={styles.eyebrow}>{t('MemoryBook vendégkönyv')}</div>
+          <h1 style={styles.title}>{invite.title}</h1>
+          <p style={styles.intro}>{t('Add meg a szervező által kért adatokat, majd nyisd meg a rajzlapot.')}</p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void openEventEditor(guestData);
+            }}
+          >
+            {requiredFields.map((field) => {
+              const option = REQUIRED_FIELD_OPTIONS[field];
+              if (!option) return null;
+              return (
+                <label key={field} style={styles.label}>
+                  {t(option.label)}
+                  <input
+                    type={option.type}
+                    autoComplete={option.autoComplete}
+                    value={guestData[field] || ''}
+                    onChange={(event) => setGuestData((current) => ({ ...current, [field]: event.target.value }))}
+                    style={styles.input}
+                    maxLength={field === 'email' ? 254 : field === 'phone' ? 50 : 200}
+                    required
+                  />
+                </label>
+              );
+            })}
+            {error && <div style={styles.error}>{error}</div>}
+            <button type="submit" disabled={startingEditor} style={styles.button}>
+              {startingEditor ? t('Rajzlap megnyitása...') : t('Rajzlap megnyitása')}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   if (submitted) {
     return (
