@@ -181,7 +181,7 @@ export function MyBooksPage() {
         </header>
 
         {!loading && !error && availableEntitlements.length > 0 && (
-          <section style={styles.createCard}>
+          <section id="create-book" style={styles.createCard}>
             <h2 style={styles.createTitle}>{t('Új emlékkönyv létrehozása')}</h2>
             <form onSubmit={createBook} style={styles.createForm}>
                   <select
