@@ -329,11 +329,16 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               </a>
             )}
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
-            <h2 style={styles.identityTitle}>
-              {guestData.name || page.inviteRecipientName || guestData.email || page.inviteRecipientEmail || t('Nincs azonosítva')}
-            </h2>
+            {bookType !== 'event' && (
+              <h2 style={styles.identityTitle}>
+                {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
+              </h2>
+            )}
             <div style={styles.identityGrid}>
-              {guestData.email && guestData.name && (
+              {guestData.name && (
+                <div><span style={styles.identityLabel}>{t('Név')}</span>{guestData.name}</div>
+              )}
+              {guestData.email && (
                 <div><span style={styles.identityLabel}>E-mail</span>{guestData.email}</div>
               )}
               {guestData.phone && (
