@@ -108,11 +108,22 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-function isEventBookAvailable(book: { eventIsOpen?: boolean; eventClosesAt?: string | Date | null }): boolean {
-  if (book.eventIsOpen === false) return false;
-  if (!book.eventClosesAt) return true;
-  const closesAt = new Date(book.eventClosesAt).getTime();
-  return Number.isFinite(closesAt) && Date.now() < closesAt;
+function getEventBookAvailabilityError(book: {
+  eventIsOpen?: boolean;
+  eventOpensAt?: string | Date | null;
+  eventClosesAt?: string | Date | null;
+}): 'EVENT_GUESTBOOK_NOT_OPEN_YET' | 'EVENT_GUESTBOOK_CLOSED' | null {
+  if (book.eventIsOpen === false) return 'EVENT_GUESTBOOK_CLOSED';
+  const now = Date.now();
+  if (book.eventOpensAt) {
+    const opensAt = new Date(book.eventOpensAt).getTime();
+    if (Number.isFinite(opensAt) && now < opensAt) return 'EVENT_GUESTBOOK_NOT_OPEN_YET';
+  }
+  if (book.eventClosesAt) {
+    const closesAt = new Date(book.eventClosesAt).getTime();
+    if (!Number.isFinite(closesAt) || now >= closesAt) return 'EVENT_GUESTBOOK_CLOSED';
+  }
+  return null;
 }
 
 async function getSession(req: any) {
@@ -1756,6 +1767,7 @@ app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
          event_identity_mode AS "identityMode",
          event_required_fields AS "requiredFields",
          event_is_open AS "eventIsOpen",
+         event_opens_at AS "eventOpensAt",
          event_closes_at AS "eventClosesAt"
        FROM books
        WHERE id = $1
@@ -1789,10 +1801,20 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
   }
   const requiredFields = req.body?.requiredFields;
   const eventIsOpen = req.body?.eventIsOpen;
+  const rawEventOpensAt = req.body?.eventOpensAt;
   const rawEventClosesAt = req.body?.eventClosesAt;
   if (typeof eventIsOpen !== 'boolean') {
     res.status(400).json({ error: 'INVALID_EVENT_OPEN_STATE' });
     return;
+  }
+  let eventOpensAt: string | null = null;
+  if (rawEventOpensAt !== null && rawEventOpensAt !== undefined && rawEventOpensAt !== '') {
+    const parsed = new Date(rawEventOpensAt);
+    if (!Number.isFinite(parsed.getTime())) {
+      res.status(400).json({ error: 'INVALID_EVENT_OPEN_TIME' });
+      return;
+    }
+    eventOpensAt = parsed.toISOString();
   }
   let eventClosesAt: string | null = null;
   if (rawEventClosesAt !== null && rawEventClosesAt !== undefined && rawEventClosesAt !== '') {
@@ -1802,6 +1824,10 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
       return;
     }
     eventClosesAt = parsed.toISOString();
+  }
+  if (eventOpensAt && eventClosesAt && new Date(eventClosesAt).getTime() <= new Date(eventOpensAt).getTime()) {
+    res.status(400).json({ error: 'INVALID_EVENT_TIME_RANGE' });
+    return;
   }
   if (
     !Array.isArray(requiredFields) ||
@@ -1824,18 +1850,20 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
        SET event_device_limit = $1,
            event_required_fields = $2::jsonb,
            event_is_open = $3,
-           event_closes_at = $4,
+           event_opens_at = $4,
+           event_closes_at = $5,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5
-         AND owner_user_id = $6
+       WHERE id = $6
+         AND owner_user_id = $7
          AND book_type = 'event'
        RETURNING
          event_device_limit AS "deviceLimit",
          event_identity_mode AS "identityMode",
          event_required_fields AS "requiredFields",
          event_is_open AS "eventIsOpen",
+         event_opens_at AS "eventOpensAt",
          event_closes_at AS "eventClosesAt"`,
-      [deviceLimit, JSON.stringify(requiredFields), eventIsOpen, eventClosesAt, req.params.bookId, session.user.id]
+      [deviceLimit, JSON.stringify(requiredFields), eventIsOpen, eventOpensAt, eventClosesAt, req.params.bookId, session.user.id]
     );
 
     if (result.rowCount === 0) {
@@ -2954,6 +2982,7 @@ app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, sco
          event_identity_mode AS "identityMode",
          event_required_fields AS "requiredFields",
          event_is_open AS "eventIsOpen",
+         event_opens_at AS "eventOpensAt",
          event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1`,
@@ -2970,9 +2999,12 @@ app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, sco
       return;
     }
 
-    if (result.rows[0].bookType === 'event' && !isEventBookAvailable(result.rows[0])) {
-      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
-      return;
+    if (result.rows[0].bookType === 'event') {
+      const availabilityError = getEventBookAvailabilityError(result.rows[0]);
+      if (availabilityError) {
+        res.status(410).json({ error: availabilityError });
+        return;
+      }
     }
 
     res.status(200).json({
@@ -3008,6 +3040,7 @@ app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000,
          event_device_limit AS "deviceLimit",
          event_required_fields AS "requiredFields",
          event_is_open AS "eventIsOpen",
+         event_opens_at AS "eventOpensAt",
          event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1
@@ -3023,9 +3056,10 @@ app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000,
     }
 
     const book = bookResult.rows[0];
-    if (!isEventBookAvailable(book)) {
+    const availabilityError = getEventBookAvailabilityError(book);
+    if (availabilityError) {
       await client.query('ROLLBACK');
-      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
+      res.status(410).json({ error: availabilityError });
       return;
     }
     const requiredFields = Array.isArray(book.requiredFields) ? book.requiredFields : [];
@@ -3231,6 +3265,7 @@ app.post('/api/invites/:token/contributions', publicRateLimit({ windowMs: 60_000
          event_device_limit AS "deviceLimit",
          event_identity_mode AS "identityMode",
          event_is_open AS "eventIsOpen",
+         event_opens_at AS "eventOpensAt",
          event_closes_at AS "eventClosesAt"
        FROM books
        WHERE invite_token = $1`,
@@ -3247,9 +3282,12 @@ app.post('/api/invites/:token/contributions', publicRateLimit({ windowMs: 60_000
       return;
     }
 
-    if (bookResult.rows[0].bookType === 'event' && !isEventBookAvailable(bookResult.rows[0])) {
-      res.status(410).json({ error: 'EVENT_GUESTBOOK_CLOSED' });
-      return;
+    if (bookResult.rows[0].bookType === 'event') {
+      const availabilityError = getEventBookAvailabilityError(bookResult.rows[0]);
+      if (availabilityError) {
+        res.status(410).json({ error: availabilityError });
+        return;
+      }
     }
 
     deviceLimit = Number(bookResult.rows[0].deviceLimit) || 1;
@@ -3981,6 +4019,7 @@ async function initializeDatabase(): Promise<void> {
       AND (event_device_limit <> 1 OR event_required_fields <> '["name"]'::jsonb)
   `);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_is_open BOOLEAN NOT NULL DEFAULT TRUE`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_opens_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_closes_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);

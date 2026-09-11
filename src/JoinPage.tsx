@@ -76,6 +76,7 @@ export function JoinPage({ token }: JoinPageProps) {
       const sessionData = await sessionResponse.json().catch(() => null);
       if (!sessionResponse.ok) {
         if (sessionData?.error === 'EVENT_GUESTBOOK_CLOSED') throw new Error('EVENT_CLOSED');
+        if (sessionData?.error === 'EVENT_GUESTBOOK_NOT_OPEN_YET') throw new Error('EVENT_NOT_OPEN_YET');
         if (sessionResponse.status === 429) throw new Error('RATE_LIMITED');
         if (sessionData?.error === 'DEVICE_CONTRIBUTION_LIMIT_REACHED') {
           throw new Error('DEVICE_LIMIT_REACHED');
@@ -99,6 +100,8 @@ export function JoinPage({ token }: JoinPageProps) {
             ? t('Adj meg érvényes e-mail-címet.')
             : err instanceof Error && err.message === 'EVENT_CLOSED'
               ? t('Ez a vendégkönyv már lezárult.')
+              : err instanceof Error && err.message === 'EVENT_NOT_OPEN_YET'
+                ? t('Ez a vendégkönyv még nem nyílt meg.')
               : err instanceof Error && err.message === 'RATE_LIMITED'
                 ? t('Túl sok kérés érkezett. Várj egy percet, majd próbáld újra.')
                 : t('A rajzlapot nem sikerült megnyitni. Próbáld újra.')
@@ -116,6 +119,7 @@ export function JoinPage({ token }: JoinPageProps) {
         if (!response.ok) {
           const data = await response.json().catch(() => null);
           if (data?.error === 'EVENT_GUESTBOOK_CLOSED') throw new Error('EVENT_CLOSED');
+          if (data?.error === 'EVENT_GUESTBOOK_NOT_OPEN_YET') throw new Error('EVENT_NOT_OPEN_YET');
           if (response.status === 429) throw new Error('RATE_LIMITED');
           throw new Error('INVITE_LOAD_FAILED');
         }
@@ -136,6 +140,8 @@ export function JoinPage({ token }: JoinPageProps) {
             ? t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.')
             : err instanceof Error && err.message === 'EVENT_CLOSED'
               ? t('Ez a vendégkönyv már lezárult.')
+              : err instanceof Error && err.message === 'EVENT_NOT_OPEN_YET'
+                ? t('Ez a vendégkönyv még nem nyílt meg.')
               : err instanceof Error && err.message === 'RATE_LIMITED'
                 ? t('Túl sok kérés érkezett. Várj egy percet, majd próbáld újra.')
                 : t('Ez a vendégkönyv-meghívó nem érhető el.')

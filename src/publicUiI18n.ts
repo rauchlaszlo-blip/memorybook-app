@@ -146,6 +146,7 @@ const translations: Record<string, Translation> = {
 
   'Ez a vendégkönyv-meghívó nem érhető el.': { en: 'This guestbook invitation is not available.', de: 'Diese Gästebuch-Einladung ist nicht verfügbar.' },
   'Ez a vendégkönyv már lezárult.': { en: 'This guestbook is now closed.', de: 'Dieses Gästebuch ist jetzt geschlossen.' },
+  'Ez a vendégkönyv még nem nyílt meg.': { en: 'This guestbook is not open yet.', de: 'Dieses Gästebuch ist noch nicht geöffnet.' },
   'Túl sok kérés érkezett. Várj egy percet, majd próbáld újra.': { en: 'Too many requests. Wait a minute and try again.', de: 'Zu viele Anfragen. Warte eine Minute und versuche es erneut.' },
   'E-mail-cím': { en: 'Email address', de: 'E-Mail-Adresse' },
   'Telefonszám': { en: 'Phone number', de: 'Telefonnummer' },

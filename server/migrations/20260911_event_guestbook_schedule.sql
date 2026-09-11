@@ -1,0 +1,2 @@
+ALTER TABLE books
+  ADD COLUMN IF NOT EXISTS event_opens_at TIMESTAMPTZ;
