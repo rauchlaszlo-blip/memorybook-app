@@ -327,11 +327,12 @@ export function PurchasePage() {
           if (!active) return;
 
           if (data?.paymentStatus === 'paid') {
-            setPaymentSuccess({
-              purchaseId: returnedPurchaseId,
-              provider: 'simplepay',
-              giftRedeemPath: data?.giftRedeemPath || null,
-            });
+            const giftRedeemPath = data?.giftRedeemPath || null;
+            if (!giftRedeemPath) {
+              window.location.replace('/my-books#create-book');
+              return;
+            }
+            setPaymentSuccess({ purchaseId: returnedPurchaseId, provider: 'simplepay', giftRedeemPath });
             setNotice(null);
             setLoading(false);
             window.history.replaceState({}, '', '/purchase');
@@ -395,11 +396,12 @@ export function PurchasePage() {
       .then((data) => {
         if (!active) return;
         setPurchaseId(returnedPurchaseId);
-        setPaymentSuccess({
-          purchaseId: returnedPurchaseId,
-          provider: 'paypal',
-          giftRedeemPath: data?.giftRedeemPath || null,
-        });
+        const giftRedeemPath = data?.giftRedeemPath || null;
+        if (!giftRedeemPath) {
+          window.location.replace('/my-books#create-book');
+          return;
+        }
+        setPaymentSuccess({ purchaseId: returnedPurchaseId, provider: 'paypal', giftRedeemPath });
         setNotice(null);
         window.history.replaceState({}, '', '/purchase');
       })
@@ -463,11 +465,12 @@ export function PurchasePage() {
         );
         const testData = await testResponse.json().catch(() => ({}));
         if (!testResponse.ok) throw new Error(testData?.error || 'TEST_PURCHASE_COMPLETE_FAILED');
-        setPaymentSuccess({
-          purchaseId: nextPurchaseId,
-          provider: 'test',
-          giftRedeemPath: testData?.giftRedeemPath || null,
-        });
+        const giftRedeemPath = testData?.giftRedeemPath || null;
+        if (!giftRedeemPath) {
+          window.location.replace('/my-books#create-book');
+          return;
+        }
+        setPaymentSuccess({ purchaseId: nextPurchaseId, provider: 'test', giftRedeemPath });
         setPurchaseId(nextPurchaseId);
         return;
       }
@@ -673,15 +676,9 @@ export function PurchasePage() {
           </button>
         </form>
 
-        {paymentSuccess && (
+        {paymentSuccess?.giftRedeemPath && (
           <div style={styles.success}>
-            <strong>{t(paymentSuccess.provider === 'test' ? 'A tesztfizetés sikeres. A könyvjogosultság létrejött.' : paymentSuccess.provider === 'simplepay' ? 'A SimplePay fizetés sikeres. A könyvjogosultság létrejött.' : 'A PayPal fizetés sikeres. A könyvjogosultság létrejött.')}</strong><br />
-            {f('Azonosító: {id}', { id: paymentSuccess.purchaseId })}<br />
-            {paymentSuccess.giftRedeemPath ? (
-              <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>
-            ) : (
-              <a href="/my-books" style={styles.inlineLink}>{t('Tovább a könyveimhez')}</a>
-            )}
+            <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>
           </div>
         )}
 
