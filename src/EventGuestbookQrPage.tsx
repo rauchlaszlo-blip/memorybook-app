@@ -44,7 +44,7 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
 
   return (
     <main style={styles.page}>
-      <a href={`/my-books/${encodeURIComponent(bookId)}`} style={styles.back}>{t('← Vissza a könyvhöz')}</a>
+      <a href={`/book/${encodeURIComponent(bookId)}/view`} style={styles.back}>{t('← Vissza a könyvhöz')}</a>
       <section style={styles.card}>
         <div style={styles.brand}>{t('MemoryBook vendégkönyv')}</div>
         <h1 style={styles.title}>{title}</h1>
