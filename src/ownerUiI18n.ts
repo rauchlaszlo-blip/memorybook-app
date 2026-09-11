@@ -13,6 +13,7 @@ const translations: Record<string, Translation> = {
   'Gyűjts fényképes aláírásokat gyorsan, egymás után.': { en: 'Collect photo signatures quickly, one after another.', de: 'Sammle Foto-Unterschriften schnell nacheinander.' },
   'A következő üres oldal automatikusan nyílik majd meg.': { en: 'The next empty page will open automatically.', de: 'Die nächste leere Seite wird automatisch geöffnet.' },
   'Következő dedikálás': { en: 'Next dedication', de: 'Nächste Widmung' },
+  'Új dedikálás': { en: 'New dedication', de: 'Neue Widmung' },
   '{page}. dedikálási oldal': { en: 'Dedication page {page}', de: 'Widmungsseite {page}' },
   'Honnan választasz fényképet?': { en: 'Where do you want to choose the photo from?', de: 'Woher möchtest du das Foto auswählen?' },
   'Kamera': { en: 'Camera', de: 'Kamera' },
