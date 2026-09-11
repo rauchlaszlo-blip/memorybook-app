@@ -428,6 +428,37 @@ export function PurchasePage() {
     return () => { active = false; };
   }, [t]);
 
+  const sendGiftLink = async () => {
+    const path = paymentSuccess?.giftRedeemPath;
+    if (!path) return;
+
+    const url = new URL(path, window.location.origin).toString();
+    const shareData = {
+      title: t('MemoryBook ajándék'),
+      text: t('Ajándékba kaptál egy MemoryBook emlékkönyvet.'),
+      url,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setNotice(t('A link másolva.'));
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setNotice(t('A link másolva.'));
+      } catch (copyError) {
+        console.error(copyError);
+        setError(t('A linket nem sikerült megosztani. Tartsd hosszan lenyomva, majd másold ki.'));
+      }
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -693,7 +724,9 @@ export function PurchasePage() {
 
         {paymentSuccess?.giftRedeemPath && (
           <div style={styles.success}>
-            <a href={paymentSuccess.giftRedeemPath} style={styles.inlineLink}>{t('Ajándék beváltó link megnyitása')}</a>
+            <button type="button" onClick={() => { void sendGiftLink(); }} style={styles.giftShareButton}>
+              {t('Ajándéklink küldése')}
+            </button>
           </div>
         )}
 
@@ -744,5 +777,6 @@ const styles: Record<string, React.CSSProperties> = {
   giftInfoCompact: { padding: 6, fontSize: 12, lineHeight: 1.25 },
   error: { padding: 9, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   primaryButton: { minHeight: 44, border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, fontSize: 15 },
+  giftShareButton: { width: '100%', minHeight: 48, border: 0, borderRadius: 8, padding: '11px 14px', background: '#0f172a', color: '#ffffff', fontWeight: 800, fontSize: 16, cursor: 'pointer' },
   success: { marginTop: 10, padding: 10, borderRadius: 9, background: '#ecfdf5', color: '#166534', lineHeight: 1.4, fontSize: 13, overflowWrap: 'anywhere' },
 };
