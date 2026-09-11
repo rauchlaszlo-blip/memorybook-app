@@ -2853,6 +2853,7 @@ app.get('/api/page-invites/:token', async (req, res) => {
       `SELECT
          b.id AS "bookId",
          b.title AS "bookTitle",
+         b.book_type AS "bookType",
          p.id,
          p.page_number AS "pageNumber",
          p.canvas_json AS "canvasData",

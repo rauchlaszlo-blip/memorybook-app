@@ -9,6 +9,7 @@ import React, {
 import * as fabric from 'fabric';
 import type { AppLanguage } from './i18n';
 import { getInviteEditorMessages } from './inviteEditorI18n';
+import { optimizeGuestImage } from './optimizeGuestImage';
 
 export interface PageData {
   id: string;
@@ -39,6 +40,7 @@ interface MemoryBookEditorProps {
   newTextAlign?: 'left' | 'center' | 'right';
   enableBackgroundControls?: boolean;
   compactLayout?: boolean;
+  optimizeUploadedImages?: boolean;
 }
 
 type PendingSave = {
@@ -142,7 +144,7 @@ const editorStyles: Record<string, React.CSSProperties> = {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -162,6 +164,7 @@ export const MemoryBookEditor = forwardRef<
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [canvasScale, setCanvasScale] = useState(1);
+  const [imageUploadMessage, setImageUploadMessage] = useState<string | null>(null);
 
   const pageSaveStatesRef = useRef<Map<string, PageSaveState>>(new Map());
   const currentPageIdRef = useRef(page.id);
@@ -949,20 +952,41 @@ export const MemoryBookEditor = forwardRef<
     canvas.requestRenderAll();
   };
 
-  const handleImageUpload = (
+  const readUploadedImage = async (file: File) => {
+    if (!optimizeUploadedImages) {
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('IMAGE_READ_FAILED'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    const optimized = await optimizeGuestImage(file);
+    setImageUploadMessage(optimized.mayBeLowResolutionForA5
+      ? (language === 'de'
+        ? 'Das Bild kann für einen A5-Druck eine zu niedrige Auflösung haben.'
+        : language === 'en'
+          ? 'This image may have insufficient resolution for A5 printing.'
+          : 'A kép felbontása alacsony lehet A5-ös nyomtatáshoz.')
+      : null);
+    return optimized.dataUrl;
+  };
+
+  const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
 
     if (!file || !fabricRef.current) return;
 
     const uploadTargetPageId = currentPageIdRef.current;
-    const reader = new FileReader();
+    setImageUploadMessage(null);
 
-    reader.onload = (event) => {
+    try {
+      const dataUrl = await readUploadedImage(file);
       if (uploadTargetPageId !== currentPageIdRef.current) return;
-
-      const dataUrl = event.target?.result as string;
       const imgElement = new Image();
 
       imgElement.onload = () => {
@@ -995,10 +1019,14 @@ export const MemoryBookEditor = forwardRef<
       };
 
       imgElement.src = dataUrl;
-    };
-
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      setImageUploadMessage(language === 'de'
+        ? 'Das Bild konnte nicht verarbeitet werden. Bitte wählen Sie ein JPEG-, PNG- oder WebP-Bild.'
+        : language === 'en'
+          ? 'The image could not be processed. Please choose a JPEG, PNG or WebP image.'
+          : 'A kép nem dolgozható fel. Válassz JPEG-, PNG- vagy WebP-képet.');
+    }
   };
 
   const backgroundCopy = language === 'de'
@@ -1032,15 +1060,16 @@ export const MemoryBookEditor = forwardRef<
     handleStructuralMutation();
   };
 
-  const handleBackgroundImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBackgroundImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file || !fabricRef.current) return;
 
     const uploadTargetPageId = currentPageIdRef.current;
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    setImageUploadMessage(null);
+    try {
+      const dataUrl = await readUploadedImage(file);
       if (uploadTargetPageId !== currentPageIdRef.current) return;
-      const dataUrl = event.target?.result as string;
       const imgElement = new Image();
       imgElement.onload = () => {
         const canvas = fabricRef.current;
@@ -1061,9 +1090,14 @@ export const MemoryBookEditor = forwardRef<
         handleStructuralMutation();
       };
       imgElement.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    } catch (error) {
+      console.error('Background image upload failed:', error);
+      setImageUploadMessage(language === 'de'
+        ? 'Das Bild konnte nicht verarbeitet werden. Bitte wählen Sie ein JPEG-, PNG- oder WebP-Bild.'
+        : language === 'en'
+          ? 'The image could not be processed. Please choose a JPEG, PNG or WebP image.'
+          : 'A kép nem dolgozható fel. Válassz JPEG-, PNG- vagy WebP-képet.');
+    }
   };
 
   const applyBackgroundImage = (src: string) => {
@@ -1459,6 +1493,12 @@ export const MemoryBookEditor = forwardRef<
 
         </div>}
       </div>
+
+      {imageUploadMessage && (
+        <div role="status" style={{ maxWidth: 850, margin: '0 auto 10px', padding: '10px 12px', border: '1px solid #f59e0b', borderRadius: 8, background: '#fffbeb', color: '#92400e', fontWeight: 700 }}>
+          {imageUploadMessage}
+        </div>
+      )}
 
       <div
         ref={canvasViewportRef}

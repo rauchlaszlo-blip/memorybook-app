@@ -18,6 +18,7 @@ type InvitePageData = PageData & {
   bookTitle: string;
   inviteStatus: string;
   inviteRecipientName?: string | null;
+  bookType?: 'standard' | 'event' | 'dedication';
   language: AppLanguage;
 };
 
@@ -242,6 +243,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         newTextFontSize={48}
         newTextTop={180}
         newTextAlign="center"
+        optimizeUploadedImages={page.bookType === 'event'}
       />
     </main>
   );
