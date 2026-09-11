@@ -21,6 +21,11 @@ type Copy = {
   eventTitle: string;
   eventText: string;
   noAccount: string;
+  helpTitle: string;
+  helpText: string;
+  quickGuide: string;
+  detailedGuide: string;
+  faq: string;
   bottomTitle: string;
   bottomText: string;
   bottomCta: string;
@@ -46,6 +51,11 @@ const COPY: Record<AppLanguage, Copy> = {
     eventTitle: 'QR-kódos vendégkönyv',
     eventText: 'Tedd ki a QR-kódot. A vendégek telefonról azonnal küldhetnek fotót és üzenetet.',
     noAccount: 'A meghívottaknak nem kell MemoryBook-fiókot létrehozniuk.',
+    helpTitle: 'Segítség és útmutatók',
+    helpText: 'Ismerd meg a MemoryBook használatát még bejelentkezés előtt.',
+    quickGuide: 'Gyors útmutató',
+    detailedGuide: 'Részletes útmutató',
+    faq: 'Gyakran ismételt kérdések',
     bottomTitle: 'Te elindítod. Ők megtöltik emlékekkel.',
     bottomText: 'Születésnapra, ballagásra, osztálytalálkozóra, esküvőre vagy bármilyen közös alkalomra.',
     bottomCta: 'Nekem is kell',
@@ -69,6 +79,11 @@ const COPY: Record<AppLanguage, Copy> = {
     eventTitle: 'QR code guestbook',
     eventText: 'Display the QR code. Guests can instantly send photos and messages from their phones.',
     noAccount: 'Invited contributors do not need to create a MemoryBook account.',
+    helpTitle: 'Help and guides',
+    helpText: 'Learn how MemoryBook works before signing in.',
+    quickGuide: 'Quick guide',
+    detailedGuide: 'Detailed guide',
+    faq: 'Frequently asked questions',
     bottomTitle: 'You start it. They fill it with memories.',
     bottomText: 'For birthdays, graduations, reunions, weddings or any shared occasion.',
     bottomCta: 'I want one too',
@@ -92,6 +107,11 @@ const COPY: Record<AppLanguage, Copy> = {
     eventTitle: 'QR-Code-Gästebuch',
     eventText: 'Zeige den QR-Code. Gäste können direkt vom Handy Fotos und Nachrichten senden.',
     noAccount: 'Eingeladene Mitwirkende müssen kein MemoryBook-Konto erstellen.',
+    helpTitle: 'Hilfe und Anleitungen',
+    helpText: 'Erfahre schon vor der Anmeldung, wie MemoryBook funktioniert.',
+    quickGuide: 'Kurzanleitung',
+    detailedGuide: 'Ausführliche Anleitung',
+    faq: 'Häufig gestellte Fragen',
     bottomTitle: 'Du startest. Sie füllen es mit Erinnerungen.',
     bottomText: 'Für Geburtstage, Abschlüsse, Klassentreffen, Hochzeiten oder jeden gemeinsamen Anlass.',
     bottomCta: 'Das will ich auch',
@@ -174,6 +194,25 @@ export function LandingPage() {
           </article>
         </div>
         <p style={styles.noAccount}>{copy.noAccount}</p>
+      </section>
+
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>{copy.helpTitle}</h2>
+        <p style={styles.helpLead}>{copy.helpText}</p>
+        <div style={styles.helpGrid}>
+          <a href="/help/quick" style={styles.helpCard}>
+            <strong style={styles.helpCardTitle}>{copy.quickGuide}</strong>
+            <span style={styles.helpCardArrow}>→</span>
+          </a>
+          <a href="/help/detailed" style={styles.helpCard}>
+            <strong style={styles.helpCardTitle}>{copy.detailedGuide}</strong>
+            <span style={styles.helpCardArrow}>→</span>
+          </a>
+          <a href="/faq" style={styles.helpCard}>
+            <strong style={styles.helpCardTitle}>{copy.faq}</strong>
+            <span style={styles.helpCardArrow}>→</span>
+          </a>
+        </div>
       </section>
 
       <section style={styles.bottomCta}>
@@ -369,6 +408,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     lineHeight: 1.5,
   },
+  helpLead: { margin: '-3px auto 15px', textAlign: 'center', color: '#64748b', lineHeight: 1.6 },
+  helpGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 },
+  helpCard: { minHeight: 66, padding: '0 17px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 14, border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', textDecoration: 'none' },
+  helpCardTitle: { lineHeight: 1.35 },
+  helpCardArrow: { fontSize: 22, color: '#64748b' },
   bottomCta: {
     width: '100%',
     maxWidth: 900,
