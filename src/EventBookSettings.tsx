@@ -11,6 +11,7 @@ type SettingsResponse = {
   deviceLimit: number;
   requiredFields?: RequiredField[];
   eventIsOpen: boolean;
+  eventOpensAt?: string | null;
   eventClosesAt?: string | null;
 };
 
@@ -36,6 +37,7 @@ export function EventBookSettings({ bookId }: Props) {
   const [deviceLimit, setDeviceLimit] = useState(1);
   const [requiredFields, setRequiredFields] = useState<RequiredField[]>(['name']);
   const [eventIsOpen, setEventIsOpen] = useState(true);
+  const [eventOpensAt, setEventOpensAt] = useState('');
   const [eventClosesAt, setEventClosesAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,6 +60,7 @@ export function EventBookSettings({ bookId }: Props) {
         setDeviceLimit(data.deviceLimit || 1);
         setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
         setEventIsOpen(data.eventIsOpen !== false);
+        setEventOpensAt(data.eventOpensAt ? toLocalDateTimeValue(data.eventOpensAt) : '');
         setEventClosesAt(data.eventClosesAt ? toLocalDateTimeValue(data.eventClosesAt) : '');
       } catch (err) {
         console.error(err);
@@ -86,6 +89,7 @@ export function EventBookSettings({ bookId }: Props) {
             deviceLimit: nextLimit,
             requiredFields,
             eventIsOpen,
+            eventOpensAt: eventOpensAt ? new Date(eventOpensAt).toISOString() : null,
             eventClosesAt: eventClosesAt ? new Date(eventClosesAt).toISOString() : null,
           }),
         }
@@ -99,6 +103,7 @@ export function EventBookSettings({ bookId }: Props) {
       setDeviceLimit(data.deviceLimit);
       setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
       setEventIsOpen(data.eventIsOpen !== false);
+      setEventOpensAt(data.eventOpensAt ? toLocalDateTimeValue(data.eventOpensAt) : '');
       setEventClosesAt(data.eventClosesAt ? toLocalDateTimeValue(data.eventClosesAt) : '');
       setMessage(t('Beállítás mentve.'));
     } catch (err) {
@@ -125,7 +130,16 @@ export function EventBookSettings({ bookId }: Props) {
             <span>{t('A vendégkönyv nyitva van')}</span>
           </label>
           <label style={{ ...styles.label, display: 'block', marginTop: 10 }}>
-            {t('Automatikus lezárás (opcionális)')}
+            {t('Kezdés időpontja (opcionális)')}
+            <input
+              type="datetime-local"
+              value={eventOpensAt}
+              onChange={(event) => setEventOpensAt(event.target.value)}
+              style={{ ...styles.input, width: '100%' }}
+            />
+          </label>
+          <label style={{ ...styles.label, display: 'block', marginTop: 10 }}>
+            {t('Befejezés időpontja (opcionális)')}
             <input
               type="datetime-local"
               value={eventClosesAt}
@@ -133,7 +147,7 @@ export function EventBookSettings({ bookId }: Props) {
               style={{ ...styles.input, width: '100%' }}
             />
           </label>
-          <div style={styles.fieldHint}>{t('Ha nem adsz meg időpontot, a vendégkönyv addig marad nyitva, amíg kézzel le nem zárod.')}</div>
+          <div style={styles.fieldHint}>{t('A vendégkönyv csak a megadott kezdési és befejezési időpont között használható.')}</div>
         </fieldset>
         <div style={styles.eyebrow}>{t('Beküldési szabályok')}</div>
         <h2 style={styles.title}>{t('Hány bejegyzés jöhet egy telefonról?')}</h2>
