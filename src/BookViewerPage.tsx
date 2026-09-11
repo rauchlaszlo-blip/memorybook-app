@@ -18,6 +18,7 @@ type PageData = {
   inviteRecipientEmail?: string | null;
   inviteDeliveryMethod?: string | null;
   submittedAt?: string | null;
+  inviteStatus?: string;
   eventGuestData?: {
     name?: string;
     email?: string;
@@ -117,6 +118,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         const data = await response.json();
         const statusOrder: Record<string, number> = {
           submitted: 0,
+          owner: 0,
           draft: 1,
           invited: 2,
           empty: 3,
@@ -131,7 +133,8 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               .filter(
                 (item: BookPageSummary) =>
                   item.ownerVisibility !== 'archived' &&
-                  (loadedBookType !== 'event' || item.inviteStatus === 'submitted')
+                  item.inviteStatus !== 'owner_draft' &&
+                  (loadedBookType !== 'event' || ['submitted', 'owner'].includes(item.inviteStatus))
               )
               .sort((a: BookPageSummary, b: BookPageSummary) => {
                 const statusDifference =
@@ -331,7 +334,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
             {bookType !== 'event' && (
               <h2 style={styles.identityTitle}>
-                {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
+                {page.inviteStatus === 'owner' ? t('Saját emlék') : page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
               </h2>
             )}
             <div style={styles.identityGrid}>
@@ -353,7 +356,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               {page.inviteRecipientName && page.inviteRecipientEmail && (
                 <div><span style={styles.identityLabel}>E-mail</span>{page.inviteRecipientEmail}</div>
               )}
-              {bookType !== 'event' && (
+              {bookType !== 'event' && page.inviteStatus !== 'owner' && (
                 <>
                   <div>
                     <span style={styles.identityLabel}>{t('Küldési mód')}</span>
