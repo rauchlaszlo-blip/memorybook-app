@@ -8,6 +8,11 @@ import {
 type Translation = { en: string; de: string };
 
 const translations: Record<string, Translation> = {
+  'Dedikálás': { en: 'Dedication book', de: 'Widmungsbuch' },
+  'Dedikálás – {count} oldal': { en: 'Dedication book – {count} pages', de: 'Widmungsbuch – {count} Seiten' },
+  'Gyűjts fényképes aláírásokat gyorsan, egymás után.': { en: 'Collect photo signatures quickly, one after another.', de: 'Sammle Foto-Unterschriften schnell nacheinander.' },
+  'A következő üres oldal automatikusan nyílik majd meg.': { en: 'The next empty page will open automatically.', de: 'Die nächste leere Seite wird automatisch geöffnet.' },
+  'Következő dedikálás': { en: 'Next dedication', de: 'Nächste Widmung' },
   'A következő üres oldalhoz innen küldhetsz meghívót.': { en: 'Send an invitation for the next empty page from here.', de: 'Von hier kannst du eine Einladung für die nächste leere Seite senden.' },
   'Nincs több üres, meghívható oldal.': { en: 'There are no more empty pages available for invitation.', de: 'Es gibt keine weiteren leeren Seiten zum Einladen.' },
   'Nem sikerült betölteni a könyveidet.': { en: 'Could not load your books.', de: 'Deine Bücher konnten nicht geladen werden.' },

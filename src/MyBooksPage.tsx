@@ -195,7 +195,9 @@ export function MyBooksPage() {
                       <option key={item.id} value={item.id}>
                         {item.bookType === 'event'
                           ? t('Rendezvény-vendégkönyv')
-                          : f('Normál emlékkönyv – {count} oldal', { count: item.includedPages })}
+                          : item.bookType === 'dedication'
+                            ? f('Dedikálás – {count} oldal', { count: item.includedPages })
+                            : f('Normál emlékkönyv – {count} oldal', { count: item.includedPages })}
                         {item.wasGift ? ` ${t('· ajándék')}` : ''}
                       </option>
                     ))}
@@ -229,7 +231,7 @@ export function MyBooksPage() {
         {!loading && !error && books.length > 0 && (
           <div className="my-books-grid">
             {books.map((book) => {
-              const openPath = book.bookType === 'event'
+              const openPath = book.bookType === 'event' || book.bookType === 'dedication'
                 ? `/my-books/${encodeURIComponent(book.id)}`
                 : `/book/${encodeURIComponent(book.id)}/view`;
               return (

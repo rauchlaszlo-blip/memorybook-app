@@ -786,7 +786,11 @@ app.post('/api/purchases', async (req, res) => {
       : req.body?.purchaseMode === 'organization'
         ? 'organization'
         : 'self';
-  const bookType = req.body?.bookType === 'event' ? 'event' : 'standard';
+  const bookType = req.body?.bookType === 'event'
+    ? 'event'
+    : req.body?.bookType === 'dedication'
+      ? 'dedication'
+      : 'standard';
   const paymentProvider =
     req.body?.paymentProvider === 'paypal'
       ? 'paypal'
@@ -859,7 +863,7 @@ app.post('/api/purchases', async (req, res) => {
   }
 
   const purchaseId = `purchase-${crypto.randomUUID()}`;
-  const includedPages = bookType === 'standard' ? DEFAULT_BOOK_PAGE_COUNT : 0;
+  const includedPages = bookType === 'event' ? 0 : DEFAULT_BOOK_PAGE_COUNT;
 
   try {
     if (session) {
@@ -1471,9 +1475,13 @@ app.post('/api/my/books', async (req, res) => {
       return;
     }
 
-    const bookType = entitlement.bookType === 'event' ? 'event' : 'standard';
+    const bookType = entitlement.bookType === 'event'
+      ? 'event'
+      : entitlement.bookType === 'dedication'
+        ? 'dedication'
+        : 'standard';
     const includedPages =
-      bookType === 'standard'
+      bookType !== 'event'
         ? Math.max(1, Number(entitlement.includedPages) || DEFAULT_BOOK_PAGE_COUNT)
         : 0;
 
@@ -1490,7 +1498,7 @@ app.post('/api/my/books', async (req, res) => {
       [bookId, session.user.id, title, inviteToken, bookType, includedPages, language]
     );
 
-    if (bookType === 'standard') {
+    if (bookType !== 'event') {
       for (let pageNumber = 1; pageNumber <= includedPages; pageNumber += 1) {
         await client.query(
           `INSERT INTO pages (id, book_id, page_number)
@@ -3486,7 +3494,7 @@ async function initializeDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS purchases (
       id TEXT PRIMARY KEY,
       purchase_mode TEXT NOT NULL CHECK (purchase_mode IN ('self', 'gift', 'organization')),
-      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event')),
+      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event', 'dedication')),
       included_pages INTEGER NOT NULL DEFAULT 30,
       purchaser_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       purchaser_name TEXT NOT NULL,
@@ -3545,7 +3553,7 @@ async function initializeDatabase(): Promise<void> {
       purchase_id TEXT NOT NULL UNIQUE REFERENCES purchases(id) ON DELETE RESTRICT,
       assigned_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       gift_token TEXT UNIQUE,
-      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event')),
+      book_type TEXT NOT NULL CHECK (book_type IN ('standard', 'event', 'dedication')),
       included_pages INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'redeemed', 'revoked')),
       claimed_at TIMESTAMPTZ,
@@ -3558,6 +3566,12 @@ async function initializeDatabase(): Promise<void> {
 
   await pool.query(`CREATE INDEX IF NOT EXISTS book_entitlements_assigned_user_idx ON book_entitlements (assigned_user_id, status)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS purchases_purchaser_user_idx ON purchases (purchaser_user_id, created_at DESC)`);
+
+  const dedicationBookTypeMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260911_dedication_book_type.sql'),
+    'utf8'
+  );
+  await pool.query(dedicationBookTypeMigration);
 
   await pool.query(
     `UPDATE books

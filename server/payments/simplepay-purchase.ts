@@ -13,7 +13,7 @@ type DbClient = {
 type PurchaseRow = {
   id: string;
   purchaseMode: 'self' | 'gift';
-  bookType: 'standard' | 'event';
+  bookType: 'standard' | 'event' | 'dedication';
   includedPages: number;
   purchaserUserId: string | null;
   purchaserEmail: string;

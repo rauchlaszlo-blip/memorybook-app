@@ -42,7 +42,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const f = (key: string, values: Record<string, string | number>) => ownerFormat(uiLanguage, key, values);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [eventInviteToken, setEventInviteToken] = useState<string | null>(null);
-  const [bookType, setBookType] = useState<'standard' | 'event'>('standard');
+  const [bookType, setBookType] = useState<'standard' | 'event' | 'dedication'>('standard');
   const [bookLanguage, setBookLanguage] = useState<AppLanguage>('hu');
   const [languageSaving, setLanguageSaving] = useState(false);
   const [pages, setPages] = useState<OwnerPage[]>([]);
@@ -93,7 +93,11 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
         const data = await response.json();
         setBookTitle(data.book?.title || 'MemoryBook');
         setEventInviteToken(data.book?.eventInviteToken || null);
-        setBookType(data.book?.bookType === 'event' ? 'event' : 'standard');
+        setBookType(data.book?.bookType === 'event'
+          ? 'event'
+          : data.book?.bookType === 'dedication'
+            ? 'dedication'
+            : 'standard');
         setBookLanguage(normalizeAppLanguage(data.book?.language) ?? 'hu');
         setPages(Array.isArray(data.pages) ? data.pages : []);
       } catch (err) {
@@ -473,7 +477,9 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             <p style={styles.subtitle}>
               {bookType === 'event'
                 ? t('A vendégek QR-kóddal írhatnak a rendezvény vendégkönyvébe. A beérkezett anyagokról te döntesz.')
-                : t('A következő üres oldalhoz innen küldhetsz meghívót.')}
+                : bookType === 'dedication'
+                  ? t('Gyűjts fényképes aláírásokat gyorsan, egymás után.')
+                  : t('A következő üres oldalhoz innen küldhetsz meghívót.')}
             </p>
           </div>
         </div>
@@ -492,6 +498,18 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       )}
 
         {bookType === 'event' && <EventBookSettings bookId={bookId} />}
+
+        {!loading && bookType === 'dedication' && (
+          <section style={styles.eventPanel}>
+            <div>
+              <strong style={styles.eventPanelTitle}>{t('Dedikálás')}</strong>
+              <div style={styles.eventPanelText}>{t('A következő üres oldal automatikusan nyílik majd meg.')}</div>
+            </div>
+            <button type="button" style={styles.eventQrButton} disabled={!pages.some((page) => page.inviteStatus === 'empty')}>
+              {t('Következő dedikálás')}
+            </button>
+          </section>
+        )}
 
         {loading && <div style={styles.panel}>{t('Betöltés...')}</div>}
         {error && <div style={styles.error}>{error}</div>}

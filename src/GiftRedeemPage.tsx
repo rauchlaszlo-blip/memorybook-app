@@ -70,7 +70,11 @@ export function GiftRedeemPage({ token }: { token: string }) {
         {!loading && info && (
           <>
             <p style={styles.text}>
-              {info.bookType === 'event' ? t('Rendezvény-vendégkönyv') : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}
+              {info.bookType === 'event'
+                ? t('Rendezvény-vendégkönyv')
+                : info.bookType === 'dedication'
+                  ? f('Dedikálás – {count} oldal', { count: info.includedPages })
+                  : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}
             </p>
             {info.claimStatus === 'available' ? (
               loggedIn ? (
