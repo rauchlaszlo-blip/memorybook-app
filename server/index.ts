@@ -3514,6 +3514,7 @@ app.get('/api/pages/:id', async (req, res) => {
          p.invite_recipient_email AS "inviteRecipientEmail",
          p.invite_delivery_method AS "inviteDeliveryMethod",
          p.submitted_at AS "submittedAt",
+         p.event_guest_data AS "eventGuestData",
          p.owner_note AS "ownerNote",
          p.updated_at AS "updatedAt",
          p.book_id AS "bookId",
