@@ -86,6 +86,13 @@ const translations: Record<string, Translation> = {
 
   'A rendezvény beállításait nem sikerült betölteni.': { en: 'Could not load the event settings.', de: 'Die Veranstaltungseinstellungen konnten nicht geladen werden.' },
   'Beállítás mentve.': { en: 'Setting saved.', de: 'Einstellung gespeichert.' },
+  'Beküldés előtt kért adatok': { en: 'Information requested before submission', de: 'Vor dem Absenden abgefragte Daten' },
+  'Név': { en: 'Name', de: 'Name' },
+  'E-mail-cím': { en: 'Email address', de: 'E-Mail-Adresse' },
+  'Telefonszám': { en: 'Phone number', de: 'Telefonnummer' },
+  'Fesztiválazonosító': { en: 'Festival ID', de: 'Festival-ID' },
+  'Belépőjegy-azonosító': { en: 'Ticket ID', de: 'Ticket-ID' },
+  'Csak a kijelölt adatokat kell majd a vendégnek megadnia.': { en: 'Guests will only need to provide the selected information.', de: 'Gäste müssen nur die ausgewählten Angaben machen.' },
   'A beállítást nem sikerült menteni.': { en: 'Could not save the setting.', de: 'Die Einstellung konnte nicht gespeichert werden.' },
   'Rendezvény beállítások betöltése...': { en: 'Loading event settings...', de: 'Veranstaltungseinstellungen werden geladen...' },
   'Beküldési szabályok': { en: 'Submission rules', de: 'Einreichungsregeln' },

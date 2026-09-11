@@ -10,13 +10,25 @@ type Props = { bookId: string };
 type SettingsResponse = {
   deviceLimit: number;
   identityMode: 'none' | 'google' | 'email' | 'external' | string;
+  requiredFields?: RequiredField[];
 };
+
+type RequiredField = 'name' | 'email' | 'phone' | 'festivalId' | 'ticketId';
+
+const REQUIRED_FIELD_OPTIONS: Array<{ value: RequiredField; label: string }> = [
+  { value: 'name', label: 'Név' },
+  { value: 'email', label: 'E-mail-cím' },
+  { value: 'phone', label: 'Telefonszám' },
+  { value: 'festivalId', label: 'Fesztiválazonosító' },
+  { value: 'ticketId', label: 'Belépőjegy-azonosító' },
+];
 
 export function EventBookSettings({ bookId }: Props) {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const [deviceLimit, setDeviceLimit] = useState(1);
   const [identityMode, setIdentityMode] = useState('none');
+  const [requiredFields, setRequiredFields] = useState<RequiredField[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,6 +49,7 @@ export function EventBookSettings({ bookId }: Props) {
         const data: SettingsResponse = await response.json();
         setDeviceLimit(data.deviceLimit || 1);
         setIdentityMode(data.identityMode || 'none');
+        setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
       } catch (err) {
         console.error(err);
         setError(t('A rendezvény beállításait nem sikerült betölteni.'));
@@ -60,7 +73,7 @@ export function EventBookSettings({ bookId }: Props) {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceLimit: nextLimit }),
+          body: JSON.stringify({ deviceLimit: nextLimit, requiredFields }),
         }
       );
       if (response.status === 401) {
@@ -71,6 +84,7 @@ export function EventBookSettings({ bookId }: Props) {
       if (!response.ok || !data) throw new Error('SAVE_FAILED');
       setDeviceLimit(data.deviceLimit);
       setIdentityMode(data.identityMode || 'none');
+      setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
       setMessage(t('Beállítás mentve.'));
     } catch (err) {
       console.error(err);
@@ -116,6 +130,28 @@ export function EventBookSettings({ bookId }: Props) {
             </button>
           ))}
         </div>
+        <fieldset style={styles.fieldset}>
+          <legend style={styles.legend}>{t('Beküldés előtt kért adatok')}</legend>
+          <div style={styles.fieldOptions}>
+            {REQUIRED_FIELD_OPTIONS.map((option) => (
+              <label key={option.value} style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={requiredFields.includes(option.value)}
+                  onChange={(event) => {
+                    setRequiredFields((current) =>
+                      event.target.checked
+                        ? [...current, option.value]
+                        : current.filter((field) => field !== option.value)
+                    );
+                  }}
+                />
+                <span>{t(option.label)}</span>
+              </label>
+            ))}
+          </div>
+          <div style={styles.fieldHint}>{t('Csak a kijelölt adatokat kell majd a vendégnek megadnia.')}</div>
+        </fieldset>
         <button type="submit" disabled={saving} style={styles.saveButton}>
           {saving ? t('Mentés...') : t('Beállítás mentése')}
         </button>
@@ -144,6 +180,11 @@ const styles: Record<string, React.CSSProperties> = {
   label: { color: '#1e293b', fontWeight: 800 },
   input: { display: 'block', width: 120, maxWidth: '100%', minHeight: 48, marginTop: 7, padding: '10px 12px', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 17 },
   presets: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  fieldset: { margin: '8px 0 0', padding: 12, border: '1px solid #cbd5e1', borderRadius: 10 },
+  legend: { padding: '0 6px', color: '#1e293b', fontWeight: 800 },
+  fieldOptions: { display: 'grid', gap: 10 },
+  checkboxLabel: { display: 'flex', alignItems: 'center', gap: 9, minHeight: 34, color: '#334155', fontWeight: 700 },
+  fieldHint: { marginTop: 10, color: '#64748b', fontSize: 13, lineHeight: 1.4 },
   preset: { minWidth: 48, minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' },
   presetActive: { background: '#e2e8f0', borderColor: '#94a3b8', color: '#0f172a' },
   saveButton: { minHeight: 46, justifySelf: 'start', padding: '10px 16px', border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, cursor: 'pointer' },
