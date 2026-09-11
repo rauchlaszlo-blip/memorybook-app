@@ -14,7 +14,7 @@ type DbClient = {
 type PurchaseRow = {
   id: string;
   purchaseMode: 'self' | 'gift';
-  bookType: 'standard' | 'event';
+  bookType: 'standard' | 'event' | 'dedication';
   includedPages: number;
   purchaserUserId: string | null;
   paymentProvider: string;
@@ -41,6 +41,7 @@ function normalizeCurrency(value: unknown): string | null {
 
 function purchaseDescription(purchase: PurchaseRow): string {
   if (purchase.bookType === 'event') return 'MemoryBook – event guestbook';
+  if (purchase.bookType === 'dedication') return 'MemoryBook – dedication book';
   return `MemoryBook – standard book (${Math.max(1, Number(purchase.includedPages) || 30)} pages)`;
 }
 
