@@ -21,6 +21,7 @@ const translations: Record<string, Translation> = {
   'A Galériát a következő lépésben kapcsoljuk be.': { en: 'Gallery selection will be enabled in the next step.', de: 'Die Galerieauswahl wird im nächsten Schritt aktiviert.' },
   'Dedikálási fénykép előnézete': { en: 'Dedication photo preview', de: 'Vorschau des Widmungsfotos' },
   'Új fotó': { en: 'New photo', de: 'Neues Foto' },
+  'Másik kép': { en: 'Choose another', de: 'Anderes Bild' },
   'Rendben': { en: 'Use photo', de: 'Foto verwenden' },
   'A fénykép rendben.': { en: 'The photo is ready.', de: 'Das Foto ist bereit.' },
   'Az aláírási felület következik.': { en: 'The signature screen comes next.', de: 'Als Nächstes folgt die Unterschrift.' },
@@ -257,18 +258,3 @@ export function ownerFormat(
   let value = ownerText(language, key);
   for (const [name, replacement] of Object.entries(values)) {
     value = value.replaceAll(`{${name}}`, String(replacement));
-  }
-  return value;
-}
-
-export function ownerLocale(language: AppLanguage): string {
-  if (language === 'de') return 'de-DE';
-  if (language === 'en') return 'en-US';
-  return 'hu-HU';
-}
-
-export function useOwnerUiLanguage(): AppLanguage {
-  const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
-  useEffect(() => subscribeAppLanguage(setLanguage), []);
-  return language;
-}
