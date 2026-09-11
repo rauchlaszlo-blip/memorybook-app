@@ -2789,6 +2789,111 @@ app.get('/api/invites/:token', async (req, res) => {
   }
 });
 
+app.post('/api/invites/:token/page-session', async (req, res) => {
+  const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
+  if (deviceId.length < 8 || deviceId.length > 200) {
+    res.status(400).json({ error: 'INVALID_DEVICE_ID' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const bookResult = await client.query(
+      `SELECT
+         id,
+         language,
+         event_device_limit AS "deviceLimit"
+       FROM books
+       WHERE invite_token = $1
+         AND book_type = 'event'
+       FOR UPDATE`,
+      [req.params.token]
+    );
+
+    if (bookResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'INVITE_NOT_FOUND' });
+      return;
+    }
+
+    const book = bookResult.rows[0];
+    const existingDraft = await client.query(
+      `SELECT invite_token AS "inviteToken"
+       FROM pages
+       WHERE book_id = $1
+         AND event_device_id = $2
+         AND invite_status IN ('invited', 'draft')
+       ORDER BY invite_created_at DESC
+       LIMIT 1`,
+      [book.id, deviceId]
+    );
+
+    if (existingDraft.rowCount > 0) {
+      await client.query('COMMIT');
+      const inviteToken = existingDraft.rows[0].inviteToken;
+      res.status(200).json({ inviteToken, invitePath: `/p/${inviteToken}`, resumed: true });
+      return;
+    }
+
+    const usedResult = await client.query(
+      `SELECT COUNT(*)::int AS count
+       FROM pages
+       WHERE book_id = $1
+         AND event_device_id = $2
+         AND invite_status = 'submitted'`,
+      [book.id, deviceId]
+    );
+    const used = Number(usedResult.rows[0]?.count || 0);
+    const deviceLimit = Math.max(1, Number(book.deviceLimit) || 1);
+    if (used >= deviceLimit) {
+      await client.query('ROLLBACK');
+      res.status(429).json({
+        error: 'DEVICE_CONTRIBUTION_LIMIT_REACHED',
+        deviceLimit,
+        deviceSubmissionsUsed: used,
+        deviceSubmissionsRemaining: 0,
+      });
+      return;
+    }
+
+    const pageNumberResult = await client.query(
+      `SELECT COALESCE(MAX(page_number), 0)::int + 1 AS "pageNumber"
+       FROM pages
+       WHERE book_id = $1`,
+      [book.id]
+    );
+    const pageId = `page-${crypto.randomUUID()}`;
+    const inviteToken = `page-invite-${crypto.randomUUID()}`;
+    const pageNumber = Number(pageNumberResult.rows[0].pageNumber);
+
+    await client.query(
+      `INSERT INTO pages (
+         id, book_id, page_number, invite_token, invite_status,
+         invite_created_at, invite_language, event_device_id
+       )
+       VALUES ($1, $2, $3, $4, 'invited', CURRENT_TIMESTAMP, $5, $6)`,
+      [pageId, book.id, pageNumber, inviteToken, book.language, deviceId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      pageId,
+      pageNumber,
+      inviteToken,
+      invitePath: `/p/${inviteToken}`,
+      resumed: false,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Event page session create error:', err);
+    res.status(500).json({ error: 'EVENT_PAGE_SESSION_CREATE_FAILED' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/books/:bookId/contributions', async (req, res) => {
   try {
     const bookResult = await pool.query(
@@ -3770,6 +3875,13 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS author_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_share_token TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS event_device_id TEXT`);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS pages_event_device_idx
+    ON pages(book_id, event_device_id, invite_status)
+    WHERE event_device_id IS NOT NULL
+  `);
 
   await pool.query(
     `UPDATE pages SET book_id = $1 WHERE book_id IS NULL`,

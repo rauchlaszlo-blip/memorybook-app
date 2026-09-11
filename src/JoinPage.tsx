@@ -12,6 +12,7 @@ const DEVICE_ID_STORAGE_KEY = 'memorybook-event-device-id';
 type InviteData = {
   bookId: string;
   title: string;
+  bookType?: string;
   deviceLimit?: number;
   identityMode?: string;
 };
@@ -50,15 +51,45 @@ export function JoinPage({ token }: JoinPageProps) {
 
   useEffect(() => {
     const loadInvite = async () => {
+      let redirectingToEditor = false;
       try {
         const response = await fetch(`${API_BASE}/api/invites/${encodeURIComponent(token)}`);
         if (!response.ok) throw new Error('INVITE_LOAD_FAILED');
-        setInvite(await response.json());
+        const data: InviteData = await response.json();
+        setInvite(data);
+
+        if (data.bookType === 'event') {
+          const sessionResponse = await fetch(
+            `${API_BASE}/api/invites/${encodeURIComponent(token)}/page-session`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId: getOrCreateDeviceId() }),
+            }
+          );
+          const sessionData = await sessionResponse.json().catch(() => null);
+          if (!sessionResponse.ok) {
+            if (sessionData?.error === 'DEVICE_CONTRIBUTION_LIMIT_REACHED') {
+              throw new Error('DEVICE_LIMIT_REACHED');
+            }
+            throw new Error('PAGE_SESSION_CREATE_FAILED');
+          }
+          if (typeof sessionData?.invitePath !== 'string') {
+            throw new Error('PAGE_SESSION_CREATE_FAILED');
+          }
+          redirectingToEditor = true;
+          window.location.replace(sessionData.invitePath);
+          return;
+        }
       } catch (err) {
         console.error(err);
-        setError(t('Ez a vendégkönyv-meghívó nem érhető el.'));
+        setError(
+          err instanceof Error && err.message === 'DEVICE_LIMIT_REACHED'
+            ? t('Erről az eszközről már elküldted az engedélyezett számú bejegyzést.')
+            : t('Ez a vendégkönyv-meghívó nem érhető el.')
+        );
       } finally {
-        setLoading(false);
+        if (!redirectingToEditor) setLoading(false);
       }
     };
     loadInvite();
