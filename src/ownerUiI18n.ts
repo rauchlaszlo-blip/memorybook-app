@@ -71,6 +71,7 @@ const translations: Record<string, Translation> = {
   'Rendezvény kezelése': { en: 'Manage event', de: 'Veranstaltung verwalten' },
   'Oldalak és meghívók': { en: 'Pages and invitations', de: 'Seiten und Einladungen' },
   'Könyv megnyitása': { en: 'Open book', de: 'Buch öffnen' },
+  'Fedőlap szerkesztése': { en: 'Edit cover', de: 'Cover bearbeiten' },
   'Beérkezett bejegyzések': { en: 'Received entries', de: 'Eingegangene Einträge' },
 
   'Nem sikerült betölteni az értesítéseket.': { en: 'Could not load notifications.', de: 'Benachrichtigungen konnten nicht geladen werden.' },
