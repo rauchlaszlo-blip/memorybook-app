@@ -113,10 +113,17 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           invited: 2,
           empty: 3,
         };
+        const loadedBookType = data.book?.bookType === 'dedication'
+          ? 'dedication'
+          : data.book?.bookType === 'event'
+            ? 'event'
+            : 'standard';
         const visiblePages = Array.isArray(data.pages)
           ? data.pages
               .filter(
-                (item: BookPageSummary) => item.ownerVisibility !== 'archived'
+                (item: BookPageSummary) =>
+                  item.ownerVisibility !== 'archived' &&
+                  (loadedBookType !== 'event' || item.inviteStatus === 'submitted')
               )
               .sort((a: BookPageSummary, b: BookPageSummary) => {
                 const statusDifference =
@@ -129,7 +136,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         setPageIds(ids);
         setBookTitle(data.book?.title || 'MemoryBook');
-        setBookType(data.book?.bookType === 'dedication' ? 'dedication' : data.book?.bookType === 'event' ? 'event' : 'standard');
+        setBookType(loadedBookType);
         setCoverPreviewImageUrl(data.book?.coverPreviewImageUrl || null);
         setPage(null);
       } catch (err) {
