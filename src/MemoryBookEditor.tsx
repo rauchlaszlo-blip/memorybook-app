@@ -67,7 +67,8 @@ const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
 const DEFAULT_TEXT_WIDTH = 560;
 const TEXT_KEYBOARD_GAP = 24;
-const MOBILE_CONTROL_SIZE = 64;
+const MOBILE_CONTROL_SIZE = 32;
+const INITIAL_TEXTBOX_SIZE_SCALE = 1.5;
 
 const COVER_BACKGROUND_COLLECTION = [
   { id: 'tropical-light', src: '/cover-backgrounds/tropical-light.webp', hu: 'Trópusi világos', en: 'Light tropical', de: 'Tropisch hell' },
@@ -897,7 +898,7 @@ export const MemoryBookEditor = forwardRef<
     canvas.isDrawingMode = false;
     closeOpenToolMenus();
 
-    const textWidth = Math.min(newTextWidth, CANVAS_WIDTH - 32);
+    const textWidth = Math.min(newTextWidth * INITIAL_TEXTBOX_SIZE_SCALE, CANVAS_WIDTH - 32);
 
     const centerNewText = newTextAlign === 'center';
     const text = new fabric.Textbox(copy.textPlaceholder, {
