@@ -219,30 +219,6 @@ export function MyBooksPage() {
           </div>
         </header>
 
-        {!loading && !error && availableEntitlements.length > 0 && (
-          <section id="create-book" style={styles.createCard}>
-            <h2 style={styles.createTitle}>{t('Adj nevet az emlékkönyvnek.')}</h2>
-            <form onSubmit={createBook} style={styles.createForm}>
-              <button type="submit" disabled={creating} style={styles.createButton}>
-                {creating ? t('Létrehozás...') : t('Emlékkönyv létrehozása')}
-              </button>
-              <div style={styles.newCover}>
-                <div style={styles.newCoverBrand}>MemoryBook</div>
-                  <input
-                    type="text"
-                    value={newBookTitle}
-                    onChange={(event) => setNewBookTitle(event.target.value)}
-                    placeholder={t('Például: Anna 40. születésnapja')}
-                    maxLength={120}
-                    disabled={creating}
-                    style={styles.coverTitleInput}
-                    aria-label={t('Adj nevet az emlékkönyvnek.')}
-                  />
-              </div>
-            </form>
-            {createError && <div style={styles.createError}>{createError}</div>}
-          </section>
-        )}
 
         {loading && <div style={styles.panel}>{t('Betöltés...')}</div>}
         {error && <div style={styles.error}>{error}</div>}
