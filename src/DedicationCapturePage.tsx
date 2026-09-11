@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ownerFormat, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 
 const API_BASE =
@@ -20,6 +20,35 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [pageNumber, setPageNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoAccepted, setPhotoAccepted] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+  }, [photoUrl]);
+
+  const selectCameraPhoto = (file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const nextUrl = URL.createObjectURL(file);
+    setPhotoUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return nextUrl;
+    });
+    setPhotoAccepted(false);
+  };
+
+  const openCamera = () => {
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    cameraInputRef.current?.click();
+  };
+
+  const takeAnotherPhoto = () => {
+    setPhotoAccepted(false);
+    openCamera();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -70,16 +99,55 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
         {!loading && !error && pageNumber !== null && (
           <>
             <div style={styles.pageNumber}>{f('{page}. dedikálási oldal', { page: pageNumber })}</div>
-            <h2 style={styles.question}>{t('Honnan választasz fényképet?')}</h2>
-            <div style={styles.actions}>
-              <button type="button" style={styles.primaryButton} disabled>
-                {t('Kamera')}
-              </button>
-              <button type="button" style={styles.secondaryButton} disabled>
-                {t('Galéria')}
-              </button>
-            </div>
-            <div style={styles.hint}>{t('A fénykép bevitelét a következő lépésben kapcsoljuk be.')}</div>
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              onChange={(event) => selectCameraPhoto(event.target.files?.[0])}
+              style={styles.hiddenInput}
+            />
+
+            {!photoUrl && (
+              <>
+                <h2 style={styles.question}>{t('Honnan választasz fényképet?')}</h2>
+                <div style={styles.actions}>
+                  <button type="button" style={styles.primaryButton} onClick={openCamera}>
+                    {t('Kamera')}
+                  </button>
+                  <button type="button" style={styles.secondaryButton} disabled>
+                    {t('Galéria')}
+                  </button>
+                </div>
+                <div style={styles.hint}>{t('A Galériát a következő lépésben kapcsoljuk be.')}</div>
+              </>
+            )}
+
+            {photoUrl && !photoAccepted && (
+              <>
+                <div style={styles.photoFrame}>
+                  <img src={photoUrl} alt={t('Dedikálási fénykép előnézete')} style={styles.photo} />
+                </div>
+                <div style={styles.previewActions}>
+                  <button type="button" style={styles.secondaryCompactButton} onClick={takeAnotherPhoto}>
+                    {t('Új fotó')}
+                  </button>
+                  <button type="button" style={styles.primaryCompactButton} onClick={() => setPhotoAccepted(true)}>
+                    {t('Rendben')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {photoUrl && photoAccepted && (
+              <div style={styles.acceptedPanel}>
+                <strong>{t('A fénykép rendben.')}</strong>
+                <span>{t('Az aláírási felület következik.')}</span>
+                <button type="button" style={styles.secondaryCompactButton} onClick={() => setPhotoAccepted(false)}>
+                  {t('Vissza a fényképhez')}
+                </button>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -98,6 +166,13 @@ const styles: Record<string, React.CSSProperties> = {
   actions: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 },
   primaryButton: { minHeight: 74, border: 0, borderRadius: 13, background: '#0f172a', color: '#ffffff', fontSize: 18, fontWeight: 800 },
   secondaryButton: { minHeight: 74, border: '2px solid #0f172a', borderRadius: 13, background: '#ffffff', color: '#0f172a', fontSize: 18, fontWeight: 800 },
+  hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' },
+  photoFrame: { width: 'min(100%, 360px)', aspectRatio: '3 / 4', margin: '0 auto', overflow: 'hidden', borderRadius: 12, background: '#e2e8f0', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.18)' },
+  photo: { display: 'block', width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' },
+  previewActions: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 },
+  primaryCompactButton: { minHeight: 50, border: 0, borderRadius: 10, background: '#0f172a', color: '#ffffff', fontSize: 16, fontWeight: 800 },
+  secondaryCompactButton: { minHeight: 50, border: '1px solid #94a3b8', borderRadius: 10, background: '#ffffff', color: '#334155', fontSize: 16, fontWeight: 800 },
+  acceptedPanel: { display: 'grid', gap: 12, padding: '28px 18px', borderRadius: 13, background: '#f0fdf4', color: '#166534', textAlign: 'center' },
   hint: { marginTop: 16, color: '#64748b', fontSize: 13, lineHeight: 1.45, textAlign: 'center' },
   message: { padding: 20, color: '#64748b', textAlign: 'center' },
   error: { padding: 14, borderRadius: 10, background: '#fef2f2', color: '#991b1b', textAlign: 'center' },
