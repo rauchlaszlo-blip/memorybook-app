@@ -37,6 +37,8 @@ const translations: Record<string, Translation> = {
   'Arany': { en: 'Gold', de: 'Gold' },
   'Egyedi': { en: 'Custom', de: 'Eigene' },
   'Egyedi szín': { en: 'Custom color', de: 'Eigene Farbe' },
+  'Kész': { en: 'Done', de: 'Fertig' },
+  'A dedikálást nem sikerült elmenteni. Próbáld újra.': { en: 'Could not save the dedication. Try again.', de: 'Die Widmung konnte nicht gespeichert werden. Versuche es erneut.' },
   'A dedikálási oldal nem nyitható meg.': { en: 'The dedication page cannot be opened.', de: 'Die Widmungsseite kann nicht geöffnet werden.' },
   'A következő üres oldalhoz innen küldhetsz meghívót.': { en: 'Send an invitation for the next empty page from here.', de: 'Von hier kannst du eine Einladung für die nächste leere Seite senden.' },
   'Nincs több üres, meghívható oldal.': { en: 'There are no more empty pages available for invitation.', de: 'Es gibt keine weiteren leeren Seiten zum Einladen.' },
