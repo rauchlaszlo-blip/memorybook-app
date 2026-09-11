@@ -231,7 +231,7 @@ export function MyBooksPage() {
         {!loading && !error && books.length > 0 && (
           <div className="my-books-grid">
             {books.map((book) => {
-              const openPath = book.bookType === 'event' || book.bookType === 'dedication'
+              const openPath = book.bookType === 'event'
                 ? `/my-books/${encodeURIComponent(book.id)}`
                 : `/book/${encodeURIComponent(book.id)}/view`;
               return (
