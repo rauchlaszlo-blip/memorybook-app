@@ -22,7 +22,9 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [error, setError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoAccepted, setPhotoAccepted] = useState(false);
+  const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -30,13 +32,14 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     };
   }, [photoUrl]);
 
-  const selectCameraPhoto = (file: File | undefined) => {
+  const selectPhoto = (file: File | undefined, source: 'camera' | 'gallery') => {
     if (!file || !file.type.startsWith('image/')) return;
     const nextUrl = URL.createObjectURL(file);
     setPhotoUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return nextUrl;
     });
+    setPhotoSource(source);
     setPhotoAccepted(false);
   };
 
@@ -45,9 +48,15 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
     cameraInputRef.current?.click();
   };
 
+  const openGallery = () => {
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
+    galleryInputRef.current?.click();
+  };
+
   const takeAnotherPhoto = () => {
     setPhotoAccepted(false);
-    openCamera();
+    if (photoSource === 'gallery') openGallery();
+    else openCamera();
   };
 
   useEffect(() => {
@@ -104,7 +113,14 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
               type="file"
               accept="image/*"
               capture="user"
-              onChange={(event) => selectCameraPhoto(event.target.files?.[0])}
+              onChange={(event) => selectPhoto(event.target.files?.[0], 'camera')}
+              style={styles.hiddenInput}
+            />
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(event) => selectPhoto(event.target.files?.[0], 'gallery')}
               style={styles.hiddenInput}
             />
 
@@ -115,11 +131,10 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
                   <button type="button" style={styles.primaryButton} onClick={openCamera}>
                     {t('Kamera')}
                   </button>
-                  <button type="button" style={styles.secondaryButton} disabled>
+                  <button type="button" style={styles.secondaryButton} onClick={openGallery}>
                     {t('Galéria')}
                   </button>
                 </div>
-                <div style={styles.hint}>{t('A Galériát a következő lépésben kapcsoljuk be.')}</div>
               </>
             )}
 
@@ -130,7 +145,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
                 </div>
                 <div style={styles.previewActions}>
                   <button type="button" style={styles.secondaryCompactButton} onClick={takeAnotherPhoto}>
-                    {t('Új fotó')}
+                    {t(photoSource === 'gallery' ? 'Másik kép' : 'Új fotó')}
                   </button>
                   <button type="button" style={styles.primaryCompactButton} onClick={() => setPhotoAccepted(true)}>
                     {t('Rendben')}
