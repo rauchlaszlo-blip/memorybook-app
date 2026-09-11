@@ -231,9 +231,7 @@ export function MyBooksPage() {
         {!loading && !error && books.length > 0 && (
           <div className="my-books-grid">
             {books.map((book) => {
-              const openPath = book.bookType === 'event'
-                ? `/my-books/${encodeURIComponent(book.id)}`
-                : `/book/${encodeURIComponent(book.id)}/view`;
+              const openPath = `/book/${encodeURIComponent(book.id)}/view`;
               return (
                   <a key={book.id} href={openPath} className="my-books-cover-link" aria-label={`${book.title} – ${t('Könyv megnyitása')}`}>
                     {book.coverPreviewImageUrl ? (
