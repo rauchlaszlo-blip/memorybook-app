@@ -59,6 +59,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [ownerNote, setOwnerNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [ownMemoryOpening, setOwnMemoryOpening] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
   const suppressCoverClickRef = useRef(false);
 
@@ -234,6 +235,29 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
     }
   };
 
+  const openOwnMemory = async () => {
+    if (ownMemoryOpening) return;
+    try {
+      setOwnMemoryOpening(true);
+      setError(null);
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/own-memory`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.pageId) throw new Error(data.error || 'OWNER_MEMORY_OPEN_FAILED');
+      window.location.href = `/my-books/${encodeURIComponent(bookId)}/memory/${encodeURIComponent(data.pageId)}`;
+    } catch (err) {
+      console.error(err);
+      setError(t('A saját emléklapot nem sikerült megnyitni.'));
+      setOwnMemoryOpening(false);
+    }
+  };
+
   return (
     <main style={styles.page}>
       <section style={styles.container}>
@@ -318,6 +342,12 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           )}
         </div>
         </div>
+
+        {!loading && bookType === 'standard' && (
+          <button type="button" onClick={openOwnMemory} disabled={ownMemoryOpening} style={styles.ownMemoryButton}>
+            {ownMemoryOpening ? t('Megnyitás…') : t('Saját emlék létrehozása')}
+          </button>
+        )}
 
         {error && <div style={styles.error}>{error}</div>}
 
@@ -473,6 +503,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   editableCover: { cursor: 'pointer' },
   editSignatureLink: { display: 'flex', minHeight: 46, marginBottom: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 10, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 16, fontWeight: 800 },
+  ownMemoryButton: { display: 'block', width: 'min(100%, 560px)', minHeight: 46, margin: '12px auto 0', padding: '10px 14px', border: 0, borderRadius: 10, background: '#0f172a', color: '#ffffff', fontSize: 15, fontWeight: 800 },
   image: {
     display: 'block',
     width: '100%',
