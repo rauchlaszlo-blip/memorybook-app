@@ -71,7 +71,7 @@ export function GiftRedeemPage({ token }: { token: string }) {
           <>
             <p style={styles.text}>
               {info.bookType === 'event'
-                ? t('Rendezvény-vendégkönyv')
+                ? t('QR-kódos vendégkönyv')
                 : info.bookType === 'dedication'
                   ? f('Dedikálás – {count} oldal', { count: info.includedPages })
                   : f('Normál emlékkönyv – {count} oldal', { count: info.includedPages })}

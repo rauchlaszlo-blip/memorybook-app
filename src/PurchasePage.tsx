@@ -581,7 +581,7 @@ export function PurchasePage() {
           <label style={styles.label}>{t('Könyv típusa')}
             <select value={bookType} onChange={(event) => setBookType(event.target.value as BookType)} style={styles.input}>
               <option value="standard">{t('Normál emlékkönyv – 30 oldal')}</option>
-              <option value="event">{t('Rendezvény-vendégkönyv')}</option>
+              <option value="event">{t('QR-kódos vendégkönyv')}</option>
               <option value="dedication">{t('Dedikálás – 30 oldal')}</option>
             </select>
           </label>

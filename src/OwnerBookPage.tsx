@@ -493,8 +493,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       {bookType === 'event' && eventInviteToken && (
         <section style={styles.eventPanel}>
           <div>
-            <strong style={styles.eventPanelTitle}>{t('Rendezvény vendégkönyv')}</strong>
-            <div style={styles.eventPanelText}>{t('Egy közös QR-kódot tehetsz ki a helyszínen. Minden vendég ugyanabba a vendégkönyvbe írhat.')}</div>
+            <strong style={styles.eventPanelTitle}>{t('QR-kódos vendégkönyv')}</strong>
+            <div style={styles.eventPanelText}>{t('Családi vagy nagy közösségi eseményen egy közös QR-kódot tehetsz ki. Minden vendég ugyanabba a vendégkönyvbe írhat.')}</div>
           </div>
           <div style={styles.eventActions}>
             <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>{t('QR-kód megnyitása')}</a>
