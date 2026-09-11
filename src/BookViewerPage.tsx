@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
 import type { AppLanguage } from './i18n';
+import { EventBookSettings } from './EventBookSettings';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -273,7 +274,11 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           <a href="/my-books" style={styles.backLink}>
             {t('← Saját könyveim')}
           </a>
-          {bookType === 'dedication' ? (
+          {bookType === 'event' ? (
+            <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.inviteLink}>
+              {t('QR-kód megnyitása')}
+            </a>
+          ) : bookType === 'dedication' ? (
             <a
               href={nextDedicationPageId ? `/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(nextDedicationPageId)}` : undefined}
               aria-disabled={!nextDedicationPageId}
@@ -361,11 +366,13 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         </div>
         </div>
 
-        {!loading && (bookType === 'standard' || bookType === 'dedication') && (
+        {!loading && (
           <button type="button" onClick={openOwnMemory} disabled={ownMemoryOpening} style={styles.ownMemoryButton}>
             {ownMemoryOpening ? t('Megnyitás…') : t('Saját emlék létrehozása')}
           </button>
         )}
+
+        {!loading && bookType === 'event' && <EventBookSettings bookId={bookId} />}
 
         {error && <div style={styles.error}>{error}</div>}
 
