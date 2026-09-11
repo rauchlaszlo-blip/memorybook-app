@@ -1232,22 +1232,22 @@ export const MemoryBookEditor = forwardRef<
           line-height: 1;
         }
         @media (max-width: 600px) {
+          .memorybook-editor-toolbar .memorybook-draw-details[open],
+          .memorybook-editor-toolbar .memorybook-eraser-details[open] {
+            flex: 1 0 100%;
+          }
           .memorybook-editor-toolbar .memorybook-draw-menu {
-            position: fixed !important;
-            left: 50% !important;
-            top: 190px !important;
-            transform: translateX(-50%) !important;
-            width: calc(100vw - 24px) !important;
-            max-width: 360px;
-            max-height: calc(100vh - 210px);
-            overflow-y: auto;
+            position: static !important;
+            transform: none !important;
+            width: 100% !important;
+            max-width: none;
+            margin-top: 6px;
           }
           .memorybook-editor-toolbar .memorybook-eraser-menu {
-            position: fixed !important;
-            left: 50% !important;
-            top: 190px !important;
-            transform: translateX(-50%) !important;
-            width: min(220px, calc(100vw - 24px)) !important;
+            position: static !important;
+            transform: none !important;
+            width: 100% !important;
+            margin-top: 6px;
           }
         }
       `}</style>
@@ -1317,7 +1317,7 @@ export const MemoryBookEditor = forwardRef<
             </details>
           )}
 
-          <details style={{ position: 'relative' }}>
+          <details className="memorybook-draw-details" style={{ position: 'relative' }}>
             <summary style={editorStyles.toolSummary}>{language === 'de' ? 'Zeichnen' : language === 'en' ? 'Draw' : 'Rajz'}</summary>
             <div className="memorybook-draw-menu" style={{ ...editorStyles.toolMenu, gap: 8 }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
@@ -1401,6 +1401,7 @@ export const MemoryBookEditor = forwardRef<
             </div>
           </details>
           <details
+            className="memorybook-eraser-details"
             style={{ position: 'relative' }}
             onToggle={(event) => {
               if (event.currentTarget.open) {
