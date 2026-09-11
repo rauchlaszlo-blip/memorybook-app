@@ -16,6 +16,7 @@ import { GiftRedeemPage } from './GiftRedeemPage.tsx'
 import { CoverEditorPage } from './CoverEditorPage.tsx'
 import { DedicationCapturePage } from './DedicationCapturePage.tsx'
 import { OwnerMemoryEditorPage } from './OwnerMemoryEditorPage.tsx'
+import { HelpPage } from './HelpPage.tsx'
 import { initializeAppLanguage } from './i18n'
 
 initializeAppLanguage()
@@ -36,6 +37,12 @@ const DEMO_BOOK_ID = 'book-12b'
 
 const root = path === '/'
   ? <LandingPage />
+  : path === '/help' || path === '/help/quick'
+    ? <HelpPage kind="quick" />
+  : path === '/help/detailed'
+    ? <HelpPage kind="detailed" />
+  : path === '/faq'
+    ? <HelpPage kind="faq" />
   : path === '/login'
     ? <AuthPage />
   : path === '/purchase'
