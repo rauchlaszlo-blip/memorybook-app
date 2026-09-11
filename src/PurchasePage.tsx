@@ -428,6 +428,23 @@ export function PurchasePage() {
     return () => { active = false; };
   }, [t]);
 
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(field);
+    if (!copied) throw new Error('COPY_FAILED');
+  };
+
   const sendGiftLink = async () => {
     const path = paymentSuccess?.giftRedeemPath;
     if (!path) return;
@@ -445,12 +462,12 @@ export function PurchasePage() {
         return;
       }
 
-      await navigator.clipboard.writeText(url);
+      await copyTextToClipboard(url);
       setNotice(t('A link másolva.'));
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       try {
-        await navigator.clipboard.writeText(url);
+        await copyTextToClipboard(url);
         setNotice(t('A link másolva.'));
       } catch (copyError) {
         console.error(copyError);
