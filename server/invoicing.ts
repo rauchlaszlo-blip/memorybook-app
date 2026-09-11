@@ -12,7 +12,7 @@ export type NormalizedInvoicePayload = {
   version: 1;
   purchaseId: string;
   purchaseMode: 'self' | 'gift';
-  bookType: 'standard' | 'event';
+  bookType: 'standard' | 'event' | 'dedication';
   language: 'hu' | 'en' | 'de';
   buyer: {
     name: string;
@@ -104,11 +104,18 @@ export function getInvoicingCapabilities() {
   };
 }
 
-function productData(bookType: 'standard' | 'event', includedPages: number) {
+function productData(bookType: 'standard' | 'event' | 'dedication', includedPages: number) {
   if (bookType === 'event') {
     return {
       sku: 'MEMORYBOOK_EVENT',
       name: 'MemoryBook – rendezvény-vendégkönyv',
+    };
+  }
+
+  if (bookType === 'dedication') {
+    return {
+      sku: `MEMORYBOOK_DEDICATION_${includedPages || 30}`,
+      name: `MemoryBook – Dedikálás (${includedPages || 30} oldal)`,
     };
   }
 
@@ -193,7 +200,11 @@ export async function prepareInvoiceForPaidPurchase(
     purchase.invoiceLanguage === 'en' || purchase.invoiceLanguage === 'de'
       ? purchase.invoiceLanguage
       : 'hu';
-  const bookType = purchase.bookType === 'event' ? 'event' : 'standard';
+  const bookType = purchase.bookType === 'event'
+    ? 'event'
+    : purchase.bookType === 'dedication'
+      ? 'dedication'
+      : 'standard';
   const product = productData(bookType, Number(purchase.includedPages) || 0);
   const capabilities = getInvoicingCapabilities();
 
