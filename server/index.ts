@@ -2779,7 +2779,8 @@ app.get('/api/invites/:token', async (req, res) => {
          title,
          book_type AS "bookType",
          event_device_limit AS "deviceLimit",
-         event_identity_mode AS "identityMode"
+         event_identity_mode AS "identityMode",
+         event_required_fields AS "requiredFields"
        FROM books
        WHERE invite_token = $1`,
       [req.params.token]
@@ -2801,6 +2802,7 @@ app.get('/api/invites/:token', async (req, res) => {
       bookType: result.rows[0].bookType,
       deviceLimit: result.rows[0].deviceLimit,
       identityMode: result.rows[0].identityMode,
+      requiredFields: result.rows[0].requiredFields,
     });
   } catch (err) {
     console.error('Legacy invite load error:', err);
@@ -2810,6 +2812,7 @@ app.get('/api/invites/:token', async (req, res) => {
 
 app.post('/api/invites/:token/page-session', async (req, res) => {
   const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
+  const guestData = req.body?.guestData;
   if (deviceId.length < 8 || deviceId.length > 200) {
     res.status(400).json({ error: 'INVALID_DEVICE_ID' });
     return;
@@ -2823,7 +2826,8 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
       `SELECT
          id,
          language,
-         event_device_limit AS "deviceLimit"
+         event_device_limit AS "deviceLimit",
+         event_required_fields AS "requiredFields"
        FROM books
        WHERE invite_token = $1
          AND book_type = 'event'
@@ -2838,8 +2842,30 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
     }
 
     const book = bookResult.rows[0];
+    const requiredFields = Array.isArray(book.requiredFields) ? book.requiredFields : [];
+    const sanitizedGuestData: Record<string, string> = {};
+    if (guestData !== undefined && (typeof guestData !== 'object' || guestData === null || Array.isArray(guestData))) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'INVALID_EVENT_GUEST_DATA' });
+      return;
+    }
+    for (const field of requiredFields) {
+      const value = typeof guestData?.[field] === 'string' ? guestData[field].trim() : '';
+      const maxLength = field === 'email' ? 254 : field === 'phone' ? 50 : 200;
+      if (!value || value.length > maxLength) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'MISSING_EVENT_GUEST_FIELD', field });
+        return;
+      }
+      if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ error: 'INVALID_EVENT_GUEST_EMAIL' });
+        return;
+      }
+      sanitizedGuestData[field] = value;
+    }
     const existingDraft = await client.query(
-      `SELECT invite_token AS "inviteToken"
+      `SELECT id, invite_token AS "inviteToken"
        FROM pages
        WHERE book_id = $1
          AND event_device_id = $2
@@ -2850,6 +2876,13 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
     );
 
     if (existingDraft.rowCount > 0) {
+      await client.query(
+        `UPDATE pages
+         SET event_guest_data = $1::jsonb,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [JSON.stringify(sanitizedGuestData), existingDraft.rows[0].id]
+      );
       await client.query('COMMIT');
       const inviteToken = existingDraft.rows[0].inviteToken;
       res.status(200).json({ inviteToken, invitePath: `/p/${inviteToken}`, resumed: true });
@@ -2890,10 +2923,10 @@ app.post('/api/invites/:token/page-session', async (req, res) => {
     await client.query(
       `INSERT INTO pages (
          id, book_id, page_number, invite_token, invite_status,
-         invite_created_at, invite_language, event_device_id
+         invite_created_at, invite_language, event_device_id, event_guest_data
        )
-       VALUES ($1, $2, $3, $4, 'invited', CURRENT_TIMESTAMP, $5, $6)`,
-      [pageId, book.id, pageNumber, inviteToken, book.language, deviceId]
+       VALUES ($1, $2, $3, $4, 'invited', CURRENT_TIMESTAMP, $5, $6, $7::jsonb)`,
+      [pageId, book.id, pageNumber, inviteToken, book.language, deviceId, JSON.stringify(sanitizedGuestData)]
     );
 
     await client.query('COMMIT');
@@ -3896,6 +3929,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS owner_share_approved BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_share_token TEXT`);
   await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS event_device_id TEXT`);
+  await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS event_guest_data JSONB NOT NULL DEFAULT '{}'::jsonb`);
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS pages_event_device_idx
