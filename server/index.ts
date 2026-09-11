@@ -130,6 +130,8 @@ type EventUsageEventType =
   | 'qr_opened'
   | 'editor_session_started'
   | 'editor_session_resumed'
+  | 'page_saved'
+  | 'page_save_failed'
   | 'page_submitted'
   | 'page_submit_failed';
 
@@ -2892,6 +2894,7 @@ app.get('/api/page-invites/:token', async (req, res) => {
 });
 
 app.put('/api/page-invites/:token', async (req, res) => {
+  const startedAt = Date.now();
   const { canvasData, previewDataUrl, expectedVersion } = req.body;
 
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
@@ -2905,18 +2908,22 @@ app.put('/api/page-invites/:token', async (req, res) => {
   }
 
   const client = await pool.connect();
+  let eventBookId: string | null = null;
 
   try {
     await client.query('BEGIN');
 
     const inviteResult = await client.query(
       `SELECT
-         id,
-         invite_status AS "inviteStatus",
-         invite_created_at AS "inviteCreatedAt"
-       FROM pages
-       WHERE invite_token = $1
-       FOR UPDATE`,
+         p.id,
+         p.invite_status AS "inviteStatus",
+         p.invite_created_at AS "inviteCreatedAt",
+         b.id AS "bookId",
+         b.book_type AS "bookType"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.invite_token = $1
+       FOR UPDATE OF p`,
       [req.params.token]
     );
 
@@ -2924,6 +2931,10 @@ app.put('/api/page-invites/:token', async (req, res) => {
       await client.query('ROLLBACK');
       res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
       return;
+    }
+
+    if (inviteResult.rows[0].bookType === 'event') {
+      eventBookId = inviteResult.rows[0].bookId;
     }
 
     if (inviteResult.rows[0].inviteStatus === 'submitted') {
@@ -2950,6 +2961,15 @@ app.put('/api/page-invites/:token', async (req, res) => {
 
     await client.query('COMMIT');
 
+    if (eventBookId) {
+      recordEventUsageEvent({
+        bookId: eventBookId,
+        eventType: 'page_saved',
+        durationMs: Date.now() - startedAt,
+        payloadBytes: requestPayloadBytes(req),
+      });
+    }
+
     res.status(200).json({
       success: true,
       newVersion: row.version,
@@ -2959,6 +2979,15 @@ app.put('/api/page-invites/:token', async (req, res) => {
   } catch (err: any) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Invite page save error:', err);
+
+    if (eventBookId) {
+      recordEventUsageEvent({
+        bookId: eventBookId,
+        eventType: 'page_save_failed',
+        durationMs: Date.now() - startedAt,
+        payloadBytes: requestPayloadBytes(req),
+      });
+    }
 
     if (err?.status === 404) {
       res.status(404).json({ error: 'PAGE_NOT_FOUND' });
@@ -4190,6 +4219,12 @@ async function initializeDatabase(): Promise<void> {
     'utf8'
   );
   await pool.query(eventUsageAnalyticsMigration);
+
+  const eventUsageSaveEventsMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260911_event_usage_save_events.sql'),
+    'utf8'
+  );
+  await pool.query(eventUsageSaveEventsMigration);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS purchases (
