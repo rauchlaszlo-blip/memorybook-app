@@ -511,17 +511,25 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
               <strong style={styles.eventPanelTitle}>{t('Dedikálás')}</strong>
               <div style={styles.eventPanelText}>{t('A következő üres oldal automatikusan nyílik majd meg.')}</div>
             </div>
-            <button
-              type="button"
-              style={styles.eventQrButton}
-              disabled={!nextDedicationPage}
-              onClick={() => {
-                if (!nextDedicationPage) return;
-                window.location.href = `/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(nextDedicationPage.id)}`;
-              }}
-            >
-              {t('Következő dedikálás')}
-            </button>
+            <div style={styles.eventActions}>
+              <button
+                type="button"
+                style={styles.eventQrButton}
+                disabled={!nextDedicationPage}
+                onClick={() => {
+                  if (!nextDedicationPage) return;
+                  window.location.href = `/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(nextDedicationPage.id)}`;
+                }}
+              >
+                {t('Következő dedikálás')}
+              </button>
+              <a href={`/book/${encodeURIComponent(bookId)}/view`} style={styles.eventSecondaryButton}>
+                {t('Könyv megnyitása')}
+              </a>
+              <a href={`/my-books/${encodeURIComponent(bookId)}/cover`} style={styles.eventSecondaryButton}>
+                {t('Fedőlap szerkesztése')}
+              </a>
+            </div>
           </section>
         )}
 
