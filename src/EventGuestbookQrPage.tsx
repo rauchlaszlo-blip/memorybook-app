@@ -42,8 +42,6 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
   if (error) return <main style={styles.center}>{error}</main>;
   if (!inviteToken || !qrDataUrl) return <main style={styles.center}>{t('QR-kód készítése...')}</main>;
 
-  const joinUrl = `${origin}/join/${inviteToken}`;
-
   return (
     <main className="event-qr-page" style={styles.page}>
       <style>{`
@@ -68,7 +66,6 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
             box-sizing: border-box !important;
           }
           .event-qr-print-code { width: 130mm !important; max-width: 100% !important; }
-          .event-qr-print-url { display: block !important; }
         }
       `}</style>
       <div className="event-qr-print-hide" style={styles.actions}>
@@ -83,7 +80,6 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
         <p style={styles.lead}>{t('Telefonod kamerájával olvasd be a QR-kódot, és nyisd meg az emlékkönyvet.')}</p>
         <img className="event-qr-print-code" src={qrDataUrl} alt={t('QR-kódos vendégkönyv QR-kódja')} style={styles.qr} />
         <p className="event-qr-print-hide" style={styles.hint}>{t('A QR-kód ugyanarra a közös vendégkönyvre visz minden vendéget.')}</p>
-        <p className="event-qr-print-url" style={styles.printUrl}>{joinUrl}</p>
       </section>
     </main>
   );
@@ -100,6 +96,5 @@ const styles: Record<string, React.CSSProperties> = {
   lead: { margin: '0 auto 20px', color: '#334155', fontSize: 'clamp(18px, 4vw, 24px)', lineHeight: 1.4 },
   qr: { display: 'block', width: 'min(100%, 520px)', height: 'auto', margin: '0 auto', imageRendering: 'pixelated' },
   hint: { margin: '20px auto 0', maxWidth: 560, color: '#64748b', lineHeight: 1.5 },
-  printUrl: { display: 'none', margin: '16px auto 0', maxWidth: '100%', color: '#334155', fontSize: 12, lineHeight: 1.4, overflowWrap: 'anywhere' },
   center: { minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, fontFamily: 'Arial, sans-serif' },
 };
