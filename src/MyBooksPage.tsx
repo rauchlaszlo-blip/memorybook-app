@@ -166,7 +166,6 @@ export function MyBooksPage() {
               disabled={creating}
               style={styles.namingInput}
               aria-label={t('Adj nevet az emlékkönyvednek.')}
-              autoFocus
             />
           </form>
           {createError && <div style={styles.namingError}>{createError}</div>}
