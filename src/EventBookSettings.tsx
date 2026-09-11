@@ -9,7 +9,6 @@ const API_BASE =
 type Props = { bookId: string };
 type SettingsResponse = {
   deviceLimit: number;
-  identityMode: 'none' | 'google' | 'email' | 'external' | string;
   requiredFields?: RequiredField[];
 };
 
@@ -27,7 +26,6 @@ export function EventBookSettings({ bookId }: Props) {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const [deviceLimit, setDeviceLimit] = useState(1);
-  const [identityMode, setIdentityMode] = useState('none');
   const [requiredFields, setRequiredFields] = useState<RequiredField[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,7 +46,6 @@ export function EventBookSettings({ bookId }: Props) {
         if (!response.ok) throw new Error('LOAD_FAILED');
         const data: SettingsResponse = await response.json();
         setDeviceLimit(data.deviceLimit || 1);
-        setIdentityMode(data.identityMode || 'none');
         setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
       } catch (err) {
         console.error(err);
@@ -83,7 +80,6 @@ export function EventBookSettings({ bookId }: Props) {
       const data = await response.json().catch(() => null);
       if (!response.ok || !data) throw new Error('SAVE_FAILED');
       setDeviceLimit(data.deviceLimit);
-      setIdentityMode(data.identityMode || 'none');
       setRequiredFields(Array.isArray(data.requiredFields) ? data.requiredFields : []);
       setMessage(t('Beállítás mentve.'));
     } catch (err) {
@@ -157,14 +153,6 @@ export function EventBookSettings({ bookId }: Props) {
         </button>
       </form>
 
-      <div style={styles.identityBox}>
-        <strong>{t('Azonosítás')}</strong>
-        <div style={styles.identityValue}>{identityMode === 'none' ? t('Azonosítás nélkül') : identityMode}</div>
-        <div style={styles.identityNote}>
-          {t('Google-, e-mail- és rendezvényalkalmazás-azonosítás külön következő lépésben kapcsolható be. A mostani eszközlimit már működik.')}
-        </div>
-      </div>
-
       {message && <div style={styles.success}>{message}</div>}
       {error && <div style={styles.error}>{error}</div>}
     </section>
@@ -172,7 +160,7 @@ export function EventBookSettings({ bookId }: Props) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  panel: { marginBottom: 16, padding: 16, borderRadius: 14, background: '#ffffff', boxShadow: '0 6px 20px rgba(15,23,42,.06)' },
+  panel: { width: 'min(100%, 560px)', margin: '12px auto 16px', padding: 16, boxSizing: 'border-box', borderRadius: 14, background: '#ffffff', boxShadow: '0 6px 20px rgba(15,23,42,.06)' },
   eyebrow: { color: '#64748b', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.1 },
   title: { margin: '6px 0 8px', color: '#0f172a', fontSize: 20, lineHeight: 1.25 },
   text: { margin: '0 0 14px', color: '#475569', lineHeight: 1.5 },
@@ -188,9 +176,6 @@ const styles: Record<string, React.CSSProperties> = {
   preset: { minWidth: 48, minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' },
   presetActive: { background: '#e2e8f0', borderColor: '#94a3b8', color: '#0f172a' },
   saveButton: { minHeight: 46, justifySelf: 'start', padding: '10px 16px', border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, cursor: 'pointer' },
-  identityBox: { marginTop: 16, paddingTop: 14, borderTop: '1px solid #e2e8f0', color: '#334155' },
-  identityValue: { marginTop: 5, fontWeight: 800, color: '#0f172a' },
-  identityNote: { marginTop: 5, color: '#64748b', fontSize: 13, lineHeight: 1.45 },
   success: { marginTop: 12, padding: 10, borderRadius: 8, background: '#ecfdf5', color: '#166534' },
   error: { marginTop: 12, padding: 10, borderRadius: 8, background: '#fef2f2', color: '#991b1b' },
 };
