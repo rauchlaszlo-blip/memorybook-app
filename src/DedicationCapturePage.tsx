@@ -34,6 +34,8 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const [photoSource, setPhotoSource] = useState<'camera' | 'gallery' | null>(null);
   const [hasSignature, setHasSignature] = useState(false);
   const [signatureColor, setSignatureColor] = useState('#000000');
+  const [editingSavedSignature, setEditingSavedSignature] = useState(false);
+  const [savedSignatureUrl, setSavedSignatureUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +48,22 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
       if (photoUrl) URL.revokeObjectURL(photoUrl);
     };
   }, [photoUrl]);
+
+  useEffect(() => {
+    if (!savedSignatureUrl || !photoAccepted) return;
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => {
+      const canvas = signatureCanvasRef.current;
+      const context = canvas?.getContext('2d');
+      if (!canvas || !context) return;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      setHasSignature(true);
+    };
+    image.onerror = () => setError(t('A mentett aláírást nem sikerült betölteni.'));
+    image.src = savedSignatureUrl;
+  }, [savedSignatureUrl, photoAccepted]);
 
   const selectPhoto = (file: File | undefined, source: 'camera' | 'gallery') => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -137,6 +155,7 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
   const createDedicationAssets = async () => {
     if (!photoUrl || !signatureCanvasRef.current) throw new Error('MISSING_DEDICATION_ASSETS');
     const image = new Image();
+    image.crossOrigin = 'anonymous';
     image.src = photoUrl;
     await image.decode();
 
@@ -208,12 +227,32 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
         const page = Array.isArray(data.pages)
           ? data.pages.find((item: { id?: string }) => item.id === pageId)
           : null;
-        if (!page || page.inviteStatus !== 'empty') {
+        if (!page || (page.inviteStatus !== 'empty' && page.inviteStatus !== 'submitted')) {
           throw new Error('DEDICATION_PAGE_NOT_AVAILABLE');
         }
         setBookTitle(data.book.title || 'MemoryBook');
         setPageNumber(Number(page.pageNumber));
         setPageVersion(Number(page.version));
+        if (page.inviteStatus === 'submitted') {
+          const pageResponse = await fetch(
+            `${API_BASE}/api/pages/${encodeURIComponent(pageId)}`,
+            { credentials: 'include' }
+          );
+          const pageData = await pageResponse.json().catch(() => ({}));
+          if (
+            !pageResponse.ok ||
+            pageData.canvasData?.type !== 'dedication' ||
+            typeof pageData.canvasData?.photo?.url !== 'string' ||
+            typeof pageData.canvasData?.signature?.url !== 'string'
+          ) {
+            throw new Error('DEDICATION_PAGE_NOT_EDITABLE');
+          }
+          setEditingSavedSignature(true);
+          setPhotoUrl(pageData.canvasData.photo.url);
+          setPhotoAccepted(true);
+          setSignatureColor(pageData.canvasData.signature.color || '#000000');
+          setSavedSignatureUrl(pageData.canvasData.signature.url);
+        }
       } catch (loadError) {
         console.error(loadError);
         setError(t('A dedikálási oldal nem nyitható meg.'));
@@ -288,7 +327,9 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
 
             {photoUrl && photoAccepted && (
               <>
-                <h2 style={styles.signatureTitle}>{t('Aláírás')}</h2>
+                <h2 style={styles.signatureTitle}>
+                  {t(editingSavedSignature ? 'Aláírás szerkesztése' : 'Aláírás')}
+                </h2>
                 <div style={styles.signatureHint}>{t('Írj alá ujjal közvetlenül a fényképen.')}</div>
                 <div style={styles.colorRow} aria-label={t('Aláírás színe')}>
                   {SIGNATURE_COLORS.map((color) => (
@@ -330,15 +371,20 @@ export function DedicationCapturePage({ bookId, pageId }: DedicationCapturePageP
                   />
                 </div>
                 <div style={styles.signatureActions}>
-                  <button type="button" style={styles.secondaryCompactButton} onClick={() => setPhotoAccepted(false)}>
-                    {t('Vissza a fényképhez')}
-                  </button>
+                  {!editingSavedSignature && (
+                    <button type="button" style={styles.secondaryCompactButton} onClick={() => setPhotoAccepted(false)}>
+                      {t('Vissza a fényképhez')}
+                    </button>
+                  )}
                   <button type="button" style={styles.secondaryCompactButton} onClick={clearSignature} disabled={!hasSignature}>
                     {t('Újraírás')}
                   </button>
                   <button
                     type="button"
-                    style={{ ...styles.primaryCompactButton, gridColumn: '1 / -1' }}
+                    style={{
+                      ...styles.primaryCompactButton,
+                      gridColumn: editingSavedSignature ? undefined : '1 / -1',
+                    }}
                     onClick={completeDedication}
                     disabled={!hasSignature || saving}
                   >

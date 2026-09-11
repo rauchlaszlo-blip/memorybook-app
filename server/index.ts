@@ -1883,7 +1883,7 @@ app.post('/api/my/books/:bookId/dedications/:pageId/complete', async (req, res) 
       return;
     }
     const page = pageResult.rows[0];
-    if (page.inviteStatus !== 'empty') {
+    if (page.inviteStatus !== 'empty' && page.inviteStatus !== 'submitted') {
       await client.query('ROLLBACK');
       res.status(409).json({ error: 'DEDICATION_PAGE_ALREADY_COMPLETED' });
       return;
@@ -1913,7 +1913,7 @@ app.post('/api/my/books/:bookId/dedications/:pageId/complete', async (req, res) 
            version = version + 1,
            invite_status = 'submitted',
            owner_visibility = 'active',
-           submitted_at = CURRENT_TIMESTAMP,
+           submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING version, preview_image_url AS "previewImageUrl", submitted_at AS "submittedAt"`,

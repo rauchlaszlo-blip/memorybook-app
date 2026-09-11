@@ -19,6 +19,9 @@ type PageData = {
   inviteDeliveryMethod?: string | null;
   submittedAt?: string | null;
   ownerNote?: string | null;
+  canvasData?: {
+    type?: string;
+  };
 };
 
 type BookPageSummary = {
@@ -40,6 +43,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [bookTitle, setBookTitle] = useState('MemoryBook');
+  const [bookType, setBookType] = useState<'standard' | 'event' | 'dedication'>('standard');
   const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
   const [page, setPage] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,6 +129,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         setPageIds(ids);
         setBookTitle(data.book?.title || 'MemoryBook');
+        setBookType(data.book?.bookType === 'dedication' ? 'dedication' : data.book?.bookType === 'event' ? 'event' : 'standard');
         setCoverPreviewImageUrl(data.book?.coverPreviewImageUrl || null);
         setPage(null);
       } catch (err) {
@@ -300,6 +305,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
 
         {!loading && page && !isCover && (
           <section style={styles.identityPanel} data-memory-metadata="true">
+            {bookType === 'dedication' && page.canvasData?.type === 'dedication' && (
+              <a
+                href={`/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(page.id)}`}
+                style={styles.editSignatureLink}
+              >
+                {t('Aláírás szerkesztése')}
+              </a>
+            )}
             <div style={styles.identityEyebrow}>{t('Az emlék adatai')}</div>
             <h2 style={styles.identityTitle}>
               {page.inviteRecipientName || page.inviteRecipientEmail || t('Nincs azonosítva')}
@@ -420,6 +433,7 @@ const styles: Record<string, React.CSSProperties> = {
     touchAction: 'pan-y',
   },
   editableCover: { cursor: 'pointer' },
+  editSignatureLink: { display: 'flex', minHeight: 46, marginBottom: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 10, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 16, fontWeight: 800 },
   image: {
     display: 'block',
     width: '100%',

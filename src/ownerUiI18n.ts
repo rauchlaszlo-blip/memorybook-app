@@ -27,6 +27,8 @@ const translations: Record<string, Translation> = {
   'Az aláírási felület következik.': { en: 'The signature screen comes next.', de: 'Als Nächstes folgt die Unterschrift.' },
   'Vissza a fényképhez': { en: 'Back to the photo', de: 'Zurück zum Foto' },
   'Aláírás': { en: 'Signature', de: 'Unterschrift' },
+  'Aláírás szerkesztése': { en: 'Edit signature', de: 'Unterschrift bearbeiten' },
+  'A mentett aláírást nem sikerült betölteni.': { en: 'Could not load the saved signature.', de: 'Die gespeicherte Unterschrift konnte nicht geladen werden.' },
   'Írj alá ujjal közvetlenül a fényképen.': { en: 'Sign directly on the photo with your finger.', de: 'Unterschreibe mit dem Finger direkt auf dem Foto.' },
   'Újraírás': { en: 'Start over', de: 'Neu schreiben' },
   'Aláírás színe': { en: 'Signature color', de: 'Unterschriftsfarbe' },
