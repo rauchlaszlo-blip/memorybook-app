@@ -60,6 +60,13 @@ app.use(express.json({
 
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
+const EVENT_REQUIRED_FIELDS = new Set([
+  'name',
+  'email',
+  'phone',
+  'festivalId',
+  'ticketId',
+]);
 const DEFAULT_BOOK_PAGE_COUNT = 30;
 const PAGE_INVITE_VALID_DAYS = 14;
 const DEMO_BOOK_ID = 'book-12b';
@@ -1703,7 +1710,8 @@ app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
     const result = await pool.query(
       `SELECT
          event_device_limit AS "deviceLimit",
-         event_identity_mode AS "identityMode"
+         event_identity_mode AS "identityMode",
+         event_required_fields AS "requiredFields"
        FROM books
        WHERE id = $1
          AND owner_user_id = $2
@@ -1734,6 +1742,15 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
     res.status(400).json({ error: 'INVALID_EVENT_DEVICE_LIMIT' });
     return;
   }
+  const requiredFields = req.body?.requiredFields;
+  if (
+    !Array.isArray(requiredFields) ||
+    requiredFields.some((field) => typeof field !== 'string' || !EVENT_REQUIRED_FIELDS.has(field)) ||
+    new Set(requiredFields).size !== requiredFields.length
+  ) {
+    res.status(400).json({ error: 'INVALID_EVENT_REQUIRED_FIELDS' });
+    return;
+  }
 
   try {
     const session = await getSession(req);
@@ -1745,14 +1762,16 @@ app.patch('/api/my/books/:bookId/event-settings', async (req, res) => {
     const result = await pool.query(
       `UPDATE books
        SET event_device_limit = $1,
+           event_required_fields = $2::jsonb,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-         AND owner_user_id = $3
+       WHERE id = $3
+         AND owner_user_id = $4
          AND book_type = 'event'
        RETURNING
          event_device_limit AS "deviceLimit",
-         event_identity_mode AS "identityMode"`,
-      [deviceLimit, req.params.bookId, session.user.id]
+         event_identity_mode AS "identityMode",
+         event_required_fields AS "requiredFields"`,
+      [deviceLimit, JSON.stringify(requiredFields), req.params.bookId, session.user.id]
     );
 
     if (result.rowCount === 0) {
@@ -3723,6 +3742,7 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS book_type TEXT NOT NULL DEFAULT 'standard'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_device_limit INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_identity_mode TEXT NOT NULL DEFAULT 'none'`);
+  await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS event_required_fields JSONB NOT NULL DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS page_capacity INTEGER NOT NULL DEFAULT 30`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'hu'`);
   await pool.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_canvas_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
