@@ -120,6 +120,7 @@ const translations: Record<string, Translation> = {
   'QR-kód készítése...': { en: 'Generating QR code...', de: 'QR-Code wird erstellt...' },
   '← Vissza a könyvhöz': { en: '← Back to the book', de: '← Zurück zum Buch' },
   'Olvasd be a QR-kódot, és írj a vendégkönyvbe!': { en: 'Scan the QR code and write in the guestbook!', de: 'Scanne den QR-Code und schreibe ins Gästebuch!' },
+  'Telefonod kamerájával olvasd be a QR-kódot, és nyisd meg az emlékkönyvet.': { en: 'Scan the QR code with your phone camera and open the memory book.', de: 'Scanne den QR-Code mit deiner Handykamera und öffne das Erinnerungsbuch.' },
   'QR-kódos vendégkönyv QR-kódja': { en: 'QR code guestbook code', de: 'QR-Code des QR-Code-Gästebuchs' },
   'A QR-kód ugyanarra a közös vendégkönyvre visz minden vendéget.': { en: 'The QR code takes every guest to the same shared guestbook.', de: 'Der QR-Code führt alle Gäste zum selben gemeinsamen Gästebuch.' },
 

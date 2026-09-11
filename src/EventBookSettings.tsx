@@ -34,7 +34,7 @@ export function EventBookSettings({ bookId }: Props) {
   const language = useOwnerUiLanguage();
   const t = (key: string) => ownerText(language, key);
   const [deviceLimit, setDeviceLimit] = useState(1);
-  const [requiredFields, setRequiredFields] = useState<RequiredField[]>([]);
+  const [requiredFields, setRequiredFields] = useState<RequiredField[]>(['name']);
   const [eventIsOpen, setEventIsOpen] = useState(true);
   const [eventClosesAt, setEventClosesAt] = useState('');
   const [loading, setLoading] = useState(true);

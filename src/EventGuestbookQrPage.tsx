@@ -48,7 +48,7 @@ export function EventGuestbookQrPage({ bookId }: EventGuestbookQrPageProps) {
       <section style={styles.card}>
         <div style={styles.brand}>{t('MemoryBook vendégkönyv')}</div>
         <h1 style={styles.title}>{title}</h1>
-        <p style={styles.lead}>{t('Olvasd be a QR-kódot, és írj a vendégkönyvbe!')}</p>
+        <p style={styles.lead}>{t('Telefonod kamerájával olvasd be a QR-kódot, és nyisd meg az emlékkönyvet.')}</p>
         <img src={qrDataUrl} alt={t('QR-kódos vendégkönyv QR-kódja')} style={styles.qr} />
         <p style={styles.hint}>{t('A QR-kód ugyanarra a közös vendégkönyvre visz minden vendéget.')}</p>
       </section>
