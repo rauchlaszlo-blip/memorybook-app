@@ -514,6 +514,8 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
         </div>
 
+        {bookType === 'event' && <EventBookSettings bookId={bookId} />}
+
         {!loading && (
           <section style={styles.eventPanel}>
             <div>
@@ -539,8 +541,6 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
         </section>
       )}
-
-        {bookType === 'event' && <EventBookSettings bookId={bookId} />}
 
         {!loading && bookType === 'dedication' && (
           <section style={styles.eventPanel}>

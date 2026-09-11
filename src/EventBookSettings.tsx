@@ -113,12 +113,6 @@ export function EventBookSettings({ bookId }: Props) {
 
   return (
     <section style={styles.panel}>
-      <div style={styles.eyebrow}>{t('Beküldési szabályok')}</div>
-      <h2 style={styles.title}>{t('Hány bejegyzés jöhet egy telefonról?')}</h2>
-      <p style={styles.text}>
-        {t('Ezt minden rendezvénykönyvnél külön állítod be. Nagy koncertnél vagy fesztiválnál tipikusan 1, családi rendezvénynél 5 vagy 10 lehet.')}
-      </p>
-
       <form onSubmit={save} style={styles.form}>
         <fieldset style={styles.fieldset}>
           <legend style={styles.legend}>{t('Vendégkönyv elérhetősége')}</legend>
@@ -141,6 +135,8 @@ export function EventBookSettings({ bookId }: Props) {
           </label>
           <div style={styles.fieldHint}>{t('Ha nem adsz meg időpontot, a vendégkönyv addig marad nyitva, amíg kézzel le nem zárod.')}</div>
         </fieldset>
+        <div style={styles.eyebrow}>{t('Beküldési szabályok')}</div>
+        <h2 style={styles.title}>{t('Hány bejegyzés jöhet egy telefonról?')}</h2>
         <label style={styles.label}>
           {t('Bejegyzések száma egy eszközről')}
           <input
