@@ -907,7 +907,7 @@ export const MemoryBookEditor = forwardRef<
       originX: centerNewText ? 'center' : 'left',
       width: textWidth,
       fontFamily: 'sans-serif',
-      fontSize: newTextFontSize,
+      fontSize: newTextFontSize * INITIAL_TEXTBOX_SIZE_SCALE,
       textAlign: newTextAlign,
       splitByGrapheme: true,
       fill: '#1F2937',
