@@ -145,6 +145,7 @@ export const MemoryBookEditor = forwardRef<
 >(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const copy = getInviteEditorMessages(language).editor;
 
@@ -876,6 +877,12 @@ export const MemoryBookEditor = forwardRef<
     }
   }, [isDrawing, isErasing, brushColor, brushWidth, brushTool, eraserWidth]);
 
+  const closeOpenToolMenus = () => {
+    toolbarRef.current
+      ?.querySelectorAll<HTMLDetailsElement>('details[open]')
+      .forEach((detail) => detail.removeAttribute('open'));
+  };
+
   const handleAddText = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -885,6 +892,7 @@ export const MemoryBookEditor = forwardRef<
     setIsDrawing(false);
     setIsErasing(false);
     canvas.isDrawingMode = false;
+    closeOpenToolMenus();
 
     const textWidth = Math.min(newTextWidth, CANVAS_WIDTH - 32);
 
@@ -1245,6 +1253,7 @@ export const MemoryBookEditor = forwardRef<
       `}</style>
 
       <div
+        ref={toolbarRef}
         className="memorybook-editor-toolbar"
         onClickCapture={(event) => {
           const summary = (event.target as HTMLElement).closest('summary');
@@ -1378,8 +1387,13 @@ export const MemoryBookEditor = forwardRef<
                 onClick={() => {
                   setIsDrawing(false);
                   setIsErasing(false);
-                  fabricRef.current?.discardActiveObject();
-                  fabricRef.current?.requestRenderAll();
+                  const canvas = fabricRef.current;
+                  if (canvas) {
+                    canvas.isDrawingMode = false;
+                    canvas.discardActiveObject();
+                    canvas.requestRenderAll();
+                  }
+                  closeOpenToolMenus();
                 }}
               >
                 {copy.stopDrawing}
