@@ -72,17 +72,55 @@ const EVENT_REQUIRED_FIELDS = new Set([
 const DEFAULT_BOOK_PAGE_COUNT = 30;
 const PAGE_INVITE_VALID_DAYS = 14;
 const DEMO_BOOK_ID = 'book-12b';
+const MAX_PUBLIC_RATE_LIMIT_ENTRIES = 5_000;
 const postalLookupCache = new Map<string, string>();
 
 type RateLimitEntry = { count: number; resetAt: number };
 const publicRateLimits = new Map<string, RateLimitEntry>();
+
+function getTestPaymentAllowedEmails() {
+  return new Set(
+    String(process.env.TEST_PAYMENT_ALLOWED_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function isTestPaymentAllowedFor(session: { user?: { email?: string | null } } | null) {
+  const email = String(session?.user?.email || '').trim().toLowerCase();
+  return Boolean(email && getTestPaymentAllowedEmails().has(email));
+}
+
+function makePublicRateLimitKey(scope: string, clientIp: string, rawToken: string) {
+  const token = rawToken.trim();
+  const normalizedToken = token.length >= 8 && token.length <= 200 && /^[A-Za-z0-9_-]+$/.test(token)
+    ? token
+    : 'invalid-token';
+  return `${scope}:${clientIp}:${normalizedToken}`;
+}
+
+function ensurePublicRateLimitCapacity(now: number, incomingKey: string) {
+  if (publicRateLimits.has(incomingKey)) return;
+
+  for (const [key, entry] of publicRateLimits) {
+    if (entry.resetAt <= now) publicRateLimits.delete(key);
+  }
+
+  while (publicRateLimits.size >= MAX_PUBLIC_RATE_LIMIT_ENTRIES) {
+    const oldestKey = publicRateLimits.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    publicRateLimits.delete(oldestKey);
+  }
+}
 
 function publicRateLimit(options: { windowMs: number; max: number; scope: string }) {
   return (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
     const clientIp = String(req.ip || req.socket?.remoteAddress || 'unknown');
     const token = String(req.params?.token || '');
-    const key = `${options.scope}:${clientIp}:${token}`;
+    const key = makePublicRateLimitKey(options.scope, clientIp, token);
+    ensurePublicRateLimitCapacity(now, key);
     const current = publicRateLimits.get(key);
     const entry = !current || current.resetAt <= now
       ? { count: 0, resetAt: now + options.windowMs }
@@ -639,11 +677,12 @@ app.get('/api/invoicing-capabilities', (_req, res) => {
   res.status(200).json(getInvoicingCapabilities());
 });
 
-app.get('/api/payment-capabilities', (_req, res) => {
+app.get('/api/payment-capabilities', async (req, res) => {
   const paypal = getPayPalCapabilities();
   const simplepay = getSimplePayCapabilities();
+  const session = await getSession(req).catch(() => null);
   res.status(200).json({
-    testPaymentEnabled: !paypal.enabled && !simplepay.enabled,
+    testPaymentEnabled: !paypal.enabled && !simplepay.enabled && isTestPaymentAllowedFor(session),
     paypal,
     simplepay: {
       ...simplepay,
@@ -1111,6 +1150,11 @@ app.post('/api/purchases/:purchaseId/test-complete', async (req, res) => {
   const session = await getSession(req).catch(() => null);
   if (!session) {
     res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  if (!isTestPaymentAllowedFor(session)) {
+    res.status(403).json({ error: 'TEST_PAYMENT_FORBIDDEN' });
     return;
   }
 
@@ -3861,14 +3905,12 @@ app.put('/api/books/:bookId/pages/reorder', async (req, res) => {
       return;
     }
 
-    if (req.params.bookId !== DEMO_BOOK_ID) {
-      const session = await getSession(req);
+    const session = await getSession(req);
 
-      if (!session || session.user.id !== bookResult.rows[0].ownerUserId) {
-        await client.query('ROLLBACK');
-        res.status(403).json({ error: 'BOOK_WRITE_FORBIDDEN' });
-        return;
-      }
+    if (!session || session.user.id !== bookResult.rows[0].ownerUserId) {
+      await client.query('ROLLBACK');
+      res.status(403).json({ error: 'BOOK_WRITE_FORBIDDEN' });
+      return;
     }
 
     const existingResult = await client.query(
@@ -4048,13 +4090,11 @@ app.put('/api/pages/:id', async (req, res) => {
       return;
     }
 
-    if (accessResult.rows[0].bookId !== DEMO_BOOK_ID) {
-      const session = await getSession(req);
+    const session = await getSession(req);
 
-      if (!session || session.user.id !== accessResult.rows[0].ownerUserId) {
-        res.status(403).json({ error: 'PAGE_WRITE_FORBIDDEN' });
-        return;
-      }
+    if (!session || session.user.id !== accessResult.rows[0].ownerUserId) {
+      res.status(403).json({ error: 'PAGE_WRITE_FORBIDDEN' });
+      return;
     }
 
     const row = await savePageVersioned(

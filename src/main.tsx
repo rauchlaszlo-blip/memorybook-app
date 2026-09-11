@@ -1,6 +1,5 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
 import { AuthPage } from './AuthPage.tsx'
 import { LandingPage } from './LandingPage.tsx'
 import { MyBooksPage } from './MyBooksPage.tsx'
@@ -33,6 +32,7 @@ const giftMatch = path.match(/^\/gift\/([^/]+)$/)
 const coverEditorMatch = path.match(/^\/my-books\/([^/]+)\/cover$/)
 const dedicationCaptureMatch = path.match(/^\/my-books\/([^/]+)\/dedication\/([^/]+)$/)
 const ownerMemoryMatch = path.match(/^\/my-books\/([^/]+)\/memory\/([^/]+)$/)
+const DEMO_BOOK_ID = 'book-12b'
 
 const root = path === '/'
   ? <LandingPage />
@@ -67,7 +67,7 @@ const root = path === '/'
               : bookViewMatch
                 ? <BookViewerPage bookId={decodeURIComponent(bookViewMatch[1])} />
                 : path === '/demo'
-                  ? <App />
+                  ? <BookViewerPage bookId={DEMO_BOOK_ID} />
                   : <LandingPage />
 
 createRoot(document.getElementById('root')!).render(root)
