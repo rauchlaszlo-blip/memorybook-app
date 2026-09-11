@@ -98,8 +98,8 @@ const configureObjectControls = (object: fabric.FabricObject) => {
     tr: true,
     bl: true,
     br: true,
-    ml: isTextbox,
-    mr: isTextbox,
+    ml: false,
+    mr: false,
     mt: isTextbox,
     mb: isTextbox,
     mtr: true,
@@ -130,6 +130,30 @@ const constrainTextboxToCanvas = (object: fabric.FabricObject) => {
   object.set({
     splitByGrapheme: true,
     width: Math.min(object.width || DEFAULT_TEXT_WIDTH, maxWidth),
+  });
+  object.initDimensions();
+  object.setCoords();
+};
+
+const fitTextboxWidthToText = (object: fabric.Textbox) => {
+  const maxWidth = getTextboxMaxWidth(object);
+  const minimumWidth = Math.min(120, maxWidth);
+  const logicalLines = String(object.text || '').split('\n');
+
+  const measuredWidth = logicalLines.reduce((widest, line) => {
+    const probe = new fabric.Text(line || ' ', {
+      fontFamily: object.fontFamily,
+      fontSize: object.fontSize,
+      fontWeight: object.fontWeight,
+      fontStyle: object.fontStyle,
+      charSpacing: object.charSpacing,
+    });
+    return Math.max(widest, probe.width || 0);
+  }, 0);
+
+  object.set({
+    splitByGrapheme: true,
+    width: Math.min(maxWidth, Math.max(minimumWidth, measuredWidth + 24)),
   });
   object.initDimensions();
   object.setCoords();
@@ -525,7 +549,10 @@ export const MemoryBookEditor = forwardRef<
       handlersRef.current.handleStructuralMutation()
     );
     canvas.on('text:changed', (event) => {
-      if (event.target) constrainTextboxToCanvas(event.target);
+      if (event.target instanceof fabric.Textbox) {
+        fitTextboxWidthToText(event.target);
+        canvas.requestRenderAll();
+      }
       handlersRef.current.handleTextTypingMutation();
     });
     canvas.on('text:editing:exited', () =>
@@ -901,12 +928,11 @@ export const MemoryBookEditor = forwardRef<
 
     const textWidth = Math.min(newTextWidth * INITIAL_TEXTBOX_WIDTH_SCALE, CANVAS_WIDTH - 32);
 
-    const centerNewText = newTextAlign === 'center';
     const text = new fabric.Textbox(copy.textPlaceholder, {
-      left: centerNewText ? CANVAS_WIDTH / 2 : (CANVAS_WIDTH - textWidth) / 2,
+      left: CANVAS_WIDTH / 2,
       top: CANVAS_HEIGHT / 2,
       originY: 'center',
-      originX: centerNewText ? 'center' : 'left',
+      originX: 'center',
       width: textWidth,
       fontFamily: 'sans-serif',
       fontSize: newTextFontSize * INITIAL_TEXTBOX_FONT_SCALE,
@@ -924,6 +950,7 @@ export const MemoryBookEditor = forwardRef<
       centeredRotation: true,
     });
     configureObjectControls(text);
+    fitTextboxWidthToText(text);
 
     canvas.add(text);
     canvas.setActiveObject(text);
