@@ -258,3 +258,18 @@ export function ownerFormat(
   let value = ownerText(language, key);
   for (const [name, replacement] of Object.entries(values)) {
     value = value.replaceAll(`{${name}}`, String(replacement));
+  }
+  return value;
+}
+
+export function ownerLocale(language: AppLanguage): string {
+  if (language === 'de') return 'de-DE';
+  if (language === 'en') return 'en-US';
+  return 'hu-HU';
+}
+
+export function useOwnerUiLanguage(): AppLanguage {
+  const [language, setLanguage] = useState<AppLanguage>(() => getAppLanguage());
+  useEffect(() => subscribeAppLanguage(setLanguage), []);
+  return language;
+}
