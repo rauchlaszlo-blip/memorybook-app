@@ -53,6 +53,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
   const [bookTitle, setBookTitle] = useState('MemoryBook');
   const [bookType, setBookType] = useState<'standard' | 'event' | 'dedication'>('standard');
   const [coverPreviewImageUrl, setCoverPreviewImageUrl] = useState<string | null>(null);
+  const [nextDedicationPageId, setNextDedicationPageId] = useState<string | null>(null);
   const [page, setPage] = useState<PageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,8 +146,14 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
               })
           : [];
         const ids = visiblePages.map((item: BookPageSummary) => String(item.id));
+        const nextDedicationPage = loadedBookType === 'dedication'
+          ? visiblePages
+              .filter((item: BookPageSummary) => item.inviteStatus === 'empty')
+              .sort((a: BookPageSummary, b: BookPageSummary) => a.pageNumber - b.pageNumber)[0]
+          : undefined;
 
         setPageIds(ids);
+        setNextDedicationPageId(nextDedicationPage ? String(nextDedicationPage.id) : null);
         setBookTitle(data.book?.title || 'MemoryBook');
         setBookType(loadedBookType);
         setCoverPreviewImageUrl(data.book?.coverPreviewImageUrl || null);
@@ -266,9 +273,20 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
           <a href="/my-books" style={styles.backLink}>
             {t('← Saját könyveim')}
           </a>
-          <a href={`/my-books/${encodeURIComponent(bookId)}?nextEmpty=1`} style={styles.inviteLink}>
-            {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
-          </a>
+          {bookType === 'dedication' ? (
+            <a
+              href={nextDedicationPageId ? `/my-books/${encodeURIComponent(bookId)}/dedication/${encodeURIComponent(nextDedicationPageId)}` : undefined}
+              aria-disabled={!nextDedicationPageId}
+              style={{ ...styles.inviteLink, ...(!nextDedicationPageId ? styles.disabledAction : {}) }}
+              onClick={(event) => { if (!nextDedicationPageId) event.preventDefault(); }}
+            >
+              {t('Új dedikálás')}
+            </a>
+          ) : (
+            <a href={`/my-books/${encodeURIComponent(bookId)}?nextEmpty=1`} style={styles.inviteLink}>
+              {language === 'de' ? 'Einladen' : language === 'en' ? 'Invite' : 'Meghívó'}
+            </a>
+          )}
         </div>
           <div style={styles.pageNumber}>
             {isCover
@@ -343,7 +361,7 @@ export function BookViewerPage({ bookId }: BookViewerPageProps) {
         </div>
         </div>
 
-        {!loading && bookType === 'standard' && (
+        {!loading && (bookType === 'standard' || bookType === 'dedication') && (
           <button type="button" onClick={openOwnMemory} disabled={ownMemoryOpening} style={styles.ownMemoryButton}>
             {ownMemoryOpening ? t('Megnyitás…') : t('Saját emlék létrehozása')}
           </button>
@@ -462,6 +480,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bookActions: { position: 'absolute', top: 0, left: 0, right: 0, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: 0, zIndex: 4 },
   inviteLink: { minHeight: 38, padding: '7px 11px', boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', borderRadius: 8, background: '#0f172a', color: '#ffffff', textDecoration: 'none', fontSize: 14, fontWeight: 800 },
+  disabledAction: { opacity: 0.5, cursor: 'not-allowed' },
   eyebrow: {
     fontSize: 12,
     fontWeight: 700,
