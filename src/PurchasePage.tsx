@@ -608,6 +608,22 @@ export function PurchasePage() {
   const simplePayReady = Boolean(paymentCapabilities?.simplepay?.enabled);
   const testPaymentEnabled = Boolean(paymentCapabilities?.testPaymentEnabled);
 
+  if (paymentSuccess?.giftRedeemPath) {
+    return (
+      <main style={styles.page}>
+        <section style={{ ...styles.card, ...styles.giftSuccessCard }}>
+          <div style={styles.brand}>MemoryBook</div>
+          <h1 style={styles.giftSuccessTitle}>{t('Az ajándék elkészült')}</h1>
+          <button type="button" onClick={() => { void sendGiftLink(); }} style={styles.giftShareButton}>
+            {t('Ajándéklink küldése')}
+          </button>
+          {notice && <div style={styles.notice}>{notice}</div>}
+          {error && <div style={styles.error}>{error}</div>}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.page}>
       <section style={{ ...styles.card, ...(mode === 'gift' ? styles.giftCard : {}) }}>
@@ -637,10 +653,6 @@ export function PurchasePage() {
             <span>{user.name || purchaserName}</span>
             <span>{user.email || purchaserEmail}</span>
           </div>
-        )}
-
-        {testPaymentEnabled && (
-          <div style={styles.testNotice}>{t('Tesztverzió: a fizetési gomb nem terhel pénzt, hanem azonnal létrehozza a könyvjogosultságot.')}</div>
         )}
 
         <form onSubmit={submit} style={{ ...styles.form, ...(mode === 'gift' ? styles.giftForm : {}) }}>
@@ -739,14 +751,6 @@ export function PurchasePage() {
           </button>
         </form>
 
-        {paymentSuccess?.giftRedeemPath && (
-          <div style={styles.success}>
-            <button type="button" onClick={() => { void sendGiftLink(); }} style={styles.giftShareButton}>
-              {t('Ajándéklink küldése')}
-            </button>
-          </div>
-        )}
-
         {purchaseId && !paymentSuccess && (
           <div style={styles.success}>
             <strong>{t('Vásárlási alap rögzítve.')}</strong><br />
@@ -794,6 +798,8 @@ const styles: Record<string, React.CSSProperties> = {
   giftInfoCompact: { padding: 6, fontSize: 12, lineHeight: 1.25 },
   error: { padding: 9, borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
   primaryButton: { minHeight: 44, border: 0, borderRadius: 8, background: '#0f172a', color: '#fff', fontWeight: 800, fontSize: 15 },
+  giftSuccessCard: { maxWidth: 420, marginTop: 20, padding: '22px 16px', textAlign: 'center' },
+  giftSuccessTitle: { margin: '8px 0 18px', color: '#0f172a', fontSize: 26 },
   giftShareButton: { width: '100%', minHeight: 48, border: 0, borderRadius: 8, padding: '11px 14px', background: '#0f172a', color: '#ffffff', fontWeight: 800, fontSize: 16, cursor: 'pointer' },
   success: { marginTop: 10, padding: 10, borderRadius: 9, background: '#ecfdf5', color: '#166534', lineHeight: 1.4, fontSize: 13, overflowWrap: 'anywhere' },
 };
