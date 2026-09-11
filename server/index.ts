@@ -1853,6 +1853,114 @@ app.get('/api/my/books/:bookId/pages', async (req, res) => {
   }
 });
 
+
+app.post('/api/my/books/:bookId/own-memory', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const bookResult = await client.query(
+      `SELECT id FROM books WHERE id = $1 AND owner_user_id = $2 FOR UPDATE`,
+      [req.params.bookId, session.user.id]
+    );
+    if (bookResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ error: 'BOOK_NOT_FOUND' });
+      return;
+    }
+
+    const draftResult = await client.query(
+      `SELECT id, page_number AS "pageNumber" FROM pages
+       WHERE book_id = $1 AND invite_status = 'owner_draft'
+       ORDER BY page_number ASC LIMIT 1 FOR UPDATE`,
+      [req.params.bookId]
+    );
+    if (draftResult.rowCount > 0) {
+      await client.query('COMMIT');
+      res.status(200).json({ pageId: draftResult.rows[0].id, pageNumber: draftResult.rows[0].pageNumber, resumed: true });
+      return;
+    }
+
+    const emptyResult = await client.query(
+      `SELECT id, page_number AS "pageNumber" FROM pages
+       WHERE book_id = $1 AND invite_status = 'empty'
+       ORDER BY page_number ASC LIMIT 1 FOR UPDATE`,
+      [req.params.bookId]
+    );
+
+    let pageId: string;
+    let pageNumber: number;
+    if (emptyResult.rowCount > 0) {
+      pageId = emptyResult.rows[0].id;
+      pageNumber = Number(emptyResult.rows[0].pageNumber);
+      await client.query(
+        `UPDATE pages SET invite_status = 'owner_draft', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [pageId]
+      );
+    } else {
+      const numberResult = await client.query(
+        `SELECT COALESCE(MAX(page_number), 0)::int + 1 AS "pageNumber" FROM pages WHERE book_id = $1`,
+        [req.params.bookId]
+      );
+      pageId = `page-${crypto.randomUUID()}`;
+      pageNumber = Number(numberResult.rows[0].pageNumber);
+      await client.query(
+        `INSERT INTO pages (id, book_id, page_number, invite_status) VALUES ($1, $2, $3, 'owner_draft')`,
+        [pageId, req.params.bookId, pageNumber]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ pageId, pageNumber, resumed: false });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Owner memory open error:', err);
+    res.status(500).json({ error: 'OWNER_MEMORY_OPEN_FAILED' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/my/books/:bookId/own-memory/:pageId/complete', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+  const session = await getSession(req).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE pages p
+       SET invite_status = 'owner', submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       FROM books b
+       WHERE p.id = $1 AND p.book_id = $2 AND p.invite_status = 'owner_draft'
+         AND b.id = p.book_id AND b.owner_user_id = $3
+       RETURNING p.id, p.page_number AS "pageNumber", p.submitted_at AS "submittedAt"`,
+      [req.params.pageId, req.params.bookId, session.user.id]
+    );
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'OWNER_MEMORY_NOT_FOUND' });
+      return;
+    }
+    res.status(200).json({ success: true, page: result.rows[0] });
+  } catch (err) {
+    console.error('Owner memory complete error:', err);
+    res.status(500).json({ error: 'OWNER_MEMORY_COMPLETE_FAILED' });
+  }
+});
+
 app.post('/api/my/books/:bookId/dedications/:pageId/complete', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
@@ -3513,6 +3621,7 @@ app.get('/api/pages/:id', async (req, res) => {
          p.invite_recipient_name AS "inviteRecipientName",
          p.invite_recipient_email AS "inviteRecipientEmail",
          p.invite_delivery_method AS "inviteDeliveryMethod",
+         p.invite_status AS "inviteStatus",
          p.submitted_at AS "submittedAt",
          p.event_guest_data AS "eventGuestData",
          p.owner_note AS "ownerNote",

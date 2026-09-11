@@ -51,6 +51,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
   const [workingPageId, setWorkingPageId] = useState<string | null>(null);
   const [copiedPageId, setCopiedPageId] = useState<string | null>(null);
   const [inviteComposerPage, setInviteComposerPage] = useState<OwnerPage | null>(null);
+  const [ownMemoryOpening, setOwnMemoryOpening] = useState(false);
 
   const origin = useMemo(() => window.location.origin, []);
   const targetPageId = useMemo(
@@ -172,6 +173,29 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
       setError(t('Nem sikerült létrehozni a meghívót.'));
     } finally {
       setWorkingPageId(null);
+    }
+  };
+
+  const openOwnMemory = async () => {
+    if (ownMemoryOpening) return;
+    try {
+      setOwnMemoryOpening(true);
+      setError(null);
+      const response = await fetch(
+        `${API_BASE}/api/my/books/${encodeURIComponent(bookId)}/own-memory`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (response.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.pageId) throw new Error(data.error || 'OWNER_MEMORY_OPEN_FAILED');
+      window.location.href = `/my-books/${encodeURIComponent(bookId)}/memory/${encodeURIComponent(data.pageId)}`;
+    } catch (err) {
+      console.error(err);
+      setError(t('A saját emléklapot nem sikerült megnyitni.'));
+      setOwnMemoryOpening(false);
     }
   };
 
@@ -489,6 +513,18 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
             </p>
           </div>
         </div>
+
+        {!loading && (
+          <section style={styles.eventPanel}>
+            <div>
+              <strong style={styles.eventPanelTitle}>{t('Saját emlék')}</strong>
+              <div style={styles.eventPanelText}>{t('Készíts saját emlékoldalt szöveggel, rajzzal és képpel.')}</div>
+            </div>
+            <button type="button" style={styles.eventQrButton} onClick={openOwnMemory} disabled={ownMemoryOpening}>
+              {ownMemoryOpening ? t('Megnyitás…') : t('Saját emlék létrehozása')}
+            </button>
+          </section>
+        )}
 
       {bookType === 'event' && eventInviteToken && (
         <section style={styles.eventPanel}>
