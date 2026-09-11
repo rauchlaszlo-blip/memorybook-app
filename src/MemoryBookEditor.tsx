@@ -68,7 +68,8 @@ const DEFAULT_TEXT_FONT_SIZE = 33;
 const DEFAULT_TEXT_WIDTH = 560;
 const TEXT_KEYBOARD_GAP = 24;
 const MOBILE_CONTROL_SIZE = 32;
-const INITIAL_TEXTBOX_SIZE_SCALE = 1.5;
+const INITIAL_TEXTBOX_WIDTH_SCALE = 1.05;
+const INITIAL_TEXTBOX_FONT_SCALE = 1.5;
 
 const COVER_BACKGROUND_COLLECTION = [
   { id: 'tropical-light', src: '/cover-backgrounds/tropical-light.webp', hu: 'Trópusi világos', en: 'Light tropical', de: 'Tropisch hell' },
@@ -898,16 +899,17 @@ export const MemoryBookEditor = forwardRef<
     canvas.isDrawingMode = false;
     closeOpenToolMenus();
 
-    const textWidth = Math.min(newTextWidth * INITIAL_TEXTBOX_SIZE_SCALE, CANVAS_WIDTH - 32);
+    const textWidth = Math.min(newTextWidth * INITIAL_TEXTBOX_WIDTH_SCALE, CANVAS_WIDTH - 32);
 
     const centerNewText = newTextAlign === 'center';
     const text = new fabric.Textbox(copy.textPlaceholder, {
       left: centerNewText ? CANVAS_WIDTH / 2 : (CANVAS_WIDTH - textWidth) / 2,
-      top: newTextTop,
+      top: CANVAS_HEIGHT / 2,
+      originY: 'center',
       originX: centerNewText ? 'center' : 'left',
       width: textWidth,
       fontFamily: 'sans-serif',
-      fontSize: newTextFontSize * INITIAL_TEXTBOX_SIZE_SCALE,
+      fontSize: newTextFontSize * INITIAL_TEXTBOX_FONT_SCALE,
       textAlign: newTextAlign,
       splitByGrapheme: true,
       fill: '#1F2937',
