@@ -146,7 +146,7 @@ const editorStyles: Record<string, React.CSSProperties> = {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextTop = 150, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
