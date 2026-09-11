@@ -126,6 +126,43 @@ function getEventBookAvailabilityError(book: {
   return null;
 }
 
+type EventUsageEventType =
+  | 'qr_opened'
+  | 'editor_session_started'
+  | 'editor_session_resumed'
+  | 'page_submitted'
+  | 'page_submit_failed';
+
+function recordEventUsageEvent(options: {
+  bookId: string;
+  eventType: EventUsageEventType;
+  durationMs?: number;
+  payloadBytes?: number;
+}): void {
+  const durationMs = Number.isFinite(options.durationMs)
+    ? Math.max(0, Math.round(options.durationMs as number))
+    : null;
+  const payloadBytes = Number.isFinite(options.payloadBytes)
+    ? Math.max(0, Math.round(options.payloadBytes as number))
+    : null;
+
+  void pool.query(
+    `INSERT INTO event_usage_events (book_id, event_type, duration_ms, payload_bytes)
+     VALUES ($1, $2, $3, $4)`,
+    [options.bookId, options.eventType, durationMs, payloadBytes]
+  ).catch((err) => {
+    // Analytics must never block the guestbook flow.
+    console.error('Event usage analytics warning:', err);
+  });
+}
+
+function requestPayloadBytes(req: Request): number | undefined {
+  const rawLength = req.get('content-length');
+  if (!rawLength) return undefined;
+  const parsed = Number(rawLength);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 async function getSession(req: any) {
   if (!auth) return null;
 
@@ -1748,6 +1785,78 @@ app.put('/api/my/books/:bookId/cover', async (req, res) => {
   }
 });
 
+app.get('/api/my/books/:bookId/event-analytics', async (req, res) => {
+  if (!auth) {
+    res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    return;
+  }
+
+  try {
+    const session = await getSession(req);
+    if (!session) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    const bookResult = await pool.query(
+      `SELECT id, title
+       FROM books
+       WHERE id = $1 AND owner_user_id = $2 AND book_type = 'event'`,
+      [req.params.bookId, session.user.id]
+    );
+    if (bookResult.rowCount === 0) {
+      res.status(404).json({ error: 'EVENT_BOOK_NOT_FOUND' });
+      return;
+    }
+
+    const [eventResult, pageResult, peakResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           event_type AS "eventType",
+           COUNT(*)::int AS count,
+           ROUND(AVG(duration_ms))::int AS "averageDurationMs",
+           ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms))::int AS "p95DurationMs",
+           COALESCE(SUM(payload_bytes), 0)::bigint::text AS "payloadBytes"
+         FROM event_usage_events
+         WHERE book_id = $1
+         GROUP BY event_type
+         ORDER BY event_type`,
+        [req.params.bookId]
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE event_device_id IS NOT NULL)::int AS "editorPages",
+           COUNT(DISTINCT event_device_id)::int AS "uniqueDevices",
+           COUNT(*) FILTER (WHERE invite_status = 'submitted')::int AS "submittedPages",
+           COUNT(*) FILTER (WHERE invite_status IN ('invited', 'draft'))::int AS "unfinishedPages"
+         FROM pages
+         WHERE book_id = $1 AND event_device_id IS NOT NULL`,
+        [req.params.bookId]
+      ),
+      pool.query(
+        `SELECT COALESCE(MAX(submission_count), 0)::int AS "peakSubmissionsPerMinute"
+         FROM (
+           SELECT DATE_TRUNC('minute', created_at), COUNT(*)::int AS submission_count
+           FROM event_usage_events
+           WHERE book_id = $1 AND event_type = 'page_submitted'
+           GROUP BY DATE_TRUNC('minute', created_at)
+         ) AS minute_counts`,
+        [req.params.bookId]
+      ),
+    ]);
+
+    res.status(200).json({
+      book: bookResult.rows[0],
+      events: eventResult.rows,
+      pages: pageResult.rows[0],
+      peakSubmissionsPerMinute: peakResult.rows[0].peakSubmissionsPerMinute,
+    });
+  } catch (err) {
+    console.error('Event analytics load error:', err);
+    res.status(500).json({ error: 'EVENT_ANALYTICS_LOAD_FAILED' });
+  }
+});
+
 app.get('/api/my/books/:bookId/event-settings', async (req, res) => {
   if (!auth) {
     res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
@@ -2885,22 +2994,27 @@ app.put('/api/page-invites/:token', async (req, res) => {
 });
 
 app.post('/api/page-invites/:token/submit', async (req, res) => {
+  const startedAt = Date.now();
   const authorShareApproved = req.body?.authorShareApproved === true;
   const client = await pool.connect();
+  let eventBookId: string | null = null;
 
   try {
     await client.query('BEGIN');
 
     const pageResult = await client.query(
       `SELECT
-         id,
-         page_number AS "pageNumber",
-         invite_status AS "inviteStatus",
-         invite_created_at AS "inviteCreatedAt",
-         submitted_at AS "submittedAt"
-       FROM pages
-       WHERE invite_token = $1
-       FOR UPDATE`,
+         p.id,
+         p.page_number AS "pageNumber",
+         p.invite_status AS "inviteStatus",
+         p.invite_created_at AS "inviteCreatedAt",
+         p.submitted_at AS "submittedAt",
+         b.id AS "bookId",
+         b.book_type AS "bookType"
+       FROM pages p
+       JOIN books b ON b.id = p.book_id
+       WHERE p.invite_token = $1
+       FOR UPDATE OF p`,
       [req.params.token]
     );
 
@@ -2908,6 +3022,10 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
       await client.query('ROLLBACK');
       res.status(404).json({ error: 'PAGE_INVITE_NOT_FOUND' });
       return;
+    }
+
+    if (pageResult.rows[0].bookType === 'event') {
+      eventBookId = pageResult.rows[0].bookId;
     }
 
     if (pageResult.rows[0].inviteStatus === 'submitted') {
@@ -2946,6 +3064,15 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
 
     await client.query('COMMIT');
 
+    if (eventBookId) {
+      recordEventUsageEvent({
+        bookId: eventBookId,
+        eventType: 'page_submitted',
+        durationMs: Date.now() - startedAt,
+        payloadBytes: requestPayloadBytes(req),
+      });
+    }
+
     res.status(200).json({
       success: true,
       pageId: result.rows[0].id,
@@ -2955,6 +3082,14 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Invite page submit error:', err);
+    if (eventBookId) {
+      recordEventUsageEvent({
+        bookId: eventBookId,
+        eventType: 'page_submit_failed',
+        durationMs: Date.now() - startedAt,
+        payloadBytes: requestPayloadBytes(req),
+      });
+    }
     res.status(500).json({ error: 'PAGE_SUBMIT_FAILED' });
   } finally {
     client.release();
@@ -2972,6 +3107,7 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, scope: 'invite-read' }), async (req, res) => {
+  const startedAt = Date.now();
   try {
     const result = await pool.query(
       `SELECT
@@ -3005,6 +3141,12 @@ app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, sco
         res.status(410).json({ error: availabilityError });
         return;
       }
+
+      recordEventUsageEvent({
+        bookId: result.rows[0].id,
+        eventType: 'qr_opened',
+        durationMs: Date.now() - startedAt,
+      });
     }
 
     res.status(200).json({
@@ -3022,6 +3164,7 @@ app.get('/api/invites/:token', publicRateLimit({ windowMs: 60_000, max: 120, sco
 });
 
 app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000, max: 10, scope: 'page-session' }), async (req, res) => {
+  const startedAt = Date.now();
   const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
   const guestData = req.body?.guestData;
   if (deviceId.length < 8 || deviceId.length > 200) {
@@ -3105,6 +3248,12 @@ app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000,
       );
       await client.query('COMMIT');
       const inviteToken = existingDraft.rows[0].inviteToken;
+      recordEventUsageEvent({
+        bookId: book.id,
+        eventType: 'editor_session_resumed',
+        durationMs: Date.now() - startedAt,
+        payloadBytes: requestPayloadBytes(req),
+      });
       res.status(200).json({ inviteToken, invitePath: `/p/${inviteToken}`, resumed: true });
       return;
     }
@@ -3150,6 +3299,12 @@ app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000,
     );
 
     await client.query('COMMIT');
+    recordEventUsageEvent({
+      bookId: book.id,
+      eventType: 'editor_session_started',
+      durationMs: Date.now() - startedAt,
+      payloadBytes: requestPayloadBytes(req),
+    });
     res.status(201).json({
       pageId,
       pageNumber,
@@ -4029,6 +4184,12 @@ async function initializeDatabase(): Promise<void> {
   await pool.query(`UPDATE books SET language = 'hu' WHERE language NOT IN ('hu', 'en', 'de') OR language IS NULL`);
   await pool.query(`UPDATE books SET language = 'en' WHERE id = $1`, [DEMO_BOOK_ID]);
   await pool.query(`UPDATE books SET page_capacity = 0 WHERE book_type = 'event' AND page_capacity <> 0`);
+
+  const eventUsageAnalyticsMigration = await fs.readFile(
+    path.join(process.cwd(), 'server', 'migrations', '20260911_event_usage_analytics.sql'),
+    'utf8'
+  );
+  await pool.query(eventUsageAnalyticsMigration);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS purchases (
