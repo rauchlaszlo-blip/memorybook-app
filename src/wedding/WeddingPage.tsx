@@ -10,8 +10,9 @@ import { drawingCopy } from './drawing-copy';
 import { PhotoDrawing, AnnotatedPreview } from './PhotoDrawing';
 import { emptyAnnotation, parseAnnotation } from '../../shared/photo-annotation';
 import type { Annotation } from '../../shared/photo-annotation';
+import { windowCopy } from './window-copy';
 
-type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string };
+type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string; package_version?:number;submission_start?:string;submission_end?:string };
 type Photo = { id: string; previewUrl: string; displayUrl: string; originalUrl: string };
 type Attempt = { name: string; message: string; idempotencyKey: string; mediaId?: string; annotation?: Annotation };
 type Draft = { name?: string; message?: string; hadPhoto?: boolean; attempt?: Attempt; annotation?: Annotation };
@@ -20,8 +21,8 @@ function readDraft(token?: string): Draft {
   try { return token ? JSON.parse(sessionStorage.getItem(`wedding-draft-${token}`) || '{}') : {}; } catch { return {}; }
 }
 type Submission = { media?: Photo[]; id: string; guest_name: string; message: string; created_at: string };
-type GuestEvent = { title: string; starts_on: string; closed: boolean; template_id: string; template_version: number };
-type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean };
+type GuestEvent = { title: string; starts_on: string; closed: boolean; template_id: string; template_version: number;access_state?:string;submission_start?:string;submission_end?:string;package_version?:number };
+type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean;shopAvailable?:boolean };
 const apiBase = ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '5173'
   ? `${window.location.protocol}//${window.location.hostname}:3001` : '';
 
@@ -50,6 +51,8 @@ export function WeddingPage() {
   const t = weddingTemplate.copy[language];
   const pt = photoCopy[language];
   const dt = drawingCopy[language];
+  const wt = windowCopy[language];
+  const time=(s:string)=>new Date(s).toLocaleString(language,{timeZone:'Europe/Budapest'});
   const guestToken = window.location.pathname.match(/^\/wedding\/join\/([A-Za-z0-9_-]+)\/?$/)?.[1];
   const bookId = window.location.pathname.match(/^\/wedding\/books\/([a-f0-9-]+)\/?$/)?.[1];
   const [capability, setCapability] = useState<Capability | null>(null);
@@ -164,7 +167,10 @@ export function WeddingPage() {
     });
   }
   function report(error: unknown) {
-    if (error instanceof ApiError && error.message === 'ANNOTATION_INVALID') setAnnotationError(true);
+    if(error instanceof ApiError && error.message==='PHOTO_DEVICE_LIMIT')setError('deviceLimit');
+    else if(error instanceof ApiError && error.message==='GUEST_SESSION_REQUIRED')setError('deviceCookie');
+    else if(error instanceof ApiError && ['SUBMISSIONS_EARLY','SUBMISSIONS_ENDED'].includes(error.message)){setGuest(g=>g?{...g,access_state:error.message==='SUBMISSIONS_EARLY'?'early':'ended'}:g);setUncertain(false);}
+    else if (error instanceof ApiError && error.message === 'ANNOTATION_INVALID') setAnnotationError(true);
     else if (error instanceof ApiError && error.message.startsWith('PHOTO_')) {
       const codes: Record<string, keyof typeof pt> = {PHOTO_TYPE:'format',PHOTO_TOO_LARGE:'size',PHOTO_PIXELS:'pixels',PHOTO_INVALID:'invalid',PHOTO_QUOTA:'quota',PHOTO_EXPIRED:'expired'};
       setPhotoError(codes[error.message] || 'invalid');
@@ -199,7 +205,7 @@ export function WeddingPage() {
       if (error instanceof ApiError && error.message === 'IDEMPOTENCY_CONFLICT' && file) setPhotoError('conflict');
     } finally { setBusy(false); busyRef.current = false; setStage(''); }
   }
-  const errorText = error ? t[error as keyof typeof t] || t.unavailable : '';
+  const errorText = error==='deviceLimit'?wt.limit:error==='deviceCookie'?wt.cookie:error ? t[error as keyof typeof t] || t.unavailable : '';
   const appearance = weddingTemplate.appearance;
   return <main className="wedding" style={{ background: appearance.background, color: appearance.ink, '--wedding-accent': appearance.accent } as CSSProperties}>
     <div className="wedding-shell">
@@ -212,7 +218,8 @@ export function WeddingPage() {
         {errorText && <p className="wedding-error" role="alert">{errorText}</p>}
         {guestToken ? guest && <section className="wedding-card">
           <p>{t.step}</p><h1>{guest.title}</h1><p>{guest.starts_on}</p>
-          {success ? <h2 role="status">{t.success}</h2> : guest.closed && !uncertain ? <p role="status">{t.closed}</p> : <>
+          {guest.submission_start&&guest.submission_end&&<p><small>{wt.window} {time(guest.submission_start)} – {time(new Date(new Date(guest.submission_end).getTime()-1000).toISOString())}</small></p>}
+          {success ? <h2 role="status">{t.success}</h2> : guest.closed && !uncertain ? <p role="status">{t.closed}</p> : ['early','ended'].includes(guest.access_state||'')&&!uncertain?<p role="status">{guest.access_state==='early'?wt.early:wt.ended}</p>: <>
             <p>{t.guestIntro}</p>
             <form onSubmit={e => { e.preventDefault(); void send(); }}>
               <div><label htmlFor="wedding-guest-name">{t.name}</label><input id="wedding-guest-name" name="guestName" autoComplete="name" required maxLength={100} value={name} disabled={busy || uncertain} onChange={e => setName(e.target.value)} /></div>
@@ -235,7 +242,8 @@ export function WeddingPage() {
           </>}
         </section> : capability && <>
           {!capability.authenticated ? <section className="wedding-card"><p>{capability.internetPilot ? 'A tulajdonosi hozzáféréshez nyisd meg a neked adott egyszer használható meghívót. Jelszó nem szükséges.' : t.loginHint}</p>{!capability.internetPilot && <a className="wedding-button" href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}>{t.login}</a>}</section> : book ? <>
-            <a href="/wedding">{t.back}</a><h1>{book.title}</h1><p>{book.starts_on} · {t.owner}</p>
+            <a href={book.package_version?'/pilot/books':'/wedding'}>{book.package_version?wt.shop:t.back}</a><h1>{book.title}</h1><p>{book.starts_on} · {t.owner}</p>
+            {book.submission_start&&book.submission_end&&<p>{wt.window} {time(book.submission_start)} – {time(new Date(new Date(book.submission_end).getTime()-1000).toISOString())}</p>}
             <section className="wedding-card"><h2>{t.qr}</h2>
               {book.closed_at ? <p role="status">{t.closed}</p> : <>
                 {qr && <><img className="wedding-qr" src={qr} alt={t.qr} /><a className="wedding-button" href={qr} download="vendegkonyv-qr.png">QR letöltése</a></>}{qrError && <p>{t.qrFailed}</p>}

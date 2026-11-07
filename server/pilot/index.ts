@@ -1,10 +1,11 @@
-// Standalone pilot: never imports legacy server, auth, billing or dotenv startup.
+// Standalone pilot: shared authentication factory, isolated database; no legacy server/billing startup.
 import { Pool } from 'pg';
 import { pilotConfig } from './config';
 import { createPilotApp } from './app';
 import { migratePilot, seedOperatorInvite } from './auth';
 import { migrateWedding } from '../wedding/migrate';
 import { cleanupMedia } from '../wedding/media';
+import { createCommerceAuth } from './commerce-auth';
 const config = pilotConfig(process.env);
 const pool = new Pool({ connectionString: config.databaseUrl, max: 5 });
 await migrateWedding(pool);
@@ -13,6 +14,7 @@ await seedOperatorInvite(pool, process.env);
 await cleanupMedia(pool);
 const cleanup = setInterval(() => { void cleanupMedia(pool).catch(() => console.warn('Photo cleanup deferred')); }, 15 * 60_000);
 cleanup.unref();
-const app = createPilotApp(pool, config.origin);
+const commerce=await createCommerceAuth(pool,config.origin);
+const app = createPilotApp(pool, config.origin, commerce);
 const server = app.listen(Number(process.env.PORT || 10000), '0.0.0.0', () => console.log('Isolated text pilot ready'));
 process.on('SIGTERM', () => { server.close(() => { void pool.end().then(() => process.exit(0)); }); });

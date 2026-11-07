@@ -4,8 +4,11 @@ import { resolve } from 'node:path';
 import { createWeddingRouter } from '../wedding/router';
 import { mediaLimits } from '../wedding/media';
 import { cookieName, getPilotSession, ownerId, redeemInvite } from './auth';
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
+import { createCommerceRouter } from './commerce';
+import type { CommerceAuth } from './commerce-auth';
 
-export function createPilotApp(pool: Pool, origin: string) {
+export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAuth) {
   const app = express();
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -41,14 +44,19 @@ export function createPilotApp(pool: Pool, origin: string) {
       res.json({ success: true });
     } catch { res.status(503).json({ error: 'RETRY_LATER' }); }
   });
-  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(),
+  if (commerce) {
+    app.all('/api/auth/*splat', toNodeHandler(commerce.auth));
+    app.use('/api/shop', createCommerceRouter(pool,origin,commerce));
+  }
+  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(), shopAvailable:!!commerce,
     env: { NODE_ENV: 'production', WEDDING_ENABLED: 'true', PUBLIC_APP_URL: origin },
-    getSession: req => getPilotSession(pool, req) }));
+    getSession: async req => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req) }));
   app.use('/api', (_req, res) => { res.status(404).json({ error: 'NOT_FOUND' }); });
-  app.get('/', (_req, res) => { res.redirect('/wedding'); });
+  app.get('/', (_req, res) => { res.redirect(commerce?'/pilot':'/wedding'); });
   app.get('/robots.txt', (_req, res) => { res.type('text').send('User-agent: *\nDisallow: /'); });
   app.use('/assets', express.static(resolve('dist/assets'), { fallthrough: false }));
   app.get(/^\/wedding(?:\/.*)?$/, (_req, res) => { res.sendFile(resolve('dist/index.html')); });
+  if(commerce) app.get(/^\/pilot(?:\/.*)?$/,(_req,res)=>{res.sendFile(resolve('dist/index.html'));});
   app.use((_req, res) => { res.sendStatus(404); });
   app.use((( _error, _req, res, _next) => { void _next; res.status(400).json({ error: 'INVALID_REQUEST' }); }) as express.ErrorRequestHandler);
   return app;

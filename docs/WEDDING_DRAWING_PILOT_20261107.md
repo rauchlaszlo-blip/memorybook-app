@@ -1,5 +1,7 @@
 # Fotóra kézírás és rajzolás – 2026-11-07
 
+Utólagos felhasználói eredmény: Samsung és iPhone kézírás/rajzolás PASS. A felhasználó pontosította, hogy az adatmezőkbe gépelés is működik; nincs gépelési hiba. A később alább szereplő NYITOTT állapotok az akkori átadás pillanatát tükrözik.
+
 Kiinduló ág: codex/wedding-internet-pilot, HEAD 0c8720b, tiszta munkafa. Nincs alkalmazandó AGENTS.md a munkapéldányban. A meglévő fotópilot dokumentációját és a rajzolási kódot áttekintettük. A meglévő egyszerű szín/vonalvastagság/visszavonás mintát követjük; a teljes Fabric könyvszerkesztőt nem töltjük be. Kis, pointeres SVG rajzfelület készült, kerek vonalvégekkel, külön HU/EN/DE feliratokkal.
 
 ## Működés

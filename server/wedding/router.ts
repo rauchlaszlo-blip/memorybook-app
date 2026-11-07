@@ -10,6 +10,8 @@ import { PhotoError } from './media';
 import { parseAnnotation } from '../../shared/photo-annotation';
 import type { Annotation } from '../../shared/photo-annotation';
 import { annotationHash, attachAnnotation } from './annotation';
+import { accessSql, guestDevice } from './access-window';
+import { weddingPackageFor } from '../../shared/wedding-package';
 
 export type WeddingSession = { user: { id: string; email?: string | null } } | null;
 export interface WeddingOptions {
@@ -20,11 +22,12 @@ export interface WeddingOptions {
   publicOrigin?: string;
   allowPilotOwner?: string;
   media?: MediaLimits;
+  shopAvailable?: boolean;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const productFilter = "product = 'celebration' AND event_type = 'wedding' AND template_id = 'wedding-classic' AND template_version = 1";
-const ownerColumns = 'id, title, subjects, starts_on::text, ends_on::text, template_id, template_version, closed_at, created_at, invite_token';
+const ownerColumns = 'id, title, subjects, starts_on::text, ends_on::text, template_id, template_version, closed_at, created_at, invite_token, package_version, submission_start, submission_end, finalized_at';
 
 function cleanText(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;
@@ -43,7 +46,7 @@ export function canCreateWedding(session: WeddingSession, env: NodeJS.ProcessEnv
     (env.WEDDING_PILOT_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean).includes(session.user.id);
 }
 
-export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner, media }: WeddingOptions) {
+export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner, media, shopAvailable }: WeddingOptions) {
   const router = Router();
   const canCreate = (session: WeddingSession) => canCreateWedding(session, env) ||
     (!!allowPilotOwner && session?.user.id === allowPilotOwner);
@@ -108,7 +111,7 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
   }));
   router.get('/capabilities', handle(async (req, res) => {
     const session = await getSession(req);
-    res.json({ enabled: true, authenticated: !!session, internetPilot: !!allowPilotOwner, canCreate: canCreate(session) });
+    res.json({ enabled: true, authenticated: !!session, internetPilot: !!allowPilotOwner, shopAvailable:!!shopAvailable, canCreate: canCreate(session) });
   }));
   router.get('/books', handle(async (req, res) => {
     const session = await getSession(req);
@@ -157,10 +160,13 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
   }));
   router.get('/guest/:token', handle(async (req, res) => {
     if (!tokenPattern.test(String(req.params.token))) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-    const result = await pool.query(`SELECT title, starts_on::text, template_id, template_version, closed_at IS NOT NULL AS closed
+    const result = await pool.query(`SELECT title, starts_on::text, template_id, template_version, closed_at IS NOT NULL AS closed, package_version,submission_start,submission_end,${accessSql()} AS access_state
       FROM event_books WHERE invite_token=$1 AND ${productFilter}`, [req.params.token]);
     if (!result.rowCount) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-    res.json({ event: result.rows[0], ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels } } : {}) });
+    const event=result.rows[0];
+    if(event.package_version)guestDevice(req,res);
+    else { delete event.package_version;delete event.submission_start;delete event.submission_end;delete event.access_state; }
+    res.json({ event, ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels } } : {}) });
   }));
   router.post('/guest/:token/submissions', handle(async (req, res) => {
     const name = cleanText(req.body?.name, 100);
@@ -179,7 +185,7 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     try {
       await client.query('BEGIN');
       if (annotation?.strokes.length) await client.query('SELECT pg_advisory_xact_lock(61107,2)');
-      const book = await client.query(`SELECT id, closed_at FROM event_books WHERE invite_token=$1 AND ${productFilter} FOR UPDATE`, [req.params.token]);
+      const book = await client.query(`SELECT id, closed_at,package_version,${accessSql()} AS access_state FROM event_books WHERE invite_token=$1 AND ${productFilter} FOR UPDATE`, [req.params.token]);
       if (!book.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
       const prior = await client.query('SELECT id, guest_name, message FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
       if (prior.rowCount) {
@@ -192,14 +198,21 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
         res.json({ accepted: true, replayed: true }); return;
       }
       if (book.rows[0].closed_at) { await client.query('ROLLBACK'); res.status(410).json({ error: 'SUBMISSIONS_CLOSED' }); return; }
+      if(book.rows[0].access_state!=='open'){await client.query('ROLLBACK');res.status(410).json({error:book.rows[0].access_state==='early'?'SUBMISSIONS_EARLY':'SUBMISSIONS_ENDED'});return;}
+      const device=guestDevice(req);
+      if(book.rows[0].package_version && !device){await client.query('ROLLBACK');res.status(428).json({error:'GUEST_SESSION_REQUIRED'});return;}
+      if(book.rows[0].package_version && mediaId){
+        const used=await client.query('SELECT count(*)::int n FROM event_submissions s JOIN event_media m ON m.submission_id=s.id WHERE s.book_id=$1 AND s.guest_device_id=$2',[book.rows[0].id,device]);
+        if(used.rows[0].n>=weddingPackageFor(book.rows[0].package_version).perDevice.photos){await client.query('ROLLBACK');res.status(413).json({error:'PHOTO_DEVICE_LIMIT'});return;}
+      }
       if (mediaId) {
         const photo = await client.query("SELECT id,display_bytes FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
         if (!photo.rowCount) { await client.query('ROLLBACK'); res.status(409).json({ error: 'PHOTO_EXPIRED' }); return; }
         if (annotation?.strokes.length && media) await attachAnnotation(client, mediaId as string, book.rows[0].id, photo.rows[0].display_bytes, annotation, media);
       }
       const submissionId = randomUUID();
-      await client.query(`INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message)
-        VALUES ($1,$2,$3,$4,$5)`, [submissionId, book.rows[0].id, key, name, message]);
+      await client.query(`INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message,guest_device_id)
+        VALUES ($1,$2,$3,$4,$5,$6)`, [submissionId, book.rows[0].id, key, name, message,device]);
       if (mediaId) await client.query("UPDATE event_media SET submission_id=$1,state='attached',expires_at=NULL WHERE id=$2", [submissionId,mediaId]);
       await client.query('COMMIT');
       res.status(201).json({ accepted: true, replayed: false });

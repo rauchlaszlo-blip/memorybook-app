@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import sharp from 'sharp';
 import type { WeddingOptions } from './router';
+import { accessSql } from './access-window';
 
 sharp.concurrency(1);
 sharp.cache(false);
@@ -81,7 +82,7 @@ export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSes
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(61107,2)');
-      const book=await client.query(`SELECT id,closed_at FROM event_books WHERE invite_token=$1 AND ${filter} FOR UPDATE`,[req.params.token]);
+      const book=await client.query(`SELECT id,closed_at,${accessSql()} AS access_state FROM event_books WHERE invite_token=$1 AND ${filter} FOR UPDATE`,[req.params.token]);
       if(!book.rowCount)throw new PhotoError('INVITE_NOT_FOUND',404);
       const existing=await client.query('SELECT id,sha256 FROM event_media WHERE book_id=$1 AND upload_key=$2',[book.rows[0].id,req.params.key]);
       if(existing.rowCount){
@@ -89,6 +90,7 @@ export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSes
         await client.query('COMMIT');res.json({mediaId:existing.rows[0].id,replayed:true});return;
       }
       if(book.rows[0].closed_at)throw new PhotoError('SUBMISSIONS_CLOSED',410);
+      if(book.rows[0].access_state!=='open')throw new PhotoError(book.rows[0].access_state==='early'?'SUBMISSIONS_EARLY':'SUBMISSIONS_ENDED',410);
       const quota=await client.query(`SELECT COALESCE(sum(stored_size),0)::bigint AS total,
         COALESCE(sum(stored_size) FILTER (WHERE book_id=$1),0)::bigint AS book,
         count(*) FILTER (WHERE book_id=$1)::int AS book_count,count(*)::int AS total_count FROM event_media`,[book.rows[0].id]);
