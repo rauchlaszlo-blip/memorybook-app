@@ -1,5 +1,7 @@
 # MemoryBook értékesítési és tesztvásárlási pilot – 2026-11-07
 
+Jelszóminimum-frissítés: 2026-11-07 15:28:35 Budapest, deploy dep-dbnjakm417fc73du2itg LIVE, telepített commit 11bcbcac50668bf066f719b631146e4e776fd5d3. Csak a külön pilotban minimum 4 karakter, összetételi feltétel nélkül. Frontend és backend közös shared/pilot-auth.ts értéket használ; server/auth.ts és server/auth-factory.ts nem változott. Helyi 9 célzott teszt, build, frontend/backend típusellenőrzés és érintett lint PASS. Internetes WebKit-próba: 3 karakter backendből és űrlapon elutasítva, „aaaa” regisztráció és két kijelentkezés utáni belépés sikeres, korábban létrehozott hosszabb jelszavas fiók továbbra is belép. A felirat és az input minimuma is 4. Valódi telefonos jelszópróba külön felhasználói visszajelzésre vár.
+
 Kiindulás: ac03420, codex/wedding-internet-pilot, tiszta munkafa. A korábbi szöveges, fotós és rajzos könyvek megmaradnak; main és éles szolgáltatás/adatbázis nem célpont. Nincs új szolgáltatás vagy fizetős csomag. A meglévő Render szolgáltatás Free státuszát ismét ellenőriztük.
 
 ## Felület és működő folyamat
@@ -12,7 +14,7 @@ A pilot gyökércíme /pilot-ra vezet: magyar, mobilos/asztali nyitóoldal, ünn
 
 Nem készült második felhasználói rendszer. A meglévő Better Auth konfiguráció került közös auth-factory modulba, azonos users/auth_sessions/auth_accounts/auth_verifications modellekkel. Az éles konfiguráció működése megmarad; a külön pilot saját adatbázisában fut ugyanaz a hitelesítés. A pilot tartós auth-titka kriptográfiai véletlen, csak a védett tesztadatbázis settings táblájában van; újraindításkor nem cserélődik. A hitelesítési táblák migrációja az auth-motor indítása előtt lefut.
 
-E-mail és legalább 10 karakteres jelszó, külön felhasználónév nélkül. A kiválasztott terméket a visszatérési útvonal megőrzi, jelszó-visszaállításnál is. Google nincs bekötve, nem jelenik meg gomb. A vendéghez nem kell fiók.
+E-mail és legalább 4 karakteres jelszó (2026-11-07-i pilotmódosítás; nincs összetételi feltétel), külön felhasználónév nélkül. A kiválasztott terméket a visszatérési útvonal megőrzi, jelszó-visszaállításnál is. Google nincs bekötve, nem jelenik meg gomb. A vendéghez nem kell fiók.
 
 Nincs engedélyezett levélküldő szolgáltatás, ezért egyetlen e-mail sem megy ki. Az e-mail-megerősítési és reset callback AES-256-GCM titkosítva menti a tesztlinket a pilot_test_mail táblába, legfeljebb 1 órás üzemeltetői elérhetőséggel. Csak az eredeti üzemeltetői session olvashatja ki. A nyilvános resetkérés nem ad vissza tokent/linket és nem ígér elküldött levelet. A Better Auth resetlink egyszer használható, a jelszócsere a korábbi munkameneteket visszavonja. E-mail-megerősítés a pilotban nem feltétele a próbának; éles induláshoz valódi levelezés és ennek végleges szabálya kell.
 
@@ -62,4 +64,4 @@ Külön, csak olvasó internetes regresszió: a korábbi telefonos könyv és QR
 
 Átadási kód azonosítója: d4426c8c-54ec-4bbc-9f85-3a298fbc75c6. Kiadva 2026-11-07, lejár 2026-11-14 14:26:08 Budapest. Új, fel nem használt, egy könyvre jogosít; nyers értéke nincs a repóban. Későbbi kód: eredeti meghívós üzemeltetői böngésző → /pilot/operator → „Új egyszer használható kód – 7 nap”.
 
-Következő felhasználói próba: mobilinternet, USB nélkül; nyitóoldal → esküvői könyv → saját fiktív fiók/10+ karakteres jelszó → fiktív magyar számlázási adatok + átadott kód → könyv neve/pár neve/mai esküvődátum → QR letöltése → másik telefonon/privát böngészőben vendégüzenet és fotó → Saját könyveim / Beérkezett emlékek / Frissítés. A mai dátum miatt az időablak azonnal nyitva. Ugyanazzal a fiókkal a másik telefonon is ugyanazt a könyvet kell látni. Samsung/iPhone új folyamatának eredményét kizárólag a felhasználó visszajelzése után lehet PASS-ra állítani.
+Következő felhasználói próba: mobilinternet, USB nélkül; nyitóoldal → esküvői könyv → saját fiktív fiók/4+ karakteres jelszó → fiktív magyar számlázási adatok + átadott kód → könyv neve/pár neve/mai esküvődátum → QR letöltése → másik telefonon/privát böngészőben vendégüzenet és fotó → Saját könyveim / Beérkezett emlékek / Frissítés. A mai dátum miatt az időablak azonnal nyitva. Ugyanazzal a fiókkal a másik telefonon is ugyanazt a könyvet kell látni. Samsung/iPhone új folyamatának eredményét kizárólag a felhasználó visszajelzése után lehet PASS-ra állítani.
