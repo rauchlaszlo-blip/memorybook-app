@@ -54,3 +54,25 @@ Böngészős teszt: kamera/galéria vezérlők fájlinjektálással (nem valódi
 Helyi ellenőrzés: frontend build PASS, backend típusellenőrzés PASS, érintett fájlok lint PASS, 30/30 teszt PASS (8 fotós API, 1 fotós böngészős, 21 korábbi). Az utolsó dekódolási memóriakorlát után a 8 fotós API-teszt ismét PASS. A telepített commit és HTTPS-próba a végső átadáskor kerül ide. Android kamerás/galériás fotópróba: NYITOTT. iPhone/Safari szöveges és fotós próba: NYITOTT, felhasználói eredmény nélkül nem PASS. A korábbi Samsung szöveges PASS megőrizve.
 
 Források: https://render.com/docs/free ; https://sharp.pixelplumbing.com/api-constructor/ ; https://sharp.pixelplumbing.com/api-operation/ ; https://sharp.pixelplumbing.com/install/ .
+
+## Telepített eredmény és Safari-vizsgálat
+
+Fotós kód: 978c1d95a5ab67af2afc4fa305539044e9ae0781, deploy dep-dbngn71srm7s739cuec0. A végső, betöltési javítást is tartalmazó telepített kód: **4eeeb8b9f1aa1297ba81ac1ed5b2e627aebbda07**, deploy **dep-dbngpkff3r2c738k725g**, live 2026-11-07 11:35:46 UTC.
+
+HTTPS ellenőrzés PASS: fiktív JPEG+szöveg, külön szöveges beküldés, eredeti bájtpontosság, EXIF-tájolás, minden médiaváltozat anonim tiltása, még nem csatolt kép tiltása, ismételt feltöltés és beküldés egyetlen példánya, hibás típus elutasítása, tulajdonosi lista és nagyított nézet, lezárás utáni elutasítás. A következő tényleges Render-telepítés után az eredeti kép SHA-256 értéke és bejegyzéskapcsolata változatlan. A régi telefonos könyvet nem zártuk le, a vendéglink és a QR képpontjai változatlanok, a korábbi tulajdonosi munkamenet működik.
+
+Felhasználói visszajelzés: Samsungon a Render indulása után betölt a vendégoldal; iPhone-on fehér oldal, közben Render indulóképernyő, majd ismét üres oldal. Ez nem iPhone PASS. Az iOS verziója nem ismert. A pontos eszközoldali ok még nincs bizonyítva.
+
+Reprodukált kódhiba: tiltott localStorage esetén a nyelvinicializálás SecurityError hibával leállt és üres root maradt. Javítás: tárolási kivétel kezelése olvasásnál és írásnál; a nyelvváltás ettől még működik. A vendégoldal nem inicializálja a régi auth/szerkesztő modulokat, kezdeti JS 817 kB helyett körülbelül 241 kB. Build-szintaxis cél Safari/iOS14 (ez nem fizikai iOS14 kompatibilitási tanúsítás). Indulási hiba esetén statikus betöltési/újrapróbálási felület és BETÖLTÉS-01 jelzés, JavaScript tiltásakor noscript segítség.
+
+Új helyi teszt: Chromium és WebKit normál és tiltott local/sessionStorage mellett betölt, nyelvet vált, ékezetes üzenetet küld; blokkolt JS-fájl esetén látható hiba és újrapróbálás. Mindkettő PASS. A fotós böngészőteszt és teljes legacy/auth regresszió a javított builddel ismét PASS. Összesen 32 külön teszt (30 korábbi/fotós + 2 indulási teszt) sikeres; build, backend típusellenőrzés és érintett lint is PASS.
+
+Telepített WebKit-próba 11:36:21 UTC: normál és tiltott tárolású anonim betöltés, szöveges és PNG-beküldés, tulajdonosi megjelenés, régi link és előző telepítés képadatainak megmaradása PASS. A telepítés átállása alatt indított első ellenőrzés még nem talált űrlapot; a live állapot után minden válasz 200, JS-hiba nélkül, a teljes ellenőrzés PASS. A teszt fájlinjektálás, nem fizikai kamera.
+
+Újratesztelésre átadva a változatlan vendégútvonal ?proba=2 paraméterrel; ez nem jogosultság, nem új könyv. Fizikai iPhone-betöltés, Samsung kamera/galéria, iPhone kamera/galéria továbbra is NYITOTT a felhasználói visszajelzésig. HEIC/HEIF továbbra sem támogatott. A korábbi Samsung szöveges internetes PASS érvényes marad a saját korábbi körére.
+
+Ellenőrző programok: scripts/verify-photo-pilot.ts, scripts/verify-webkit-pilot.ts, scripts/verify-pilot-persistence.ts. A nyers eredmények/képernyőképek és tesztmunkamenet az ignorált test-results könyvtárban maradnak. A meghívó 2026-11-07 11:58:23 UTC lejáratát ellenőriztük; az átadás ellenőrzésekor még nem járt le. A már beváltott tulajdonosi munkamenet ettől külön 7 napos.
+
+Main távoli HEAD változatlan: 5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff. Új fizetős erőforrás vagy csomag nem készült; éles szolgáltatás/adatbázis nem módosult. A dokumentáció későbbi commitja automatikusan nem deployolódik (autoDeploy off).
+
+Safari-vizsgálat forrásai: https://v8.vite.dev/config/build-options ; https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage .
