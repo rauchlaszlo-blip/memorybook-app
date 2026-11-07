@@ -3,6 +3,7 @@ import { randomBytes, randomUUID, createCipheriv, createDecipheriv, createHash }
 import { getMigrations } from 'better-auth/db/migration';
 import { memoryBookAuthOptions } from '../auth-factory';
 import { betterAuth } from 'better-auth';
+import { pilotPasswordMinLength } from '../../shared/pilot-auth';
 export function decryptTestMail(secret:string, value:string) {
   const [iv,tag,data]=value.split('.');const cipher=createDecipheriv('aes-256-gcm',createHash('sha256').update(secret).digest(),Buffer.from(iv,'hex'));
   cipher.setAuthTag(Buffer.from(tag,'hex'));return Buffer.concat([cipher.update(Buffer.from(data,'hex')),cipher.final()]).toString();
@@ -16,6 +17,7 @@ export async function createCommerceAuth(pool:Pool,origin:string) {
     await pool.query("DELETE FROM pilot_test_mail WHERE expires_at<CURRENT_TIMESTAMP");
     await pool.query("INSERT INTO pilot_test_mail(id,recipient,kind,encrypted_url,expires_at) VALUES($1,$2,$3,$4,CURRENT_TIMESTAMP+interval '1 hour')",[randomUUID(),email,kind,`${iv.toString('hex')}.${cipher.getAuthTag().toString('hex')}.${data.toString('hex')}`]);
   }});
+  options.emailAndPassword.minPasswordLength = pilotPasswordMinLength;
   const {runMigrations}=await getMigrations(options);await runMigrations();
   const auth=betterAuth(options);
   return {auth,secret};

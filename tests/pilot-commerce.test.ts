@@ -46,6 +46,15 @@ test('existing Better Auth accounts, private operator tools and test-only email 
   assert.equal((await call('/api/shop/orders',undefined,b)).status,401);
   const login=await call('/api/auth/sign-in/email',{email:'b@example.test',password:password+'-new'});assert.equal(login.status,200);b=cookies(login);
 });
+test('pilot password: rejects three, accepts four identical characters, repeat login and longer passwords',async()=>{
+  const email='short@example.test';
+  const rejected=await call('/api/auth/sign-up/email',{name:'Fiktív',email,password:'aaa'});
+  assert.equal(rejected.status,400);assert.equal((await rejected.json()).code,'PASSWORD_TOO_SHORT');
+  const registered=await call('/api/auth/sign-up/email',{name:'Fiktív',email,password:'aaaa'});assert.equal(registered.status,200);
+  assert.equal((await call('/api/auth/sign-out',{},cookies(registered))).status,200);
+  for(let i=0;i<2;i++)assert.equal((await call('/api/auth/sign-in/email',{email,password:'aaaa'})).status,200);
+  assert.equal((await call('/api/auth/sign-in/email',{email:'a@example.test',password})).status,200);
+});
 test('valid, expired, revoked, replayed and competing code claims; one entitlement',async()=>{
   const c=await code(),k=randomUUID();const results=await Promise.all([order(c.code,a,k),order(c.code,a,k)]);assert.deepEqual(results.map(r=>r.status).sort(),[200,201]);const ids=await Promise.all(results.map(r=>r.json()));assert.equal(ids[0].orderId,ids[1].orderId);
   assert.equal((await order(c.code,b)).status,409);assert.equal((await order(c.code,a)).status,200);
