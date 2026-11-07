@@ -35,7 +35,8 @@ export function detectBrowserAppLanguage(): AppLanguage {
 }
 
 export function getAppLanguage(): AppLanguage {
-  const stored = normalizeAppLanguage(window.localStorage.getItem(APP_LANGUAGE_STORAGE_KEY));
+  let stored: AppLanguage | null = null;
+  try { stored = normalizeAppLanguage(window.localStorage.getItem(APP_LANGUAGE_STORAGE_KEY)); } catch { /* Storage may be blocked by browser privacy settings. */ }
   return stored ?? detectBrowserAppLanguage();
 }
 
@@ -50,7 +51,7 @@ export function initializeAppLanguage(): AppLanguage {
 }
 
 export function setAppLanguage(language: AppLanguage) {
-  window.localStorage.setItem(APP_LANGUAGE_STORAGE_KEY, language);
+  try { window.localStorage.setItem(APP_LANGUAGE_STORAGE_KEY, language); } catch { /* Language switching still works for this page. */ }
   applyAppLanguage(language);
   window.dispatchEvent(
     new CustomEvent<AppLanguage>(APP_LANGUAGE_CHANGE_EVENT, { detail: language })

@@ -8,7 +8,23 @@
     <title>memorybook-app</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><main style="max-width:36rem;margin:4rem auto;padding:1rem;font:18px/1.6 system-ui,sans-serif">
+      <h1>MemoryBook</h1>
+      <p id="startup-status">A vendégkönyv betöltése… / Loading…</p>
+      <p><button type="button" onclick="window.location.reload()" style="font:inherit;padding:12px 20px">Újrapróbálás / Retry</button></p>
+      <noscript>A vendégkönyvhöz engedélyezd a JavaScriptet a böngészőben.</noscript>
+    </main></div>
+    <script>
+      (function () {
+        function failed() {
+          var status = document.getElementById('startup-status');
+          if (status) status.textContent = 'Az oldal nem indult el. Próbáld újra. Ha ez megmarad, jelezd: BETÖLTÉS-01. / Page could not start. Please retry.';
+        }
+        window.addEventListener('error', failed, true);
+        window.addEventListener('unhandledrejection', failed);
+        window.setTimeout(failed, 20000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
