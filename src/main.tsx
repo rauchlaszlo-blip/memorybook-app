@@ -18,6 +18,8 @@ import { DedicationCapturePage } from './DedicationCapturePage.tsx'
 import { OwnerMemoryEditorPage } from './OwnerMemoryEditorPage.tsx'
 import { HelpPage } from './HelpPage.tsx'
 import { initializeAppLanguage } from './i18n'
+import { WeddingPage } from './wedding/WeddingPage'
+import { PilotInvitePage } from './wedding/PilotInvitePage'
 
 initializeAppLanguage()
 
@@ -35,7 +37,9 @@ const dedicationCaptureMatch = path.match(/^\/my-books\/([^/]+)\/dedication\/([^
 const ownerMemoryMatch = path.match(/^\/my-books\/([^/]+)\/memory\/([^/]+)$/)
 const DEMO_BOOK_ID = 'book-12b'
 
-const root = path === '/'
+const root = path === '/wedding/owner-invite' ? <PilotInvitePage /> : path === '/wedding' || path.startsWith('/wedding/')
+  ? <WeddingPage />
+  : path === '/'
   ? <LandingPage />
   : path === '/help' || path === '/help/quick'
     ? <HelpPage kind="quick" />

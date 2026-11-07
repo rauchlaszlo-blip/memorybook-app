@@ -1,0 +1,21 @@
+.wedding { min-height: 100dvh; padding: 16px; font-family: system-ui, sans-serif; line-height: 1.6; text-align: left; color-scheme: light; --text-h: #352b31; }
+.wedding * { box-sizing: border-box; }
+.wedding-shell { max-width: 700px; margin: 0 auto; }
+.wedding header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.wedding a { color: #674154; overflow-wrap: anywhere; }
+.wedding h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); line-height: 1.2; overflow-wrap: anywhere; }
+.wedding-card { background: white; border: 1px solid #e4d9d9; padding: clamp(16px, 4vw, 28px); border-radius: 18px; margin: 20px 0; }
+.wedding form, .wedding label { display: grid; gap: 8px; }
+.wedding form { gap: 20px; }
+.wedding input, .wedding textarea { width: 100%; min-width: 0; font: inherit; font-size: 16px; padding: 12px; border: 1px solid #aa94a0; border-radius: 8px; color: #352b31; background: #fff; }
+.wedding textarea { resize: vertical; }
+.wedding button, .wedding-button { display: inline-block; min-height: 48px; padding: 12px 20px; font: inherit; font-weight: 650; color: white !important; background: var(--wedding-accent, #785064); border: 0; border-radius: 10px; cursor: pointer; text-decoration: none; margin: 8px 0; }
+.wedding button:disabled { opacity: .6; cursor: default; }
+.wedding :focus-visible { outline: 3px solid #315c9c; outline-offset: 3px; }
+.wedding-error { padding: 16px; background: #fff0ed; color: #842c24; border-radius: 10px; }
+.wedding-qr { display: block; max-width: 100%; height: auto; margin: auto; }
+.wedding article { border-top: 1px solid #e4d9d9; margin-top: 20px; }
+.wedding-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wedding time, .wedding small { color: #685865; }
+.wedding .wedding-confirm { display: flex; align-items: flex-start; gap: 12px; }
+.wedding-confirm input { width: 24px; height: 24px; flex-shrink: 0; }

@@ -10,6 +10,7 @@ import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth';
 import { pool } from './db';
+import { createWeddingRouter } from './wedding/router';
 import { getInvoicingCapabilities } from './invoicing';
 import { getPayPalCapabilities, PayPalAdapterError } from './payments/paypal';
 import {
@@ -49,6 +50,17 @@ app.use(
 if (auth) {
   app.all('/api/auth/*splat', toNodeHandler(auth));
 }
+
+app.use('/api/wedding', createWeddingRouter({
+  pool, getSession,
+  loginPilot: async () => {
+    if (!auth) return new Response(null, { status: 503 });
+    return auth.api.signInEmail({
+      body: { email: 'wedding-pilot@example.test', password: process.env.WEDDING_PILOT_PASSWORD || '' },
+      asResponse: true,
+    });
+  },
+}));
 
 app.use(express.json({
   limit: '5mb',
@@ -748,7 +760,7 @@ app.get('/api/my/billing-profile', async (req, res) => {
       [session.user.id]
     );
 
-    if (personalPurchaseResult.rowCount > 0) {
+    if ((personalPurchaseResult.rowCount ?? 0) > 0) {
       res.status(200).json({ billingProfile: personalPurchaseResult.rows[0] });
       return;
     }
@@ -2131,7 +2143,7 @@ app.post('/api/my/books/:bookId/own-memory', async (req, res) => {
        ORDER BY page_number ASC LIMIT 1 FOR UPDATE`,
       [req.params.bookId]
     );
-    if (draftResult.rowCount > 0) {
+    if ((draftResult.rowCount ?? 0) > 0) {
       await client.query('COMMIT');
       res.status(200).json({ pageId: draftResult.rows[0].id, pageNumber: draftResult.rows[0].pageNumber, resumed: true });
       return;
@@ -2146,7 +2158,7 @@ app.post('/api/my/books/:bookId/own-memory', async (req, res) => {
 
     let pageId: string;
     let pageNumber: number;
-    if (emptyResult.rowCount > 0) {
+    if ((emptyResult.rowCount ?? 0) > 0) {
       pageId = emptyResult.rows[0].id;
       pageNumber = Number(emptyResult.rows[0].pageNumber);
       await client.query(
@@ -3312,7 +3324,7 @@ app.post('/api/invites/:token/page-session', publicRateLimit({ windowMs: 60_000,
       [book.id, deviceId]
     );
 
-    if (existingDraft.rowCount > 0) {
+    if ((existingDraft.rowCount ?? 0) > 0) {
       await client.query(
         `UPDATE pages
          SET event_guest_data = $1::jsonb,
@@ -4488,7 +4500,7 @@ async function startServer(): Promise<void> {
 
     const port = Number(process.env.PORT) || 3001;
 
-    app.listen(port, '0.0.0.0', () => {
+    app.listen(port, process.env.BIND_HOST || '0.0.0.0', () => {
       console.log(`MemoryBook backend running on port ${port}`);
     });
   } catch (err) {

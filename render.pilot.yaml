@@ -1,0 +1,32 @@
+# Separate test resources only. Never adopt existing MemoryBook resources.
+services:
+  - type: web
+    name: memorybook-wedding-text-pilot
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: codex/wedding-internet-pilot
+    autoDeployTrigger: off
+    buildCommand: npm ci --include=dev && npm run build && npm run typecheck:server
+    startCommand: node --import tsx server/pilot/index.ts
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: MEMORYBOOK_INTERNET_PILOT
+        value: isolated-text-v1
+      - key: PILOT_DATABASE_ACK
+        value: isolated-fictional-only
+      - key: DATABASE_URL
+        fromDatabase:
+          name: memorybook-wedding-text-pilot-db
+          property: connectionString
+
+databases:
+  - name: memorybook-wedding-text-pilot-db
+    databaseName: memorybook_wedding_internet_pilot
+    user: memorybook_wedding_pilot
+    region: frankfurt
+    plan: free
+    postgresMajorVersion: "17"
+    ipAllowList: []

@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "migrate:wedding": "tsx server/wedding/migrate-cli.ts",
+    "test:wedding": "tsx --test tests/wedding.test.ts",
+    "test:full-flow": "tsx --test tests/full-flow.test.ts",
+    "pilot:wedding": "tsx scripts/wedding-pilot.ts",
+    "start:internet-pilot": "tsx server/pilot/index.ts",
+    "test:internet-pilot": "tsx --test tests/internet-pilot.test.ts",
+    "invite:internet-pilot": "tsx scripts/pilot-owner-invite.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",
@@ -24,6 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",

@@ -36,3 +36,7 @@ dist-ssr
 
 # Runtime user uploads
 public/contribution-photos/
+
+# Local test artifacts (no guest production data)
+test-results/
+playwright-report/
