@@ -6,6 +6,10 @@ import { weddingTemplate } from '../../shared/event-templates';
 import { localDatabaseUrl } from './local-db';
 import { createMediaRouter } from './media';
 import type { MediaLimits } from './media';
+import { PhotoError } from './media';
+import { parseAnnotation } from '../../shared/photo-annotation';
+import type { Annotation } from '../../shared/photo-annotation';
+import { annotationHash, attachAnnotation } from './annotation';
 
 export type WeddingSession = { user: { id: string; email?: string | null } } | null;
 export interface WeddingOptions {
@@ -51,7 +55,7 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     if (env.WEDDING_ENABLED !== 'true') { res.status(404).json({ error: 'WEDDING_DISABLED' }); return; }
     next();
   });
-  router.use(json({ limit: '32kb' }));
+  router.use(json({ limit: media ? '340kb' : '32kb' }));
   router.use((req, res, next) => {
     const origin = req.get('origin');
     const allowed = new Set([`${req.protocol}://${req.get('host')}`, env.PUBLIC_APP_URL, env.BETTER_AUTH_URL]);
@@ -80,9 +84,9 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     next();
   });
   const handle = (fn: RequestHandler): RequestHandler => async (req, res, next) => {
-    try { await fn(req, res, next); } catch {
+    try { await fn(req, res, next); } catch (error) {
       // Never log guest text, tokens, database connection strings or session data.
-      res.status(500).json({ error: 'WEDDING_REQUEST_FAILED' });
+      res.status(error instanceof PhotoError ? error.status : 500).json({ error: error instanceof PhotoError ? error.code : 'WEDDING_REQUEST_FAILED' });
     }
   };
   if (media) router.use(createMediaRouter(pool, getSession, media));
@@ -163,19 +167,25 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     const message = cleanText(req.body?.message, 4000);
     const key: unknown = req.body?.idempotencyKey;
     const mediaId: unknown = req.body?.mediaId;
+    let annotation: Annotation | null = null;
+    if (req.body?.annotation !== undefined) {
+      try { annotation = parseAnnotation(req.body.annotation); } catch { res.status(400).json({error:'ANNOTATION_INVALID'}); return; }
+      if (!mediaId || !media) { res.status(400).json({error:'ANNOTATION_INVALID'}); return; }
+    }
     if (mediaId !== undefined && (!media || typeof mediaId !== 'string' || !uuid.test(mediaId))) { res.status(400).json({ error: 'PHOTO_INVALID' }); return; }
     if (!tokenPattern.test(String(req.params.token))) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
     if (!name || !message || typeof key !== 'string' || !uuid.test(key)) { res.status(400).json({ error: 'INVALID_SUBMISSION' }); return; }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      if (annotation?.strokes.length) await client.query('SELECT pg_advisory_xact_lock(61107,2)');
       const book = await client.query(`SELECT id, closed_at FROM event_books WHERE invite_token=$1 AND ${productFilter} FOR UPDATE`, [req.params.token]);
       if (!book.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
       const prior = await client.query('SELECT id, guest_name, message FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
       if (prior.rowCount) {
-        const priorMedia = media ? await client.query('SELECT id FROM event_media WHERE submission_id=$1', [prior.rows[0].id]) : { rows: [] };
+        const priorMedia = media ? await client.query('SELECT m.id,a.layer_hash FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.submission_id=$1', [prior.rows[0].id]) : { rows: [] };
         await client.query('COMMIT');
-        if ((priorMedia.rows[0]?.id || undefined) !== mediaId || prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
+        if ((priorMedia.rows[0]?.id || undefined) !== mediaId || (priorMedia.rows[0]?.layer_hash || null) !== annotationHash(annotation) || prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
           res.status(409).json({ error: 'IDEMPOTENCY_CONFLICT' }); return;
         }
         // A committed request can be acknowledged even after closure; no new write.
@@ -183,8 +193,9 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
       }
       if (book.rows[0].closed_at) { await client.query('ROLLBACK'); res.status(410).json({ error: 'SUBMISSIONS_CLOSED' }); return; }
       if (mediaId) {
-        const photo = await client.query("SELECT id FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
+        const photo = await client.query("SELECT id,display_bytes FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
         if (!photo.rowCount) { await client.query('ROLLBACK'); res.status(409).json({ error: 'PHOTO_EXPIRED' }); return; }
+        if (annotation?.strokes.length && media) await attachAnnotation(client, mediaId as string, book.rows[0].id, photo.rows[0].display_bytes, annotation, media);
       }
       const submissionId = randomUUID();
       await client.query(`INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message)

@@ -166,7 +166,7 @@ test('migration preserves legacy books on first run and on repeat', async () => 
     const before = await old.query('SELECT * FROM books');
     await migrateWedding(old); await migrateWedding(old);
     assert.deepEqual((await old.query('SELECT * FROM books')).rows, before.rows);
-    assert.deepEqual((await old.query('SELECT version FROM wedding_schema_migrations ORDER BY version')).rows.map(row => row.version), ['20261106-v1','20261107-v2']);
+    assert.deepEqual((await old.query('SELECT version FROM wedding_schema_migrations ORDER BY version')).rows.map(row => row.version), ['20261106-v1','20261107-v2','20261107-v3']);
   } finally { await old.end(); await admin.query(`DROP SCHEMA ${legacySchema} CASCADE`); }
 });
 test('repeat migration preserves new data as well', async () => {

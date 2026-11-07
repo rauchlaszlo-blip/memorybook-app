@@ -93,6 +93,8 @@ export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSes
         COALESCE(sum(stored_size) FILTER (WHERE book_id=$1),0)::bigint AS book,
         count(*) FILTER (WHERE book_id=$1)::int AS book_count,count(*)::int AS total_count FROM event_media`,[book.rows[0].id]);
       const q=quota.rows[0];
+      const annotations=(await client.query(`SELECT COALESCE(sum(a.stored_size),0)::bigint AS total,COALESCE(sum(a.stored_size) FILTER(WHERE m.book_id=$1),0)::bigint AS book FROM event_media_annotations a JOIN event_media m ON m.id=a.media_id`,[book.rows[0].id])).rows[0];
+      q.total=Number(q.total)+Number(annotations.total);q.book=Number(q.book)+Number(annotations.book);
       const size=await client.query('SELECT pg_database_size(current_database()) AS size');
       if(Number(q.total)+storedSize>limits.totalBytes || Number(q.book)+storedSize>limits.bookBytes || q.book_count>=100 || q.total_count>=1000 || Number(size.rows[0].size)>700*1024*1024)throw new PhotoError('PHOTO_QUOTA',413);
       const id=randomUUID();
@@ -106,14 +108,15 @@ export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSes
     const session=await getSession(req);
     if(!session){res.status(401).json({error:'UNAUTHENTICATED'});return;}
     const variant=String(req.params.variant);
-    if(!uuid.test(String(req.params.id))||!['original','preview','display'].includes(variant)){res.sendStatus(404);return;}
-    const column={original:'original_bytes',preview:'preview_bytes',display:'display_bytes'}[variant]!;
-    const result=await pool.query(`SELECT m.${column} AS bytes,m.mime_type FROM event_media m
+    if(!uuid.test(String(req.params.id))||!['original','preview','display','annotation'].includes(variant)){res.sendStatus(404);return;}
+    const column={original:'m.original_bytes',preview:'COALESCE(a.preview_bytes,m.preview_bytes)',display:'COALESCE(a.display_bytes,m.display_bytes)',annotation:'a.layer'}[variant]!;
+    const result=await pool.query(`SELECT ${column} AS bytes,m.mime_type FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id
       JOIN event_books b ON b.id=m.book_id JOIN event_submissions s ON s.id=m.submission_id AND s.book_id=m.book_id
       WHERE m.id=$1 AND b.owner_user_id=$2 AND m.state='attached'`,[req.params.id,session.user.id]);
     if(!result.rowCount){res.sendStatus(404);return;}
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Cache-Control','private, no-store');
     res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
+    if(variant==='annotation'){if(!result.rows[0].bytes){res.sendStatus(404);return;}res.json(result.rows[0].bytes);return;}
     if(variant==='original')res.setHeader('Content-Disposition',`attachment; filename="photo.${result.rows[0].mime_type==='image/png'?'png':'jpg'}"`);
     res.type(variant==='original'?result.rows[0].mime_type:'image/jpeg').send(result.rows[0].bytes);
   }));

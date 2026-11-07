@@ -1,0 +1,44 @@
+import { webkit, expect } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+
+const {origin,phoneBook}=JSON.parse(await readFile('test-results/internet-verification.json','utf8'));
+assert.match(origin,/^https:\/\/memorybook-wedding-text-pilot-[a-z0-9]+\.onrender\.com$/);
+const browser=await webkit.launch();
+try {
+  const owner=await browser.newContext({locale:'hu-HU',storageState:'test-results/internet-owner-state.local'});
+  const api=origin+'/api/wedding';
+  const created=await owner.request.post(api+'/books',{headers:{Origin:origin},data:{names:'Automata rajzpróba – fiktív',date:'2027-06-05'}});assert.equal(created.status(),201);const {book}=await created.json();
+  const ownerPage=await owner.newPage();await ownerPage.goto(origin+'/wedding/books/'+book.id);
+  await expect(ownerPage.getByRole('button',{name:'Frissítés',exact:true})).toBeVisible();let navigations=0;ownerPage.on('framenavigated',()=>navigations++);
+  const guestContext=await browser.newContext({locale:'hu-HU',viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  const guest=await guestContext.newPage();await guest.goto(book.guest_url);
+  const bytes=await sharp({create:{width:800,height:400,channels:3,background:'#b6c6c0'}}).jpeg().withMetadata({orientation:6}).toBuffer();
+  await guest.getByLabel('Kép kiválasztása',{exact:true}).setInputFiles({name:'synthetic.jpg',mimeType:'image/jpeg',buffer:bytes});
+  await guest.getByRole('button',{name:'Írás / rajzolás a képre',exact:true}).click();await guest.getByRole('button',{name:'Piros',exact:true}).click();
+  const area=guest.getByRole('img',{name:'Rajzfelület',exact:true});await area.scrollIntoViewIfNeeded();const r=await area.boundingBox();assert.ok(r);
+  await guest.mouse.move(r.x+r.width*.2,r.y+r.height*.3);await guest.mouse.down();await guest.mouse.move(r.x+r.width*.8,r.y+r.height*.7,{steps:8});await guest.mouse.up();
+  await guest.screenshot({path:'test-results/deployed-drawing-editor.png'});
+  await guest.getByRole('button',{name:'Kész',exact:true}).click();await guest.getByLabel('Neved',{exact:true}).fill('Fiktív Rajzoló');await guest.getByLabel('Jókívánságod',{exact:true}).fill('Rajzos HTTPS-próba');
+  let first=true,uploads=0;guest.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/media/'))uploads++;});
+  await guest.route('**/submissions',async route=>{if(first){first=false;await route.fetch();await route.abort();}else await route.continue();});
+  await guest.getByRole('button',{name:'Beküldés',exact:true}).click({clickCount:2});await expect(guest.getByRole('alert')).toContainText('Nem kaptunk biztos választ');
+  await expect(guest.locator('.wedding-annotated-preview path')).toHaveCount(1);
+  await guest.getByRole('button',{name:'Beküldés újrapróbálása',exact:true}).click();await expect(guest.getByText('Köszönjük! A jókívánságod megérkezett.',{exact:true})).toBeVisible();assert.equal(uploads,1);
+  await ownerPage.getByRole('button',{name:'Frissítés',exact:true}).click();await expect(ownerPage.getByText('Rajzos HTTPS-próba',{exact:true})).toBeVisible();
+  const thumbnail=ownerPage.locator('.wedding-photo-open img');await thumbnail.scrollIntoViewIfNeeded();await expect.poll(()=>thumbnail.evaluate((i:HTMLImageElement)=>i.naturalWidth)).toBeGreaterThan(0);assert.equal(navigations,0);
+  await ownerPage.getByRole('button',{name:'Fotó nagyobb nézetben',exact:true}).click();await expect(ownerPage.getByRole('dialog').getByRole('img')).toBeVisible();await ownerPage.screenshot({path:'test-results/deployed-drawing-owner.png'});
+  const detail=await(await owner.request.get(api+'/books/'+book.id)).json();assert.equal(detail.submissions.length,1);const media=detail.submissions[0].media[0];
+  const layer=await(await owner.request.get(api+'/media/'+media.id+'/annotation')).json();assert.equal(layer.version,1);assert.equal(layer.strokes.length,1);
+  for(const variant of ['original','preview','display','annotation'])assert.equal((await guestContext.request.get(api+'/media/'+media.id+'/'+variant)).status(),401);
+  const original=await owner.request.get(api+'/media/'+media.id+'/original');assert.deepEqual(await original.body(),bytes);
+  const display=await owner.request.get(api+'/media/'+media.id+'/display');assert.equal(display.status(),200);
+  await ownerPage.getByRole('button',{name:'Eredeti fotó megtekintése',exact:true}).click();await expect(ownerPage.getByRole('dialog').getByRole('img')).toHaveAttribute('src',/\/original$/);
+  assert.equal((await owner.request.post(api+'/books/'+book.id+'/close',{headers:{Origin:origin},data:{}})).status(),200);
+  assert.equal((await guestContext.request.post(api+'/guest/'+book.invite_token+'/submissions',{headers:{Origin:origin},data:{name:'Fiktív',message:'Lezárt próba',idempotencyKey:randomUUID()}})).status(),410);
+  const old=await guestContext.request.get(api+'/guest/'+phoneBook.invite_token);assert.equal(old.status(),200);assert.equal((await old.json()).event.closed,false);
+  await writeFile('test-results/drawing-verification.json',JSON.stringify({checkedAt:new Date().toISOString(),bookId:book.id,mediaId:media.id,originalSha256:createHash('sha256').update(bytes).digest('hex'),layer,displaySha256:createHash('sha256').update(await display.body()).digest('hex'),result:'PASS',physicalPhones:'OPEN'},null,2));
+  console.log('PASS: deployed WebKit drawing + text, lost reply and dedup, original preserved, private layer and images, owner Refresh without navigation, large/original views, closure, existing phone book still open. Physical drawing tests OPEN.');
+} finally {await browser.close();}

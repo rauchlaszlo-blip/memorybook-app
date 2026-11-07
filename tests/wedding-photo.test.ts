@@ -10,6 +10,7 @@ import { createWeddingRouter } from '../server/wedding/router';
 import { cleanupMedia, decodePhoto, mediaLimits } from '../server/wedding/media';
 import { migrateWedding } from '../server/wedding/migrate';
 import { localDatabaseUrl } from '../server/wedding/local-db';
+import { emptyAnnotation, parseAnnotation } from '../shared/photo-annotation';
 const connectionString=localDatabaseUrl();
 const schema='photo_'+randomUUID().replaceAll('-','');
 const admin=new Pool({connectionString});
@@ -126,4 +127,72 @@ test('closure holding the book lock rejects an in-flight upload without persisti
     assert.equal((await pending).status,410);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_media WHERE book_id=$1',[b.id])).rows[0].n,0);
   }finally{await client.query('ROLLBACK');client.release();}
+});
+
+test('annotation commits with photo, original unchanged, private layer/composite, exact replay and foreign-book denial',async()=>{
+  const b=await book(),k=randomUUID(),id=(await (await upload(b,k)).json()).mediaId;
+  const layer=parseAnnotation({...emptyAnnotation(),strokes:[{color:'#d62828',width:0.014,points:[[0.1,0.5],[0.9,0.5]]}]});
+  const body={...wish(k,id),annotation:layer};
+  const other=await book('b');assert.equal((await call('/guest/'+other.invite_token+'/submissions',body)).status,409);
+  const results=await Promise.all([call('/guest/'+b.invite_token+'/submissions',body),call('/guest/'+b.invite_token+'/submissions',body)]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,201]);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM event_media_annotations WHERE media_id=$1',[id])).rows[0].n,1);
+  for(const variant of ['annotation','preview','display','original']){
+    assert.equal((await call(`/media/${id}/${variant}`)).status,401);assert.equal((await call(`/media/${id}/${variant}`,undefined,'b')).status,404);
+    const result=await call(`/media/${id}/${variant}`,undefined,'a');assert.equal(result.status,200);
+    if(variant==='annotation')assert.deepEqual(await result.json(),layer);
+    if(variant==='original')assert.deepEqual(Buffer.from(await result.arrayBuffer()),jpeg);
+  }
+  const display=Buffer.from(await (await call(`/media/${id}/display`,undefined,'a')).arrayBuffer());
+  const base=(await pool.query('SELECT display_bytes FROM event_media WHERE id=$1',[id])).rows[0].display_bytes;
+  assert.notDeepEqual(display,base);
+  assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...body,annotation:{...layer,strokes:[]}})).status,409);
+  await migrateWedding(pool);assert.deepEqual(await (await call(`/media/${id}/annotation`,undefined,'a')).json(),layer);
+});
+
+test('invalid annotation structure, external resources, limits, missing photo, closed book rejected',async()=>{
+  const b=await book(),k=randomUUID(),id=(await (await upload(b,k)).json()).mediaId;
+  for(const annotation of [{...emptyAnnotation(),version:2},{...emptyAnnotation(),url:'https://example.test/a.svg'},
+    {...emptyAnnotation(),strokes:[{color:'url(https://evil.test)',width:0.007,points:[[0,0]]}]},
+    {...emptyAnnotation(),strokes:[{color:'#000000',width:0.007,points:[[1.1,0]]}]},
+    {...emptyAnnotation(),strokes:[{color:'#000000',width:0.007,points:Array.from({length:10001},()=>[0,0])}]},
+    {...emptyAnnotation(),strokes:Array.from({length:201},()=>({color:'#000000',width:0.007,points:[[0,0]]}))}]){
+    assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...wish(k,id),annotation})).status,400);
+  }
+  assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...wish(k,id),annotation:{...emptyAnnotation(),junk:'x'.repeat(350000)}})).status,413);
+  assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...wish(k),annotation:emptyAnnotation()})).status,400);
+  await call('/books/'+b.id+'/close',{},'a');
+  assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...wish(k,id),annotation:emptyAnnotation()})).status,410);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM event_media_annotations WHERE media_id=$1',[id])).rows[0].n,0);
+});
+
+test('annotation quota failure rolls back complete submission and preserves pending original for retry',async()=>{
+  const b=await book(),k=randomUUID(),id=(await (await upload(b,k)).json()).mediaId;
+  const size=(await pool.query('SELECT stored_size FROM event_media WHERE id=$1',[id])).rows[0].stored_size;
+  const scoped=await start({...limits,bookBytes:size});
+  try{
+    const body={...wish(k,id),annotation:{...emptyAnnotation(),strokes:[{color:'#000000',width:0.007,points:[[0,0],[1,1]]}]}};
+    assert.equal((await call('/guest/'+b.invite_token+'/submissions',body,undefined,scoped.url)).status,413);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM event_submissions WHERE book_id=$1',[b.id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT state FROM event_media WHERE id=$1',[id])).rows[0].state,'uploaded');
+    assert.equal((await call('/guest/'+b.invite_token+'/submissions',body)).status,201);
+  }finally{await new Promise<void>(r=>scoped.srv.close(()=>r()));}
+});
+
+test('oriented portrait and landscape composites put ink at the same normalized position in preview and display',async()=>{
+  for(const orientation of [1,6]){
+    const bytes=await sharp({create:{width:1000,height:500,channels:3,background:'#cccccc'}}).jpeg().withMetadata({orientation}).toBuffer();
+    const b=await book(),k=randomUUID(),id=(await (await upload(b,k,bytes)).json()).mediaId;
+    const layer={...emptyAnnotation(),strokes:[{color:'#d62828',width:0.014,points:[[0.1,0.5],[0.9,0.5]]}]};
+    assert.equal((await call('/guest/'+b.invite_token+'/submissions',{...wish(k,id),annotation:layer})).status,201);
+    for(const variant of ['display','preview']){
+      const bytes=Buffer.from(await (await call(`/media/${id}/${variant}`,undefined,'a')).arrayBuffer());
+      const {data,info}=await sharp(bytes).removeAlpha().raw().toBuffer({resolveWithObject:true});
+      assert.equal(info.width>info.height,orientation===1);
+      const center=(Math.floor(info.height/2)*info.width+Math.floor(info.width/2))*info.channels;
+      assert.ok(data[center]>data[center+1]+70,'red ink must cross image center');
+      const corner=(Math.floor(info.height*.1)*info.width+Math.floor(info.width*.1))*info.channels;
+      assert.ok(Math.abs(data[corner]-data[corner+1])<10,'unmarked corner remains gray');
+    }
+  }
 });

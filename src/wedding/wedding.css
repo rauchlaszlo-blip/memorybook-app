@@ -28,3 +28,15 @@
 .wedding-photo-open img { max-width: 100%; max-height: 300px; border-radius: 12px; object-fit: contain; }
 .wedding-lightbox { position: fixed; inset: 0; z-index: 1000; background: #faf6f1; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px; overflow: auto; }
 .wedding-lightbox img { max-width: 100%; max-height: 75vh; object-fit: contain; }
+.wedding-annotated-preview { position: relative; margin: 16px 0; }
+.wedding-annotated-preview img, .wedding-drawing-surface img { display: block; width: 100%; height: auto; image-orientation: from-image; }
+.wedding-annotated-preview svg, .wedding-drawing-surface svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wedding-annotated-preview svg { pointer-events: none; }
+.wedding-drawing { position: fixed; inset: 0; z-index: 1100; background: #faf6f1; overflow: auto; padding: 12px; overscroll-behavior: contain; }
+.wedding-drawing-tools, .wedding-drawing-footer { max-width: 900px; margin: 0 auto; }
+.wedding-drawing button { margin: 4px; padding: 10px 14px; }
+.wedding-drawing button[aria-pressed=true] { outline: 3px solid #1764c0; outline-offset: 1px; }
+.wedding-ink-swatch { display: inline-block; width: 18px; height: 18px; border: 1px solid #888; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.wedding-drawing-surface { position: relative; width: min(100%, calc(65vh * var(--photo-aspect))); margin: 16px auto; }
+.wedding-drawing-surface svg { touch-action: none; user-select: none; -webkit-user-select: none; }
+.wedding-drawing-footer { position: sticky; bottom: 0; background: #faf6f1; padding: 8px 0; }

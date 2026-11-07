@@ -6,11 +6,16 @@ import { LanguageSwitcher } from '../LanguageSwitcher';
 import { weddingTemplate } from '../../shared/event-templates';
 import './wedding.css';
 import { photoCopy } from './photo-copy';
+import { drawingCopy } from './drawing-copy';
+import { PhotoDrawing, AnnotatedPreview } from './PhotoDrawing';
+import { emptyAnnotation, parseAnnotation } from '../../shared/photo-annotation';
+import type { Annotation } from '../../shared/photo-annotation';
 
 type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string };
 type Photo = { id: string; previewUrl: string; displayUrl: string; originalUrl: string };
-type Attempt = { name: string; message: string; idempotencyKey: string; mediaId?: string };
-type Draft = { name?: string; message?: string; hadPhoto?: boolean; attempt?: Attempt };
+type Attempt = { name: string; message: string; idempotencyKey: string; mediaId?: string; annotation?: Annotation };
+type Draft = { name?: string; message?: string; hadPhoto?: boolean; attempt?: Attempt; annotation?: Annotation };
+function draftAnnotation(draft: Draft) { try { return parseAnnotation(draft.annotation); } catch { return emptyAnnotation(); } }
 function readDraft(token?: string): Draft {
   try { return token ? JSON.parse(sessionStorage.getItem(`wedding-draft-${token}`) || '{}') : {}; } catch { return {}; }
 }
@@ -44,6 +49,7 @@ export function WeddingPage() {
   useEffect(() => subscribeAppLanguage(setLanguage), []);
   const t = weddingTemplate.copy[language];
   const pt = photoCopy[language];
+  const dt = drawingCopy[language];
   const guestToken = window.location.pathname.match(/^\/wedding\/join\/([A-Za-z0-9_-]+)\/?$/)?.[1];
   const bookId = window.location.pathname.match(/^\/wedding\/books\/([a-f0-9-]+)\/?$/)?.[1];
   const [capability, setCapability] = useState<Capability | null>(null);
@@ -62,6 +68,10 @@ export function WeddingPage() {
   const [file, setFile] = useState<File | null>(null);
   const [photoRequired, setPhotoRequired] = useState(!!draft.hadPhoto);
   const [preview, setPreview] = useState('');
+  const [annotation,setAnnotation] = useState(() => draftAnnotation(draft));
+  const [drawing,setDrawing] = useState(false);
+  const [annotationError,setAnnotationError] = useState(false);
+  const [showOriginal,setShowOriginal] = useState(false);
   const uploadedFile = useRef<File | null>(null);
   const [photoError, setPhotoError] = useState<keyof typeof pt | ''>('');
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -123,13 +133,15 @@ export function WeddingPage() {
     if (!guestToken) return;
     try {
       if (success) sessionStorage.removeItem('wedding-draft-' + guestToken);
-      else sessionStorage.setItem('wedding-draft-' + guestToken, JSON.stringify({name,message,hadPhoto:photoRequired,attempt:attempt.current}));
+      else sessionStorage.setItem('wedding-draft-' + guestToken, JSON.stringify({name,message,hadPhoto:photoRequired,attempt:attempt.current,annotation}));
     } catch { /* Storage is best-effort; in-page state still retains the draft. */ }
-  }, [guestToken,name,message,photoRequired,uncertain,busy,success]);
+  }, [guestToken,name,message,photoRequired,uncertain,busy,success,annotation]);
   function selectPhoto(selected?: File) {
     if (!selected) return;
     if (!['image/jpeg','image/png'].includes(selected.type)) { setPhotoError('format'); return; }
     if (selected.size > (photoLimit?.maxBytes || 0)) { setPhotoError('size'); return; }
+    if (!uncertain && annotation.strokes.length && !window.confirm(dt.discard)) return;
+    if (!uncertain) setAnnotation(emptyAnnotation());
     if (!uncertain) attempt.current = null;
     setPhotoError(''); setFile(selected); setPreview(URL.createObjectURL(selected)); setPhotoRequired(true);
   }
@@ -152,7 +164,8 @@ export function WeddingPage() {
     });
   }
   function report(error: unknown) {
-    if (error instanceof ApiError && error.message.startsWith('PHOTO_')) {
+    if (error instanceof ApiError && error.message === 'ANNOTATION_INVALID') setAnnotationError(true);
+    else if (error instanceof ApiError && error.message.startsWith('PHOTO_')) {
       const codes: Record<string, keyof typeof pt> = {PHOTO_TYPE:'format',PHOTO_TOO_LARGE:'size',PHOTO_PIXELS:'pixels',PHOTO_INVALID:'invalid',PHOTO_QUOTA:'quota',PHOTO_EXPIRED:'expired'};
       setPhotoError(codes[error.message] || 'invalid');
     } else if (error instanceof ApiError && error.status < 500) {
@@ -164,9 +177,9 @@ export function WeddingPage() {
     if (busyRef.current) return;
     if (!name.trim() || !message.trim()) { setError('invalid'); return; }
     if (photoRequired && !file) { setPhotoError('reselect'); return; }
-    busyRef.current = true; setBusy(true); setError(''); setPhotoError('');
+    busyRef.current = true; setBusy(true); setError(''); setPhotoError(''); setAnnotationError(false);
     attempt.current ??= { name, message, idempotencyKey: attemptKey() };
-    if (!uncertain) { attempt.current.name = name; attempt.current.message = message; }
+    if (!uncertain) { attempt.current.name = name; attempt.current.message = message; attempt.current.annotation = annotation.strokes.length ? annotation : undefined; }
     try {
       if (file && (!attempt.current.mediaId || uploadedFile.current !== file)) {
         setStage('upload'); setUploadProgress(null);
@@ -190,10 +203,12 @@ export function WeddingPage() {
   const appearance = weddingTemplate.appearance;
   return <main className="wedding" style={{ background: appearance.background, color: appearance.ink, '--wedding-accent': appearance.accent } as CSSProperties}>
     <div className="wedding-shell">
-      {largePhoto && <div className="wedding-lightbox" onKeyDown={e => { if (e.key === 'Escape') setLargePhoto(null); }} role="dialog" aria-modal="true" aria-label={pt.enlarge}><button autoFocus onClick={() => setLargePhoto(null)}>{pt.back}</button><img src={apiBase+largePhoto.displayUrl} alt={pt.enlarge} /><a href={apiBase+largePhoto.originalUrl}>{pt.original}</a></div>}
+      {drawing && preview && <PhotoDrawing src={preview} initial={annotation} language={language} onCancel={()=>setDrawing(false)} onDone={a=>{setAnnotation(a);setDrawing(false);setAnnotationError(false);}}/>}
+      {largePhoto && <div className="wedding-lightbox" onKeyDown={e => { if (e.key === 'Escape') setLargePhoto(null); }} role="dialog" aria-modal="true" aria-label={pt.enlarge}><button autoFocus onClick={() => setLargePhoto(null)}>{pt.back}</button><img src={apiBase+(showOriginal?largePhoto.originalUrl:largePhoto.displayUrl)} alt={pt.enlarge} /><button onClick={()=>setShowOriginal(v=>!v)}>{showOriginal?pt.enlarge:pt.originalView}</button><a href={apiBase+largePhoto.originalUrl}>{pt.original}</a></div>}
       <header><a href="/wedding">{t.heading}</a><LanguageSwitcher /></header>
       {loading ? <p role="status">{t.loading}</p> : <>
         {photoError && <p className="wedding-error" role="alert">{pt[photoError]}</p>}
+        {annotationError && <p className="wedding-error" role="alert">{dt.invalid}</p>}
         {errorText && <p className="wedding-error" role="alert">{errorText}</p>}
         {guestToken ? guest && <section className="wedding-card">
           <p>{t.step}</p><h1>{guest.title}</h1><p>{guest.starts_on}</p>
@@ -210,8 +225,8 @@ export function WeddingPage() {
                 </div>
                 <small>{pt.fallback} · JPEG/PNG · {Math.round(photoLimit.maxBytes/1024/1024)} MB · {Math.round(photoLimit.maxPixels/1000000)} MP</small>
                 {photoRequired && !file && <p>{pt.reselect}</p>}
-                {file && preview && <img className="wedding-photo-preview" src={preview} alt={pt.preview} onError={() => { setPhotoError('invalid'); setFile(null); setPreview(''); }} />}
-                {photoRequired && <button type="button" onClick={() => {setFile(null);setPreview('');setPhotoRequired(false);setPhotoError('');attempt.current=null;}}>{pt.remove}</button>}
+                {file && preview && <><AnnotatedPreview src={preview} layer={annotation} alt={pt.preview} onError={() => { setPhotoError('invalid'); setFile(null); setPreview(''); }} /><button type="button" disabled={busy || uncertain} onClick={()=>setDrawing(true)}>{dt.edit}</button></>}
+                {photoRequired && <button type="button" onClick={() => {if(annotation.strokes.length && !window.confirm(dt.discard))return;setAnnotation(emptyAnnotation());setFile(null);setPreview('');setPhotoRequired(false);setPhotoError('');attempt.current=null;}}>{pt.remove}</button>}
               </fieldset>}
               <small>{message.length} / 4000</small>
               {busy && stage && <p role="status">{pt[stage]}{stage==='upload' && uploadProgress!==null ? ' '+uploadProgress+'%' : ''}</p>}
@@ -232,7 +247,7 @@ export function WeddingPage() {
             <section className="wedding-card"><h2>{t.messages} ({submissions.length})</h2>
               <button disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const data = await api<{ book: Book; submissions: Submission[] }>(`/books/${book.id}`); setBook(data.book); setSubmissions(data.submissions); } catch (e) { report(e); } finally { setBusy(false); } }}>{t.refresh}</button>
               {!submissions.length && <p>{t.empty}</p>}
-              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p>{item.media?.map(photo => <button className="wedding-photo-open" key={photo.id} aria-label={pt.enlarge} onClick={() => setLargePhoto(photo)}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button>)}</article>)}
+              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p>{item.media?.map(photo => <button className="wedding-photo-open" key={photo.id} aria-label={pt.enlarge} onClick={() => {setShowOriginal(false);setLargePhoto(photo);}}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button>)}</article>)}
             </section>
             {!book.closed_at && <section className="wedding-card">
               <label className="wedding-confirm"><input type="checkbox" checked={confirmClose} onChange={e => setConfirmClose(e.target.checked)} />{t.closeQuestion}</label>

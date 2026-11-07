@@ -9,7 +9,7 @@ export const photoCopy = {
     expired:'A félbehagyott képfeltöltés lejárt. Nyisd újra ezt az oldalt, és válaszd ki újra a képet.',
     reselect:'A böngésző már nem őrzi a kiválasztott fájlt. Válaszd ki újra ugyanazt a képet az újrapróbáláshoz.',
     upload:'Fotó feltöltése',processing:'Kép ellenőrzése és mentése…',saving:'Jókívánság rögzítése…',
-    enlarge:'Fotó nagyobb nézetben',back:'Vissza az üzenetekhez',original:'Átvett eredeti fájl letöltése',
+    enlarge:'Fotó nagyobb nézetben',back:'Vissza az üzenetekhez',original:'Átvett eredeti fájl letöltése',originalView:'Eredeti fotó megtekintése',
     fallback:'Ha a kamera nem nyílik meg vagy nem engedélyezed, használd a Kép kiválasztása gombot.',
     conflict:'Ehhez a próbálkozáshoz már másik kép tartozik. Ugyanazt a képet válaszd ki.',
   },
@@ -22,7 +22,7 @@ export const photoCopy = {
     expired:'The unfinished photo upload expired. Reopen this page and select the photo again.',
     reselect:'The browser no longer has the selected file. Select the same photo again to retry.',
     upload:'Uploading photo',processing:'Checking and saving photo…',saving:'Saving your wish…',
-    enlarge:'View larger photo',back:'Back to messages',original:'Download original received file',
+    enlarge:'View larger photo',back:'Back to messages',original:'Download original received file',originalView:'View original photo',
     fallback:'If the camera does not open or permission is denied, use Choose a picture.',conflict:'A different photo belongs to this attempt. Select the same photo again.',
   },
   de: {
@@ -34,7 +34,7 @@ export const photoCopy = {
     expired:'Der unvollständige Upload ist abgelaufen. Seite erneut öffnen und Bild neu auswählen.',
     reselect:'Der Browser hat die Datei nicht mehr. Bitte dasselbe Bild zum Wiederholen auswählen.',
     upload:'Foto wird hochgeladen',processing:'Foto wird geprüft und gespeichert…',saving:'Nachricht wird gespeichert…',
-    enlarge:'Foto vergrößern',back:'Zurück zu den Nachrichten',original:'Empfangene Originaldatei herunterladen',
+    enlarge:'Foto vergrößern',back:'Zurück zu den Nachrichten',original:'Empfangene Originaldatei herunterladen',originalView:'Originalfoto ansehen',
     fallback:'Falls die Kamera nicht geöffnet oder erlaubt wird, Bild auswählen verwenden.',conflict:'Zu diesem Versuch gehört ein anderes Foto. Bitte dasselbe Foto auswählen.',
   },
 };
