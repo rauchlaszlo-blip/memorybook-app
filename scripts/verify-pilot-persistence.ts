@@ -1,0 +1,30 @@
+import { chromium, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import QRCode from 'qrcode';
+import { createRequire } from 'node:module';
+const { PNG } = createRequire(import.meta.url)('pngjs');
+const {origin,phoneBook}=JSON.parse(await readFile('test-results/internet-verification.json','utf8'));
+const browser=await chromium.launch({channel:'chrome'});
+try {
+  const owner=await browser.newContext({storageState:'test-results/internet-owner-state.local'});
+  await owner.addInitScript(()=>localStorage.setItem('memorybook.appLanguage','hu'));
+  const page=await owner.newPage();
+  await page.goto(origin+'/wedding/books/'+phoneBook.id);
+  await expect(page.getByRole('heading',{name:phoneBook.title,exact:true})).toBeVisible();
+  const expected=await QRCode.toDataURL(phoneBook.guest_url,{width:320,margin:4,errorCorrectionLevel:'M'});
+  const qrImage=page.getByRole('img',{name:'QR-kód a vendégeknek'});
+  await expect(qrImage).toBeVisible();
+  const actual=await qrImage.getAttribute('src');
+  assert.ok(actual?.startsWith('data:image/png;base64,'));
+  const expectedPixels=PNG.sync.read(Buffer.from(expected.split(',')[1],'base64'));
+  const actualPixels=PNG.sync.read(Buffer.from(actual!.split(',')[1],'base64'));
+  assert.equal(actualPixels.width,expectedPixels.width);
+  assert.equal(actualPixels.height,expectedPixels.height);
+  assert.ok(actualPixels.data.equals(expectedPixels.data), 'Displayed QR pixels must encode the canonical HTTPS guest URL');
+  assert.equal(await page.getByLabel('Beküldési link',{exact:true}).inputValue(),phoneBook.guest_url);
+  await page.screenshot({path:'test-results/samsung-owner-ready.png',fullPage:true});
+  const anonymous=await browser.newContext();const guest=await anonymous.newPage();await guest.goto(phoneBook.guest_url);
+  await expect(guest.getByRole('button',{name:'Beküldés',exact:true})).toBeVisible();
+  console.log('PASS: owner session and phone test book persist after redeploy; actual QR matches canonical HTTPS guest URL; anonymous guest form available. Physical phone test remains OPEN.');
+} finally {await browser.close();}

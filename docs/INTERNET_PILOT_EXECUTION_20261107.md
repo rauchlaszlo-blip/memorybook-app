@@ -29,4 +29,38 @@ Külön render.pilot.yaml: új free web + új free PostgreSQL, Frankfurt, kizár
 
 Az éles MemoryBook a main ágról fut; távoli main HEAD ellenőrizve: 5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff. A helyi munka és tesztadatok megőrzöttek.
 
-Telepítés és valódi internetes ellenőrzés: folyamatban, telefonos PASS nincs.
+## Telepített környezet
+
+- HTTPS: https://memorybook-wedding-text-pilot-ukd0.onrender.com
+- Render szolgáltatás: srv-dbng6ojrjlhs738notk0; Free, Frankfurt, automatikus deploy kikapcsolva.
+- Adatbázis: dpg-dbng6e3rjlhs738nntd0-a; Free, PostgreSQL 17, külső elérés tiltva; kizárólag fiktív adatok.
+- Adatbázis lejárat: 2026-12-07 10:53:45 UTC / 11:53:45 Europe/Budapest. Nem frissül automatikusan fizetős csomagra. Ingyenes mentés nincs; lejárat előtt külön adatmegőrzési lépés szükséges.
+- Inaktivitás után 15 perccel a webszolgáltatás elalhat; az első megnyitás körülbelül egy percet igényelhet.
+- Telepített alkalmazáskód: 08503b19463966c8a50596f201d78de9910d0f9a, külön codex/wedding-internet-pilot ág. Main nem módosult.
+- Blueprint létrehozás és tervezés a Render API-val validált, csak két új free erőforrás szerepelt. Render CLI nem volt telepítve. A terv alkalmazását a felhasználó engedélyezte.
+
+## Valódi HTTPS ellenőrzés (asztali Chrome, automatizált)
+
+Sikeres: meghívó beváltása; URL-fragment eltávolítása; Secure/HttpOnly/SameSite=Strict cookie; ismételten beváltott és érvénytelen meghívó elutasítása; anonim privátlista-elérés 401; pilot=1 nem ad jogot; helyi pilot-login és régi regisztrációs végpont 404; idegen vagy hiányzó Origin 403; fiók nélküli ékezetes beküldés; dupla kattintás egy kérés; sikeres szervermentés után elveszített válasz, megtartott szöveg és ugyanazzal a kulccsal újrapróbálva egy bejegyzés; tulajdonosi megjelenés; HTML szövegként; lezárás utáni új beküldés 410.
+
+A meghívó lejárati és párhuzamos beváltási tesztje helyi valódi PostgreSQL-en sikeres, a HTTPS-próbában újrafelhasználási és érvénytelen tokenes ellenőrzés történt. A közvetlen felhős SQL-ellenőrzést a zárt külső DB-elérés blokkolta; ezt nem nyitottuk ki, a működést az alkalmazás API-ján és böngészőben igazoltuk.
+
+A scripts/verify-internet-pilot.ts a kizárt pilot-verification.local konfigurációval fut; csak fiktív adatot küld az explicit pilotcímre. A scripts/verify-pilot-persistence.ts a teszt során mentett, kizárt munkamenettel ellenőrzi az újraindítás utáni állapotot. A test-results mappa képernyőképei és sessionadatai nem kerülnek Gitbe.
+
+## Tulajdonosi meghívó kiadása
+
+A telepített kiszolgáló induláskor csak a PILOT_OWNER_INVITE_HASH és PILOT_OWNER_INVITE_EXPIRES_AT operátori beállításból vesz át meghívót. Csak hash kerül a szolgáltatói konfigurációba. Lejárt meghívót nem éleszt fel; a meglevő hash állapotát nem írja felül. Új meghívóhoz új 32 bájtos véletlen token és legfeljebb 24 órás lejárat szükséges. A felhasználónak most kiadott meghívó 60 perces; a létrejött session 7 napos. A tulajdonosi linket nem szabad a vendég-QR-rel együtt kihelyezni.
+
+A Blueprint a tartós telepítési beállítások forrása; a meghívó két operátori változója szándékosan kívül marad rajta, merge-alapú külön frissítéssel. A frissítés új deployt indít. A teljes URL a Gitből kizárt pilot-owner-invite.local fájlban van, a dokumentációban nincs titok.
+
+## Telefonos elfogadás
+
+Samsung mobilinterneten, kihúzott USB-vel, kikapcsolt notebookkal: NYITOTT. Kamera/QR fizikai próbája: NYITOTT ebben az internetes környezetben. iPhone/Safari külön NYITOTT. Automatizált Chrome-próba nem fizikai telefonos PASS.
+
+A felhasználói próba számára nyitva marad a Samsung próba – Anna és Bence (fiktív) könyv. A korábbi automatizált próbakönyv lezárt, ez szándékos. A felhasználónak nem kell új könyvet létrehoznia az első internetes beküldéshez.
+
+## Végső ellenőrzés
+
+A dep-dbng8n1srm7s739bt9vg deploy 2026-11-07 10:59:35 UTC-kor live állapotú lett. Az újraindítás után a korábbi tulajdonosi session érvényes maradt, a Samsung-próbakönyv elérhető és nyitott, névtelen böngészőben a beküldőűrlap megnyílt. A ténylegesen megjelenített QR dekódolt PNG-képpontjai egyeznek a kanonikus HTTPS-vendégcímből készített QR-rel. Az első ellenőrzésben a PNG tömörített bájtjainak összevetése eltérést jelzett; a különböző böngészős és Node PNG-tömörítést figyelembe vevő képpontellenőrzés sikeres.
+
+A végső Git-ellenőrzés szerint a távoli main változatlan. A későbbi dokumentációs/ellenőrzőszkript commit nem változtatja meg a telepített alkalmazáskódot; az automatikus deploy kikapcsolva marad.

@@ -1,0 +1,81 @@
+import { chromium, expect } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+
+// Explicit operator-run checks against the dedicated deployed pilot, fictional data only.
+const config = JSON.parse(await readFile('pilot-verification.local', 'utf8'));
+const base = new URL(config.origin).origin;
+assert.match(base, /^https:\/\/memorybook-wedding-text-pilot-[a-z0-9]+\.onrender\.com$/);
+await mkdir('test-results', { recursive: true });
+const results: string[] = [];
+const browser = await chromium.launch({ channel: 'chrome' });
+try {
+  const owner = await browser.newContext();
+  await owner.addInitScript(() => localStorage.setItem('memorybook.appLanguage', 'hu'));
+  const page = await owner.newPage();
+  await page.goto(base + '/wedding/owner-invite#invite=' + config.token);
+  await expect(page.getByRole('button', { name: 'Tulajdonosi felület megnyitása', exact: true })).toBeVisible();
+  assert.equal(new URL(page.url()).hash, '');
+  await page.getByRole('button', { name: 'Tulajdonosi felület megnyitása', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Vendégkönyv létrehozása', exact: true })).toBeVisible();
+  const cookies = await owner.cookies();
+  const session = cookies.find(c => c.name === '__Host-memorybook-pilot');
+  assert.ok(session?.secure && session.httpOnly && session.sameSite === 'Strict');
+  await owner.storageState({path:'test-results/internet-owner-state.local'});
+  results.push('HTTPS invitation redemption, fragment removal, secure owner cookie');
+  const anon = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await anon.addInitScript(() => localStorage.setItem('memorybook.appLanguage', 'hu'));
+  const post = (path: string, data: unknown, origin = base) => anon.request.post(base+path, {data,headers:{Origin:origin}});
+  assert.equal((await post('/api/pilot/redeem',{token:config.token})).status(),401);
+  assert.equal((await post('/api/pilot/redeem',{token:'x'.repeat(43)})).status(),401);
+  assert.equal((await post('/api/wedding/pilot-login',{})).status(),404);
+  assert.equal((await post('/api/auth/sign-up/email',{})).status(),404);
+  assert.equal((await anon.request.get(base+'/api/wedding/books')).status(),401);
+  assert.equal((await anon.request.get(base+'/api/wedding/capabilities?pilot=1')).status(),200);
+  assert.equal((await (await anon.request.get(base+'/api/wedding/capabilities?pilot=1')).json()).authenticated,false);
+  assert.equal((await post('/api/pilot/redeem',{},'https://example.test')).status(),403);
+  assert.equal((await anon.request.post(base+'/api/pilot/redeem',{data:{}})).status(),403);
+  results.push('Anonymous owner access denied; replayed/invalid invite denied; local auth disabled; origin enforced');
+  await page.getByLabel('Megjelenített nevek').fill('Automata próba – Ági és Örs');
+  await page.getByLabel('Az esküvő dátuma').fill('2027-06-05');
+  await page.getByRole('button',{name:'Vendégkönyv létrehozása',exact:true}).click();
+  const link = await page.getByLabel('Beküldési link',{exact:true}).inputValue();
+  assert.ok(link.startsWith(base+'/wedding/join/'));
+  await expect(page.getByRole('img',{name:'QR-kód a vendégeknek'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'QR letöltése'})).toBeVisible();
+  const bookId = new URL(page.url()).pathname.split('/').pop();
+  const guest = await anon.newPage(); await guest.goto(link);
+  await guest.getByLabel('Neved',{exact:true}).fill('Fiktív Éva');
+  const message = 'Árvíztűrő tükörfúrógép – sok örömöt! <img src=x onerror=alert(1)>';
+  await guest.getByLabel('Jókívánságod',{exact:true}).fill(message);
+  let first = true;let key = '';let count = 0;
+  await guest.route('**/api/wedding/guest/*/submissions', async route => {
+    count++; const body = route.request().postDataJSON();
+    if(first){first=false;key=body.idempotencyKey;await route.fetch();await route.abort('failed');}
+    else {assert.equal(body.idempotencyKey,key);await route.continue();}
+  });
+  await guest.getByRole('button',{name:'Beküldés',exact:true}).click({clickCount:2});
+  await expect(guest.getByRole('alert')).toContainText('Nem kaptunk biztos választ');
+  await expect(guest.getByLabel('Jókívánságod',{exact:true})).toHaveValue(message);
+  assert.equal(count,1);
+  await guest.getByRole('button',{name:'Beküldés újrapróbálása',exact:true}).click();
+  await expect(guest.getByText('Köszönjük! A jókívánságod megérkezett.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Frissítés',exact:true}).click();
+  await expect(page.getByText(message,{exact:true})).toBeVisible();
+  assert.equal(await page.locator('.wedding-message').count(),1);
+  assert.equal(await page.locator('.wedding-message img').count(),0);
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button',{name:'Beküldés lezárása',exact:true}).click();
+  await expect(page.getByText('A beküldés lezárult.',{exact:true})).toBeVisible();
+  const endpoint='/api/wedding/guest/'+link.split('/').pop()+'/submissions';
+  assert.equal((await post(endpoint,{name:'Új vendég',message:'Lezárt próba',idempotencyKey:randomUUID()})).status(),410);
+  assert.equal((await anon.request.get(base+'/api/wedding/books/'+bookId)).status(),401);
+  await guest.screenshot({path:'test-results/internet-guest-success.png',fullPage:true});
+  await page.screenshot({path:'test-results/internet-owner-closed.png',fullPage:true});
+  results.push('Anonymous accented submission; double click + lost response retry exactly once; private list; closure rejects new submission; HTML remains text');
+  const phoneResponse=await owner.request.post(base+'/api/wedding/books',{headers:{Origin:base},data:{names:'Samsung próba – Anna és Bence (fiktív)',date:'2027-06-05'}});
+  assert.equal(phoneResponse.status(),201);const phoneBook=(await phoneResponse.json()).book;
+  await writeFile('test-results/internet-verification.json',JSON.stringify({origin:base,checkedAt:new Date().toISOString(),results,phoneBook},null,2));
+  console.log(JSON.stringify({checks:results,phoneBookId:phoneBook.id,guestUrl:phoneBook.guest_url}));
+} finally { await browser.close(); }
