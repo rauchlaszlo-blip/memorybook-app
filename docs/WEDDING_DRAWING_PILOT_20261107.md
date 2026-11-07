@@ -33,3 +33,15 @@ API: rajzos/rajz nélküli fotó, eredeti bájtpontosság, tájolás és előné
 Chromium és WebKit: rajz kezdőpontja a pointer helyén, átméretezéskor változatlan útvonal, Visszavonás/Újra/Kész/Mégse, törlés megerősítése, képcsere elutasítása/elfogadása, szerkesztés újranyitása, elveszett válasz és dupla kattintás, egyetlen feltöltés és bejegyzés, tulajdonosi Frissítés új képpel és új navigáció nélkül, nagy és eredeti nézet. A Frissítés működése helyes, erre külön kódjavítás nem kellett. A korábbi hiba egy régi, már nyitott alkalmazásverzióhoz kapcsolódott; új funkció első telepítése után egyszer az új oldalkódot kell megnyitni, későbbi bejegyzésekhez elég a Frissítés.
 
 A valódi Samsung/iPhone rajzolás, ujjbeviteli illeszkedés és telefonforgatás NYITOTT. A korábbi telefonos fotó/szöveg PASS megőrizve, rajzos PASS-t nem előlegezünk meg. Telepített eredmények külön kerülnek rögzítésre.
+
+## Telepítés és internetes eredmények
+
+Funkciócommit 91f7eb5a730655f64f63ab0a064d13c76b38b6dd, első deploy dep-dbnh4ctg1s2s73cmh4o0. HTTPS WebKit-próba 2026-11-07 12:59 Budapest: rajzolás, elveszett válasz + dupla kattintás + újrapróbálás egyetlen feltöltéssel/bejegyzéssel, eredeti bájtpontosság, privát rajzadat és képek, tulajdonosi Frissítés navigáció nélkül, nagy és eredeti nézet, lezárás, régi telefonos könyv nyitottsága PASS. Képernyőképek megvizsgálva.
+
+Végső telepített commit **ba3d8f8497b03c4477d64ce53e7e9b5dc696e195**, deploy **dep-dbnh5pgu01pc73coal6g**, live **2026-11-07 13:02:12 Budapest**. Apró fókuszfinomítás: megnyitáskor a felső színválasztó kap fókuszt, nem az alsó Kész gomb; így a böngésző nem görget a szerkesztő aljára. Build/typecheck/lint és mindkét rajzos böngészőteszt ismét PASS.
+
+A második tényleges Render-telepítés után az előző próba eredeti fotójának és kompozitjának SHA-256 értéke, a teljes szerkeszthető rajzréteg és az egyetlen bejegyzéskapcsolat változatlan: PASS. Az új fókusz és a régi vendéglink WebKit alatt PASS. A régi tulajdonosi session, telefonos könyv és QR képpontjai is ellenőrizve. Fizikai rajzolás továbbra is NYITOTT.
+
+Ellenőrzők: scripts/verify-drawing-pilot.ts és scripts/verify-drawing-persistence.ts; eredmények és saját szintetikus képek az ignorált test-results könyvtárban. A main távoli HEAD továbbra is 5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff. Éles szolgáltatáshoz/adatbázishoz nem történt módosítás. A későbbi jegyzőkönyvcommit nem igényel új telepítést, autoDeploy off.
+
+Telefonos próba: ugyanaz a meglévő könyv, /wedding/join/A1_n1e0otgjA7zO-rPCjezwdyAJtuTEONSZIBk7jAkM. Első megnyitás az új kód betöltéséhez ?rajz=1 paraméterrel; ez nem jogosultság. Tulajdonosi útvonal /wedding/books/2a06f116-e684-44d5-ae13-cae16ccf460e?rajz=1. Fotó kiválasztása → rajz, forgatás, visszavonás/újra → Kész → újranyitás és Mégse → beküldés → már nyitott tulajdonosi lap Frissítés → kompozit nagyítás és eredeti megtekintése. Samsung és iPhone eredményét külön kell bekérni.
