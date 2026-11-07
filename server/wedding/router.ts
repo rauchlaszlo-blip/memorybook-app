@@ -4,6 +4,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { weddingTemplate } from '../../shared/event-templates';
 import { localDatabaseUrl } from './local-db';
+import { createMediaRouter } from './media';
+import type { MediaLimits } from './media';
 
 export type WeddingSession = { user: { id: string; email?: string | null } } | null;
 export interface WeddingOptions {
@@ -13,6 +15,7 @@ export interface WeddingOptions {
   loginPilot?: () => Promise<Response>;
   publicOrigin?: string;
   allowPilotOwner?: string;
+  media?: MediaLimits;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -36,7 +39,7 @@ export function canCreateWedding(session: WeddingSession, env: NodeJS.ProcessEnv
     (env.WEDDING_PILOT_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean).includes(session.user.id);
 }
 
-export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner }: WeddingOptions) {
+export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner, media }: WeddingOptions) {
   const router = Router();
   const canCreate = (session: WeddingSession) => canCreateWedding(session, env) ||
     (!!allowPilotOwner && session?.user.id === allowPilotOwner);
@@ -82,6 +85,7 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
       res.status(500).json({ error: 'WEDDING_REQUEST_FAILED' });
     }
   };
+  if (media) router.use(createMediaRouter(pool, getSession, media));
   router.post('/pilot-login', handle(async (_req, res) => {
     if (env.WEDDING_PILOT_PASSWORDLESS !== 'true' || !env.WEDDING_PILOT_PASSWORD || !loginPilot) {
       res.status(404).json({ error: 'NOT_FOUND' }); return;
@@ -128,7 +132,14 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     const book = await pool.query(`SELECT ${ownerColumns} FROM event_books WHERE id=$1 AND owner_user_id=$2 AND ${productFilter}`, [req.params.id, session.user.id]);
     if (!book.rowCount) { res.status(404).json({ error: 'BOOK_NOT_FOUND' }); return; }
     const submissions = await pool.query('SELECT id, guest_name, message, created_at, occurred_on::text FROM event_submissions WHERE book_id=$1 ORDER BY created_at DESC, id', [req.params.id]);
-    res.json({ book: withLink(book.rows[0]), submissions: submissions.rows });
+    let items = submissions.rows;
+    if (media) {
+      const photos = await pool.query("SELECT id,submission_id FROM event_media WHERE book_id=$1 AND state='attached' ORDER BY created_at", [req.params.id]);
+      items = items.map(item => ({ ...item, media: photos.rows.filter(photo => photo.submission_id === item.id).map(photo => ({
+        id: photo.id, previewUrl: '/api/wedding/media/' + photo.id + '/preview', displayUrl: '/api/wedding/media/' + photo.id + '/display', originalUrl: '/api/wedding/media/' + photo.id + '/original'
+      })) }));
+    }
+    res.json({ book: withLink(book.rows[0]), submissions: items });
   }));
   router.post('/books/:id/close', handle(async (req, res) => {
     const session = await getSession(req);
@@ -145,12 +156,14 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     const result = await pool.query(`SELECT title, starts_on::text, template_id, template_version, closed_at IS NOT NULL AS closed
       FROM event_books WHERE invite_token=$1 AND ${productFilter}`, [req.params.token]);
     if (!result.rowCount) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-    res.json({ event: result.rows[0] });
+    res.json({ event: result.rows[0], ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels } } : {}) });
   }));
   router.post('/guest/:token/submissions', handle(async (req, res) => {
     const name = cleanText(req.body?.name, 100);
     const message = cleanText(req.body?.message, 4000);
     const key: unknown = req.body?.idempotencyKey;
+    const mediaId: unknown = req.body?.mediaId;
+    if (mediaId !== undefined && (!media || typeof mediaId !== 'string' || !uuid.test(mediaId))) { res.status(400).json({ error: 'PHOTO_INVALID' }); return; }
     if (!tokenPattern.test(String(req.params.token))) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
     if (!name || !message || typeof key !== 'string' || !uuid.test(key)) { res.status(400).json({ error: 'INVALID_SUBMISSION' }); return; }
     const client = await pool.connect();
@@ -158,18 +171,25 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
       await client.query('BEGIN');
       const book = await client.query(`SELECT id, closed_at FROM event_books WHERE invite_token=$1 AND ${productFilter} FOR UPDATE`, [req.params.token]);
       if (!book.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-      const prior = await client.query('SELECT guest_name, message FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
+      const prior = await client.query('SELECT id, guest_name, message FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
       if (prior.rowCount) {
+        const priorMedia = media ? await client.query('SELECT id FROM event_media WHERE submission_id=$1', [prior.rows[0].id]) : { rows: [] };
         await client.query('COMMIT');
-        if (prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
+        if ((priorMedia.rows[0]?.id || undefined) !== mediaId || prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
           res.status(409).json({ error: 'IDEMPOTENCY_CONFLICT' }); return;
         }
         // A committed request can be acknowledged even after closure; no new write.
         res.json({ accepted: true, replayed: true }); return;
       }
       if (book.rows[0].closed_at) { await client.query('ROLLBACK'); res.status(410).json({ error: 'SUBMISSIONS_CLOSED' }); return; }
+      if (mediaId) {
+        const photo = await client.query("SELECT id FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
+        if (!photo.rowCount) { await client.query('ROLLBACK'); res.status(409).json({ error: 'PHOTO_EXPIRED' }); return; }
+      }
+      const submissionId = randomUUID();
       await client.query(`INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message)
-        VALUES ($1,$2,$3,$4,$5)`, [randomUUID(), book.rows[0].id, key, name, message]);
+        VALUES ($1,$2,$3,$4,$5)`, [submissionId, book.rows[0].id, key, name, message]);
+      if (mediaId) await client.query("UPDATE event_media SET submission_id=$1,state='attached',expires_at=NULL WHERE id=$2", [submissionId,mediaId]);
       await client.query('COMMIT');
       res.status(201).json({ accepted: true, replayed: false });
     } catch (error) { await client.query('ROLLBACK'); throw error; }

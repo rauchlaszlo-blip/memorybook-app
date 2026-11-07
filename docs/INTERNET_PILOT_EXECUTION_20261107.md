@@ -55,7 +55,7 @@ A Blueprint a tartós telepítési beállítások forrása; a meghívó két ope
 
 ## Telefonos elfogadás
 
-Samsung mobilinterneten, kihúzott USB-vel, kikapcsolt notebookkal: NYITOTT. Kamera/QR fizikai próbája: NYITOTT ebben az internetes környezetben. iPhone/Safari külön NYITOTT. Automatizált Chrome-próba nem fizikai telefonos PASS.
+Samsung mobilinterneten, kihúzott USB-vel, kikapcsolt notebookkal: PASS, a felhasználó „próba pass” visszajelzése alapján (2026-11-07). Az elfogadás a közvetlenül előtte kért megnyitás → ékezetes beküldés → tulajdonosi listában megjelenés próbára vonatkozik. A kamera/QR és privát böngésző szerepelt az átadott lépésekben, de külön részletes eredményt a felhasználó nem adott. Internetes fizikai lezárás, dupla koppintás és hálózatmegszakítás/újrapróbálás külön visszaigazolása továbbra is NYITOTT; az automatizált eredmények nem helyettesítik ezeket. iPhone/Safari külön NYITOTT.
 
 A felhasználói próba számára nyitva marad a Samsung próba – Anna és Bence (fiktív) könyv. A korábbi automatizált próbakönyv lezárt, ez szándékos. A felhasználónak nem kell új könyvet létrehoznia az első internetes beküldéshez.
 

@@ -5,9 +5,16 @@ import { getAppLanguage, subscribeAppLanguage } from '../i18n';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import { weddingTemplate } from '../../shared/event-templates';
 import './wedding.css';
+import { photoCopy } from './photo-copy';
 
 type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string };
-type Submission = { id: string; guest_name: string; message: string; created_at: string };
+type Photo = { id: string; previewUrl: string; displayUrl: string; originalUrl: string };
+type Attempt = { name: string; message: string; idempotencyKey: string; mediaId?: string };
+type Draft = { name?: string; message?: string; hadPhoto?: boolean; attempt?: Attempt };
+function readDraft(token?: string): Draft {
+  try { return token ? JSON.parse(sessionStorage.getItem(`wedding-draft-${token}`) || '{}') : {}; } catch { return {}; }
+}
+type Submission = { media?: Photo[]; id: string; guest_name: string; message: string; created_at: string };
 type GuestEvent = { title: string; starts_on: string; closed: boolean; template_id: string; template_version: number };
 type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean };
 const apiBase = ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '5173'
@@ -36,6 +43,7 @@ export function WeddingPage() {
   const [language, setLanguage] = useState(getAppLanguage);
   useEffect(() => subscribeAppLanguage(setLanguage), []);
   const t = weddingTemplate.copy[language];
+  const pt = photoCopy[language];
   const guestToken = window.location.pathname.match(/^\/wedding\/join\/([A-Za-z0-9_-]+)\/?$/)?.[1];
   const bookId = window.location.pathname.match(/^\/wedding\/books\/([a-f0-9-]+)\/?$/)?.[1];
   const [capability, setCapability] = useState<Capability | null>(null);
@@ -47,12 +55,22 @@ export function WeddingPage() {
   const [error, setError] = useState('');
   const [names, setNames] = useState('');
   const [date, setDate] = useState('');
-  const [name, setName] = useState('');
-  const [message, setMessage] = useState('');
+  const [draft] = useState(() => readDraft(guestToken));
+  const [name, setName] = useState(draft.name || '');
+  const [message, setMessage] = useState(draft.message || '');
+  const [photoLimit, setPhotoLimit] = useState<{maxBytes:number;maxPixels:number} | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [photoRequired, setPhotoRequired] = useState(!!draft.hadPhoto);
+  const [preview, setPreview] = useState('');
+  const uploadedFile = useRef<File | null>(null);
+  const [photoError, setPhotoError] = useState<keyof typeof pt | ''>('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [stage, setStage] = useState<'upload'|'processing'|'saving'|''>('');
+  const [largePhoto, setLargePhoto] = useState<Photo | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const attempt = useRef<{ name: string; message: string; idempotencyKey: string } | null>(null);
-  const [uncertain, setUncertain] = useState(false);
+  const attempt = useRef<Attempt | null>(draft.attempt || null);
+  const [uncertain, setUncertain] = useState(!!draft.attempt);
   const [success, setSuccess] = useState(false);
   const [qr, setQr] = useState('');
   const [qrError, setQrError] = useState(false);
@@ -64,9 +82,9 @@ export function WeddingPage() {
     async function load() {
       try {
         if (guestToken) {
-          const result = await api<{ event: GuestEvent }>(`/guest/${guestToken}`);
+          const result = await api<{ event: GuestEvent; photo?: {maxBytes:number;maxPixels:number} }>(`/guest/${guestToken}`);
           if (result.event.template_id !== weddingTemplate.id || result.event.template_version !== weddingTemplate.version) throw new Error('unavailable');
-          if (!cancelled) setGuest(result.event);
+          if (!cancelled) { setGuest(result.event); setPhotoLimit(result.photo || null); }
         } else {
           const initialCaps = await api<Capability>('/capabilities');
           if (!initialCaps.internetPilot && new URLSearchParams(window.location.search).get('pilot') === '1') {
@@ -100,32 +118,82 @@ export function WeddingPage() {
     return () => { cancelled = true; };
   }, [link]);
 
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  useEffect(() => {
+    if (!guestToken) return;
+    try {
+      if (success) sessionStorage.removeItem('wedding-draft-' + guestToken);
+      else sessionStorage.setItem('wedding-draft-' + guestToken, JSON.stringify({name,message,hadPhoto:photoRequired,attempt:attempt.current}));
+    } catch { /* Storage is best-effort; in-page state still retains the draft. */ }
+  }, [guestToken,name,message,photoRequired,uncertain,busy,success]);
+  function selectPhoto(selected?: File) {
+    if (!selected) return;
+    if (!['image/jpeg','image/png'].includes(selected.type)) { setPhotoError('format'); return; }
+    if (selected.size > (photoLimit?.maxBytes || 0)) { setPhotoError('size'); return; }
+    if (!uncertain) attempt.current = null;
+    setPhotoError(''); setFile(selected); setPreview(URL.createObjectURL(selected)); setPhotoRequired(true);
+  }
+  function uploadPhoto(selected: File, key: string): Promise<{mediaId:string}> {
+    return new Promise((resolve,reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', apiBase + '/api/wedding/guest/' + guestToken + '/media/' + key);
+      xhr.withCredentials = true; xhr.timeout = 120000;
+      xhr.setRequestHeader('Content-Type','application/octet-stream');
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable) setUploadProgress(Math.round(event.loaded/event.total*100));
+      };
+      xhr.upload.onload = () => setStage('processing');
+      xhr.onerror = xhr.ontimeout = xhr.onabort = () => reject(new Error('network'));
+      xhr.onload = () => {
+        try { const data=JSON.parse(xhr.responseText); if(xhr.status>=200 && xhr.status<300) resolve(data); else reject(new ApiError(xhr.status,data.error)); }
+        catch { reject(new Error('network')); }
+      };
+      xhr.send(selected);
+    });
+  }
   function report(error: unknown) {
-    if (error instanceof ApiError && error.status < 500) {
+    if (error instanceof ApiError && error.message.startsWith('PHOTO_')) {
+      const codes: Record<string, keyof typeof pt> = {PHOTO_TYPE:'format',PHOTO_TOO_LARGE:'size',PHOTO_PIXELS:'pixels',PHOTO_INVALID:'invalid',PHOTO_QUOTA:'quota',PHOTO_EXPIRED:'expired'};
+      setPhotoError(codes[error.message] || 'invalid');
+    } else if (error instanceof ApiError && error.status < 500) {
       if (error.status === 410) { setError('closed'); setGuest(g => g ? { ...g, closed: true } : g); }
       else setError(error.status === 429 ? 'limited' : error.status === 409 ? 'conflict' : error.status === 400 ? 'invalid' : 'unavailable');
     } else setError('network');
   }
   async function send() {
     if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError('');
+    if (!name.trim() || !message.trim()) { setError('invalid'); return; }
+    if (photoRequired && !file) { setPhotoError('reselect'); return; }
+    busyRef.current = true; setBusy(true); setError(''); setPhotoError('');
     attempt.current ??= { name, message, idempotencyKey: attemptKey() };
+    if (!uncertain) { attempt.current.name = name; attempt.current.message = message; }
     try {
+      if (file && (!attempt.current.mediaId || uploadedFile.current !== file)) {
+        setStage('upload'); setUploadProgress(null);
+        // Same key/file reuses a stored upload, also after an ambiguous response or page reload.
+        const uploaded = await uploadPhoto(file, attempt.current.idempotencyKey);
+        attempt.current.mediaId = uploaded.mediaId; uploadedFile.current = file;
+      }
+      setStage('saving');
       await api(`/guest/${guestToken}/submissions`, attempt.current);
-      setSuccess(true); setUncertain(false);
+      setSuccess(true); setUncertain(false); setFile(null); setPreview('');
     } catch (error) {
       report(error);
       const ambiguous = !(error instanceof ApiError) || error.status >= 500;
       setUncertain(ambiguous || error instanceof ApiError && (error.status === 429 || error.status === 409));
-      if (!ambiguous && error instanceof ApiError && error.status === 400) attempt.current = null;
-    } finally { setBusy(false); busyRef.current = false; }
+      if (!ambiguous && error instanceof ApiError && (error.status === 400 || error.status === 413 || error.status === 415)) { if (error.message !== 'INVALID_SUBMISSION') attempt.current = null; setUncertain(false); }
+      if (error instanceof ApiError && error.message === 'PHOTO_EXPIRED') { attempt.current = null; setUncertain(false); }
+      if (error instanceof ApiError && error.message === 'IDEMPOTENCY_CONFLICT' && file) setPhotoError('conflict');
+    } finally { setBusy(false); busyRef.current = false; setStage(''); }
   }
   const errorText = error ? t[error as keyof typeof t] || t.unavailable : '';
   const appearance = weddingTemplate.appearance;
   return <main className="wedding" style={{ background: appearance.background, color: appearance.ink, '--wedding-accent': appearance.accent } as CSSProperties}>
     <div className="wedding-shell">
+      {largePhoto && <div className="wedding-lightbox" onKeyDown={e => { if (e.key === 'Escape') setLargePhoto(null); }} role="dialog" aria-modal="true" aria-label={pt.enlarge}><button autoFocus onClick={() => setLargePhoto(null)}>{pt.back}</button><img src={apiBase+largePhoto.displayUrl} alt={pt.enlarge} /><a href={apiBase+largePhoto.originalUrl}>{pt.original}</a></div>}
       <header><a href="/wedding">{t.heading}</a><LanguageSwitcher /></header>
       {loading ? <p role="status">{t.loading}</p> : <>
+        {photoError && <p className="wedding-error" role="alert">{pt[photoError]}</p>}
         {errorText && <p className="wedding-error" role="alert">{errorText}</p>}
         {guestToken ? guest && <section className="wedding-card">
           <p>{t.step}</p><h1>{guest.title}</h1><p>{guest.starts_on}</p>
@@ -134,7 +202,19 @@ export function WeddingPage() {
             <form onSubmit={e => { e.preventDefault(); void send(); }}>
               <div><label htmlFor="wedding-guest-name">{t.name}</label><input id="wedding-guest-name" name="guestName" autoComplete="name" required maxLength={100} value={name} disabled={busy || uncertain} onChange={e => setName(e.target.value)} /></div>
               <div><label htmlFor="wedding-guest-message">{t.message}</label><textarea id="wedding-guest-message" name="message" required maxLength={4000} rows={6} placeholder={t.prompt} value={message} disabled={busy || uncertain} onChange={e => setMessage(e.target.value)} /></div>
+              {photoLimit && <fieldset className="wedding-photo-picker" disabled={busy || (uncertain && !!file)}>
+                <legend>{pt.hint}</legend>
+                <div className="wedding-photo-actions">
+                  <label className="wedding-button">{pt.camera}<input aria-label={pt.camera} type="file" accept="image/jpeg,image/png" capture="environment" onChange={e => { selectPhoto(e.target.files?.[0]); e.target.value=''; }} /></label>
+                  <label className="wedding-button">{pt.gallery}<input aria-label={pt.gallery} type="file" accept="image/jpeg,image/png" onChange={e => { selectPhoto(e.target.files?.[0]); e.target.value=''; }} /></label>
+                </div>
+                <small>{pt.fallback} · JPEG/PNG · {Math.round(photoLimit.maxBytes/1024/1024)} MB · {Math.round(photoLimit.maxPixels/1000000)} MP</small>
+                {photoRequired && !file && <p>{pt.reselect}</p>}
+                {file && preview && <img className="wedding-photo-preview" src={preview} alt={pt.preview} onError={() => { setPhotoError('invalid'); setFile(null); setPreview(''); }} />}
+                {photoRequired && <button type="button" onClick={() => {setFile(null);setPreview('');setPhotoRequired(false);setPhotoError('');attempt.current=null;}}>{pt.remove}</button>}
+              </fieldset>}
               <small>{message.length} / 4000</small>
+              {busy && stage && <p role="status">{pt[stage]}{stage==='upload' && uploadProgress!==null ? ' '+uploadProgress+'%' : ''}</p>}
               <button disabled={busy} type="submit">{busy ? t.sending : uncertain ? t.retry : t.send}</button>
             </form>
           </>}
@@ -152,7 +232,7 @@ export function WeddingPage() {
             <section className="wedding-card"><h2>{t.messages} ({submissions.length})</h2>
               <button disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const data = await api<{ book: Book; submissions: Submission[] }>(`/books/${book.id}`); setBook(data.book); setSubmissions(data.submissions); } catch (e) { report(e); } finally { setBusy(false); } }}>{t.refresh}</button>
               {!submissions.length && <p>{t.empty}</p>}
-              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p></article>)}
+              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p>{item.media?.map(photo => <button className="wedding-photo-open" key={photo.id} aria-label={pt.enlarge} onClick={() => setLargePhoto(photo)}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button>)}</article>)}
             </section>
             {!book.closed_at && <section className="wedding-card">
               <label className="wedding-confirm"><input type="checkbox" checked={confirmClose} onChange={e => setConfirmClose(e.target.checked)} />{t.closeQuestion}</label>

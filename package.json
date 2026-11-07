@@ -15,7 +15,8 @@
     "pilot:wedding": "tsx scripts/wedding-pilot.ts",
     "start:internet-pilot": "tsx server/pilot/index.ts",
     "test:internet-pilot": "tsx --test tests/internet-pilot.test.ts",
-    "invite:internet-pilot": "tsx scripts/pilot-owner-invite.ts"
+    "invite:internet-pilot": "tsx scripts/pilot-owner-invite.ts",
+    "test:wedding-photo": "tsx --test tests/wedding-photo.test.ts tests/wedding-photo-browser.test.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",
@@ -28,7 +29,8 @@
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

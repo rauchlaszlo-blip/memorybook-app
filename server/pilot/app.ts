@@ -2,6 +2,7 @@ import express from 'express';
 import type { Pool } from 'pg';
 import { resolve } from 'node:path';
 import { createWeddingRouter } from '../wedding/router';
+import { mediaLimits } from '../wedding/media';
 import { cookieName, getPilotSession, ownerId, redeemInvite } from './auth';
 
 export function createPilotApp(pool: Pool, origin: string) {
@@ -40,7 +41,7 @@ export function createPilotApp(pool: Pool, origin: string) {
       res.json({ success: true });
     } catch { res.status(503).json({ error: 'RETRY_LATER' }); }
   });
-  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId,
+  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(),
     env: { NODE_ENV: 'production', WEDDING_ENABLED: 'true', PUBLIC_APP_URL: origin },
     getSession: req => getPilotSession(pool, req) }));
   app.use('/api', (_req, res) => { res.status(404).json({ error: 'NOT_FOUND' }); });

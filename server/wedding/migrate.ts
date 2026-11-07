@@ -15,6 +15,11 @@ export async function migrateWedding(pool: Pool) {
       await client.query(sql);
       await client.query("INSERT INTO wedding_schema_migrations(version) VALUES ('20261106-v1')");
     }
+    const mediaFound = await client.query("SELECT version FROM wedding_schema_migrations WHERE version = '20261107-v2'");
+    if (!mediaFound.rowCount) {
+      await client.query(await readFile(new URL('../migrations/20261107_event_media_v2.sql', import.meta.url), 'utf8'));
+      await client.query("INSERT INTO wedding_schema_migrations(version) VALUES ('20261107-v2')");
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
