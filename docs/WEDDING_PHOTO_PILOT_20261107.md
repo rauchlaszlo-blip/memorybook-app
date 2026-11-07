@@ -76,3 +76,11 @@ Ellenőrző programok: scripts/verify-photo-pilot.ts, scripts/verify-webkit-pilo
 Main távoli HEAD változatlan: 5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff. Új fizetős erőforrás vagy csomag nem készült; éles szolgáltatás/adatbázis nem módosult. A dokumentáció későbbi commitja automatikusan nem deployolódik (autoDeploy off).
 
 Safari-vizsgálat forrásai: https://v8.vite.dev/config/build-options ; https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage .
+
+## Új telefonos visszajelzés
+
+Végső felhasználói megerősítés: az újranyitó tulajdonosi linken a fotók megjelenése **PASS**. Samsung és iPhone: betöltés, üzenet- és fotóbeküldés felhasználói PASS; tulajdonosi üzenet- és fotómegjelenítés felhasználói PASS. A korábbi megjelenítési hibajelzés az oldal újranyitásával megszűnt, új deploy vagy adatjavítás nélkül. A kamera/galéria külön-külön, a nagyítás és a fotós hálózatmegszakítás fizikai próbája nincs külön igazolva. HEIC/HEIF továbbra sem támogatott. Az alábbi bekezdések az ezt megelőző vizsgálatot dokumentálják.
+
+A felhasználó Samsungon és iPhone-on is PASS-nak jelezte az üzenet- és fotóküldést. A tulajdonosi listában az üzenetek látszanak, a fotók nem: a fizikai tulajdonosi fotómegjelenítés ezért még NYITOTT/hibajelzés alatt. A kamera és galéria külön-külön lefedését nem részletezte, ezt nem tekintjük külön igazoltnak.
+
+Olvasásos ellenőrzés a meglevő telefonos könyvön: 5 üzenetből 3-hoz egy-egy fotó kapcsolódik; mindhárom védett előnézet HTTP 200, image/jpeg. Frissen megnyitott tulajdonosi oldalon mindhárom kép complete=true, naturalWidth=360, naturalHeight=480. A képek megvannak. Feltételezett ok a fotófunkció előtti, nyitva maradt tulajdonosi lap: a listán belüli Frissítés nem tölti újra az alkalmazáskódot. Új navigációs link (?nezet=foto2) átadva, felhasználói megerősítésre vár. Új képfeltöltés nem szükséges; kódmódosítás vagy új deploy még nem indokolt.
