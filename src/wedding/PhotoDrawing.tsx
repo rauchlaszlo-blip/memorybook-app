@@ -53,7 +53,7 @@ export function PhotoDrawing({ src, initial, language, onDone, onCancel }: { src
   return <div className="wedding-drawing" role="dialog" aria-modal="true" aria-label={t.edit} onKeyDown={e=>{if(e.key==='Escape')onCancel();}}>
     <div className="wedding-drawing-tools">
       <strong>{t.edit}</strong><p>{t.hint}</p>
-      <div>{inkColors.map((c,i)=><button type="button" key={c} aria-label={t.colors[i]} aria-pressed={color===c} onClick={()=>setColor(c)}><span className="wedding-ink-swatch" style={{background:c}}/>{t.colors[i]}</button>)}</div>
+      <div>{inkColors.map((c,i)=><button autoFocus={i===0} type="button" key={c} aria-label={t.colors[i]} aria-pressed={color===c} onClick={()=>setColor(c)}><span className="wedding-ink-swatch" style={{background:c}}/>{t.colors[i]}</button>)}</div>
       <div>{inkWidths.map((w,i)=><button type="button" key={w} aria-pressed={width===w} onClick={()=>setWidth(w)}>{t.widths[i]}</button>)}</div>
       <div><button type="button" disabled={!undo.length || !!pending} onClick={()=>{setRedo(v=>[...v,layer]);setLayer(undo[undo.length-1]);setUndo(v=>v.slice(0,-1));}}>{t.undo}</button>
       <button type="button" disabled={!redo.length || !!pending} onClick={()=>{setUndo(v=>[...v,layer]);setLayer(redo[redo.length-1]);setRedo(v=>v.slice(0,-1));}}>{t.redo}</button>
@@ -66,6 +66,6 @@ export function PhotoDrawing({ src, initial, language, onDone, onCancel }: { src
         <Ink layer={pending?{...layer,strokes:[...layer.strokes,pending]}:layer} aspect={aspect}/>
       </svg>
     </div>
-    <div className="wedding-drawing-footer"><button autoFocus type="button" disabled={!ready || !!pending} onClick={()=>onDone(layer)}>{t.done}</button><button type="button" onClick={onCancel}>{t.cancel}</button></div>
+    <div className="wedding-drawing-footer"><button type="button" disabled={!ready || !!pending} onClick={()=>onDone(layer)}>{t.done}</button><button type="button" onClick={onCancel}>{t.cancel}</button></div>
   </div>;
 }
