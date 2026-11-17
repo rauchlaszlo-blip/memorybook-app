@@ -1,0 +1,61 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import express from 'express';
+import {Pool} from 'pg';
+import {chromium,expect} from '@playwright/test';
+import type {Page} from '@playwright/test';
+import {localDatabaseUrl} from '../server/wedding/local-db';
+import {migrateWedding} from '../server/wedding/migrate';
+import {createMontageRouter} from '../server/wedding/montage';
+import {createWorkflowService,createWorkflowRouter,createExportWorker} from '../server/wedding/book-workflow';
+import {createMemorybookMcpRouter} from '../server/mcp/server';
+import {arrange} from '../server/wedding/montage-layout';
+import {defaultProfile,mockProvider} from '../shared/montage';
+import type {Draft,Source} from '../shared/montage';
+import {seedMcpBook} from './fixtures/mcp-book';
+
+for(const touch of [false,true])test(`MCP owner editor ${touch?'touch viewport':'desktop'}: transforms, independent locks, recovery, approval, durable PDF and read-only overview`,{timeout:180000},async()=>{
+  const connectionString=localDatabaseUrl(),schema='mcp_ui_'+randomUUID().replaceAll('-',''),admin=new Pool({connectionString});
+  await admin.query(`CREATE SCHEMA ${schema}`);const pool=new Pool({connectionString,options:`-c search_path=${schema}`});
+  let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined,server:ReturnType<typeof express.application.listen>|undefined;
+  let currentPage:Page|undefined;
+  const service=createWorkflowService(pool),worker=createExportWorker(pool,{pollMs:100});
+  try{
+    await migrateWedding(pool);const fixture=await seedMcpBook(pool),bookId=fixture.bookId,owner={ownerId:fixture.ownerId,kind:'owner' as const},actor={...owner,kind:'mcp' as const,allowedBookIds:[bookId]};
+    const snapshot=await service.createSnapshot(actor,bookId,{key:randomUUID()});
+    const initial:Draft={schema:1,format:'A4',spread:false,selected:fixture.submissionIds,excluded:[],profile:structuredClone(defaultProfile),pages:[{id:randomUUID(),background:'#fffaf4',locked:false,elements:[]}]};
+    const arranged=await arrange(initial,snapshot.sources as Source[],mockProvider),first=await service.saveVersion(actor,bookId,{key:randomUUID(),parentId:null,snapshotId:snapshot.id,draft:arranged});
+    const app=express();server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server!.once('listening',resolve));const address=server.address();assert.ok(address&&typeof address!=='string');const base='http://127.0.0.1:'+address.port,getSession=async()=>({user:{id:fixture.ownerId}});
+    app.use(createMemorybookMcpRouter(pool,base,getSession));app.use('/api/montage',createMontageRouter(pool,getSession,base));app.use('/api/book-workflow',createWorkflowRouter(pool,getSession,base));app.use(express.static(resolve('dist')));app.get(/^\/wedding\/.*/,(_req,res)=>res.sendFile(resolve('dist/index.html')));worker.start();
+    browser=await chromium.launch({channel:'chrome'});const context=await browser.newContext({viewport:touch?{width:390,height:844}:{width:1280,height:1000},isMobile:touch,hasTouch:touch,locale:'hu-HU'}),page=await context.newPage();page.setDefaultTimeout(20000);currentPage=page;
+    const runtimeErrors:string[]=[];page.on('pageerror',error=>runtimeErrors.push(error.message));page.on('dialog',dialog=>void dialog.accept(dialog.type()==='prompt'?'Fiktív képaláírás – őszinte öröm!':undefined));
+    await page.goto(base+'/wedding/books/'+bookId+'/montage?szerkesztes=1');await expect(page.getByRole('heading',{name:/fiktív MCP-próbakönyv – montázs/})).toBeVisible();
+    const firstPhoto=first.draft.pages[0].elements.find(element=>element.kind==='photo')!;const latest=()=>service.getVersion(owner,bookId);
+    if(touch){const canvas=page.locator('canvas.upper-canvas');await canvas.scrollIntoViewIfNeeded();const bounds=await canvas.boundingBox();assert.ok(bounds);const x=bounds.x+(firstPhoto.x+firstPhoto.w/2)/210*bounds.width,y=bounds.y+(firstPhoto.y+firstPhoto.h/2)/297*bounds.height;await page.touchscreen.tap(x,y);const session=await context.newCDPSession(page);await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+8,y:y+5}]});await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect.poll(async()=>Math.abs((await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)!.x-firstPhoto.x)).toBeGreaterThan(1);await page.getByRole('button',{name:'Visszavonás',exact:true}).click();await expect.poll(async()=>Math.abs((await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)!.x-firstPhoto.x)).toBeLessThan(.001);await session.detach();}
+    await page.getByLabel('Szerkesztendő elem').selectOption(firstPhoto.id);
+    await page.getByLabel('Forgatás (fok)',{exact:true}).fill('6');await page.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();
+    await expect.poll(async()=>(await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)?.rotation).toBe(6);
+    await page.getByLabel('Maradjon ezen az oldalon.',{exact:true}).check();await expect.poll(async()=>(await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)?.pinToPage).toBe(true);await expect(page.getByLabel('Elem áthelyezése másik oldalra')).toBeDisabled();
+    await page.getByLabel('A helye, mérete, forgatása és kivágása maradjon változatlan.',{exact:true}).check();await expect(page.getByLabel('Bal (mm)',{exact:true})).toBeDisabled();await expect(page.getByLabel('Kivágás w',{exact:true})).toBeDisabled();
+    await page.getByLabel('A helye, mérete, forgatása és kivágása maradjon változatlan.',{exact:true}).uncheck();await expect(page.getByLabel('Bal (mm)',{exact:true})).toBeEnabled();
+    await page.getByLabel('Maradjon ezen az oldalon.',{exact:true}).uncheck();await expect(page.getByLabel('Elem áthelyezése másik oldalra')).toBeEnabled();
+    await page.getByLabel('Kivágás w',{exact:true}).fill('0.8');await page.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();await expect.poll(async()=>(await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)?.crop.w).toBe(.8);
+    await page.getByRole('button',{name:'Képaláírás hozzáadása',exact:true}).click();await expect.poll(async()=>(await latest()).draft.pages[0].elements.some(e=>e.textRole==='caption')).toBe(true);
+    await page.getByRole('button',{name:'Könyvmódosítás visszavonása',exact:true}).click();await expect.poll(async()=>(await latest()).draft.pages[0].elements.some(e=>e.textRole==='caption')).toBe(false);
+    await page.getByRole('button',{name:'Könyvmódosítás ismétlése',exact:true}).click();await expect.poll(async()=>(await latest()).draft.pages[0].elements.some(e=>e.textRole==='caption')).toBe(true);
+    await page.reload();await page.getByLabel('Szerkesztendő elem').selectOption(firstPhoto.id);await expect(page.getByLabel('Forgatás (fok)',{exact:true})).toHaveValue('6');await expect(page.getByLabel('Kivágás w',{exact:true})).toHaveValue('0.8');
+    const beforeExternal=await latest(),otherSnapshot=await service.createSnapshot(actor,bookId,{key:randomUUID(),selectedIds:[fixture.submissionIds[9]]}),otherDraft=await arrange({...initial,selected:[fixture.submissionIds[9]]},otherSnapshot.sources as Source[],mockProvider);await service.saveVersion(actor,bookId,{key:randomUUID(),parentId:beforeExternal.id,snapshotId:otherSnapshot.id,draft:otherDraft});
+    await page.getByLabel('Bal (mm)',{exact:true}).fill(String(firstPhoto.x+2));await page.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();await expect(page.getByRole('heading',{name:'Megőrzött módosítás',exact:true})).toBeVisible();
+    await page.reload();await expect(page.getByRole('heading',{name:'Megőrzött módosítás',exact:true})).toBeVisible();await page.getByRole('button',{name:'Saját terv folytatása az újabb mentés után',exact:true}).click();await page.getByRole('button',{name:'Változat mentése',exact:true}).click();await expect.poll(async()=>(await latest()).draft.pages[0].elements.find(e=>e.id===firstPhoto.id)?.x).toBe(firstPhoto.x+2);
+    await page.getByRole('button',{name:'Ezt a könyvváltozatot jóváhagyom',exact:true}).click();await expect(page.getByRole('button',{name:'Jóváhagyott PDF készítése',exact:true})).toBeEnabled();const approvedVersion=await latest();assert.ok(approvedVersion.approved_at);
+    if(touch)await page.getByRole('button',{name:'Jóváhagyott PDF készítése',exact:true}).click();else{await service.startExport(actor,bookId,{key:randomUUID(),versionId:approvedVersion.id});await page.getByRole('button',{name:'Elkészült PDF-ek keresése',exact:true}).click();}const downloadLink=page.getByRole('link',{name:'Jóváhagyott ellenőrző PDF letöltése',exact:true});await expect(downloadLink).toBeVisible({timeout:60000});
+    const downloadPromise=page.waitForEvent('download');await downloadLink.click();const download=await downloadPromise;await mkdir('test-results/mcp-book',{recursive:true});await download.saveAs(`test-results/mcp-book/${touch?'touch':'desktop'}-approved.pdf`);
+    await page.getByRole('button',{name:'1. oldal',exact:true}).click();await page.getByLabel('Szerkesztendő elem').selectOption(firstPhoto.id);await page.locator('canvas.upper-canvas').scrollIntoViewIfNeeded();await page.screenshot({path:`test-results/mcp-book/${touch?'touch':'desktop'}-editor.png`,fullPage:true});await page.locator('canvas.lower-canvas').screenshot({path:`test-results/mcp-book/${touch?'touch':'desktop'}-canvas.png`});
+    await page.getByLabel('Bal (mm)',{exact:true}).fill(String(firstPhoto.x+3));await page.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();await expect.poll(async()=>(await latest()).approved_at).toBe(null);assert.ok((await service.getVersion(owner,bookId,approvedVersion.id)).approved_at);
+    const count=Number((await pool.query('SELECT count(*) AS n FROM event_montage_versions')).rows[0].n);await page.goto(base+'/wedding/books/'+bookId+'/montage');await expect(page.getByRole('link',{name:'Tervezet megnyitása és javítása',exact:true})).toBeVisible();await page.getByRole('button',{name:'Mentett terv frissítése',exact:true}).click();await expect(page.getByRole('status',{name:''})).toHaveCount(0);assert.equal(Number((await pool.query('SELECT count(*) AS n FROM event_montage_versions')).rows[0].n),count);
+    await writeFile(`test-results/mcp-book/${touch?'touch':'desktop'}-browser.json`,JSON.stringify({touch,bookId,versions:count,approvedVersion:approvedVersion.id,pages:approvedVersion.draft.pages.length,images:30,contributors:10,runtimeErrors},null,2));assert.deepEqual(runtimeErrors,[]);
+  }catch(error){if(currentPage){console.error('UI alerts:',await currentPage.getByRole('alert').allTextContents());await mkdir('test-results/mcp-book',{recursive:true});await currentPage.screenshot({path:`test-results/mcp-book/${touch?'touch':'desktop'}-failure.png`,fullPage:true});}throw error;}finally{await browser?.close();await worker.stop();if(server){server.closeAllConnections();await new Promise<void>(resolve=>server!.close(()=>resolve()));}await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();}
+});

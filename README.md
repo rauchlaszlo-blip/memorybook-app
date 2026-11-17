@@ -1,4 +1,14 @@
 # MemoryBook
+
+## 2026-11-17 local MCP book pilot
+
+The current, unpublished pilot uses authenticated remote MCP (Streamable HTTP),
+editable source-linked book versions, owner approval and a durable PDF export queue.
+It builds on the wedding editor; the historical WebMCP demo below is a separate integration.
+See [the current handoff](docs/MCP_PILOT_20261117.md) and
+[ChatGPT connection instructions](docs/MCP_CONNECTION_20261117.md).
+No deployment, commit or push is authorized by this implementation task.
+
 ## Judge Quick Start
 
 Live app: https://memorybook-app.onrender.com

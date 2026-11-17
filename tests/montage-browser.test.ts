@@ -1,0 +1,55 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID,createHash} from 'node:crypto';
+import {resolve} from 'node:path';
+import {Pool} from 'pg';
+import express from 'express';
+import sharp from 'sharp';
+import {chromium,webkit,expect} from '@playwright/test';
+import {migrateWedding} from '../server/wedding/migrate';
+import {localDatabaseUrl} from '../server/wedding/local-db';
+import {createMontageRouter} from '../server/wedding/montage';
+import {createWorkflowRouter,createExportWorker} from '../server/wedding/book-workflow';
+import {attachAnnotation} from '../server/wedding/annotation';
+import {mediaLimits} from '../server/wedding/media';
+for(const engine of ['chromium','webkit'] as const)test(`${engine}: existing Fabric editor montage selection, save/reopen, crop, ink positioning, version and proof download`,async()=>{
+ const url=localDatabaseUrl(),schema='montage_ui_'+randomUUID().replaceAll('-',''),admin=new Pool({connectionString:url});await admin.query(`CREATE SCHEMA ${schema}`);const pool=new Pool({connectionString:url,options:`-c search_path=${schema}`});await migrateWedding(pool);
+ const book=randomUUID(),submission=randomUUID(),media=randomUUID(),photo=await sharp({create:{width:600,height:400,channels:3,background:'#b5a1c2'}}).png().toBuffer();
+ await pool.query("INSERT INTO event_books(id,owner_user_id,product,event_type,title,subjects,starts_on,template_id,template_version,invite_token,closed_at) VALUES($1,'a','celebration','wedding','Anna és Bence – fiktív','[]','2026-11-07','wedding-classic',1,$2,CURRENT_TIMESTAMP)",[book,randomUUID()]);
+ await pool.query('INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message,guest_device_id) VALUES($1,$2,$3,$4,$5,$6)',[submission,book,randomUUID(),'Fiktív Éva','Árvíztűrő tükörfúrógép – sok boldogságot!','guest-a']);
+ await pool.query("INSERT INTO event_media(id,book_id,upload_key,submission_id,mime_type,original_size,sha256,width,height,state,original_bytes,preview_bytes,display_bytes,stored_size) VALUES($1,$2,$3,$4,'image/png',$5,$6,600,400,'attached',$7,$7,$7,$8)",[media,book,randomUUID(),submission,photo.length,createHash('sha256').update(photo).digest('hex'),photo,photo.length*3]);
+ const connection=await pool.connect();try{await attachAnnotation(connection,media,book,photo,{version:1,space:'exif-oriented-normalized',strokes:[{color:'#d62828',width:.014,points:[[.2,.2],[.7,.6]]}]},mediaLimits());}finally{connection.release();}
+ const app=express(),server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));const addr=server.address();assert.ok(addr&&typeof addr!=='string');const base='http://127.0.0.1:'+addr.port;
+ app.use('/api/montage',createMontageRouter(pool,async()=>({user:{id:'a'}}),base));app.use('/api/book-workflow',createWorkflowRouter(pool,async()=>({user:{id:'a'}}),base));const worker=createExportWorker(pool,{pollMs:100});worker.start();app.use(express.static(resolve('dist')));app.get(/^\/wedding\/.*/,(_req,res)=>res.sendFile(resolve('dist/index.html')));
+ let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;
+ try{
+  browser=await(engine==='webkit'?webkit.launch():chromium.launch({channel:'chrome'}));
+  const ctx=await browser.newContext({viewport:{width:390,height:844},locale:'hu-HU',isMobile:true,hasTouch:true}),p=await ctx.newPage();p.setDefaultTimeout(15000);await p.goto(base+'/wedding/books/'+book+'/montage?szerkesztes=1');
+  await expect(p.getByRole('heading',{name:'Anna és Bence – fiktív – montázs',exact:true})).toBeVisible();
+  await p.getByText('Helyi sablonos próba',{exact:true}).click();
+  let lost=false;await p.route('**/api/montage/*/versions',async route=>{if(route.request().method()==='POST'&&!lost){lost=true;await route.fetch();await route.abort();}else await route.continue();});
+  await p.getByRole('button',{name:'Új teljes mintatervezet',exact:true}).click({clickCount:2});await expect(p.getByRole('alert')).toBeVisible();await p.getByRole('button',{name:'Új teljes mintatervezet',exact:true}).click();
+  await expect(p.getByText('1 beküldő üzenete szerepel · 0 hiányzó · 0 kifejezetten kizárt',{exact:true})).toBeVisible();
+  await expect.poll(async()=>(await pool.query("SELECT count(*)::int n FROM event_montage_versions WHERE kind='mock'")).rows[0].n).toBe(1);
+  const first=(await pool.query("SELECT draft FROM event_montage_versions WHERE kind='mock'")).rows[0].draft;
+  await p.getByLabel('Szerkesztendő elem').selectOption(first.pages[0].elements[0].id);
+  await p.getByLabel('Kivágás w',{exact:true}).fill('0.8');await p.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();
+  await expect.poll(async()=>(await pool.query('SELECT count(*)::int n FROM event_montage_versions')).rows[0].n).toBeGreaterThan(1);
+  await p.reload();await expect(p.getByText('1 beküldő üzenete szerepel · 0 hiányzó · 0 kifejezetten kizárt',{exact:true})).toBeVisible();
+  await p.getByLabel('Szerkesztendő elem').selectOption(first.pages[0].elements[0].id);await expect(p.getByLabel('Kivágás w',{exact:true})).toHaveValue('0.8');
+  await p.getByLabel('Rajz x',{exact:true}).fill('0.1');await p.getByRole('heading',{name:'Kijelölt elem',exact:true}).click();
+  await expect.poll(async()=>Number((await pool.query('SELECT draft FROM event_montage_versions ORDER BY created_at DESC LIMIT 1')).rows[0].draft.pages[0].elements[0].ink.x)).toBe(.1);
+  await p.getByRole('button',{name:'Ezt a könyvváltozatot jóváhagyom',exact:true}).click();await p.getByRole('button',{name:'Jóváhagyott PDF készítése',exact:true}).click();await expect(p.getByRole('link',{name:'Jóváhagyott ellenőrző PDF letöltése',exact:true})).toBeVisible();
+  const download=p.waitForEvent('download');await p.getByRole('link',{name:'Jóváhagyott ellenőrző PDF letöltése',exact:true}).click();assert.match((await download).suggestedFilename(),/memorybook-ellenorzo-[a-f0-9]+.pdf/);
+  await p.screenshot({path:`test-results/montage/${engine}-mobile.png`,fullPage:true});
+  const canvas=p.locator('canvas.upper-canvas');await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();assert.ok(b);
+  const x=b.x+b.width*.5,y=b.y+b.height*.15;await p.mouse.click(x,y);await p.mouse.click(x,y);await p.mouse.move(x,y);await p.mouse.down();await p.mouse.move(x+20,y+20,{steps:10});await p.mouse.up();
+  await expect(p.getByRole('button',{name:'Visszavonás',exact:true})).toBeEnabled();await p.getByRole('button',{name:'Visszavonás',exact:true}).click();await p.getByRole('button',{name:'Újra',exact:true}).click();
+  await p.getByRole('button',{name:'Változat mentése',exact:true}).click();await expect(p.getByRole('button',{name:'Jóváhagyott PDF készítése',exact:true})).toBeDisabled();
+  assert.ok((await pool.query('SELECT original_bytes FROM event_media WHERE id=$1',[media])).rows[0].original_bytes.equals(photo));
+  await p.goto(base+'/wedding/books/'+book+'/montage');
+  await expect(p.getByRole('link',{name:'Tervezet megnyitása és javítása',exact:true})).toBeVisible();
+  await expect(p.getByRole('button',{name:'Új teljes mintatervezet',exact:true})).toHaveCount(0);
+  await p.screenshot({path:`test-results/montage/${engine}-simple.png`,fullPage:true});
+ }finally{await browser?.close();await worker.stop();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();}
+});

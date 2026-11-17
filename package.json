@@ -16,9 +16,15 @@
     "start:internet-pilot": "tsx server/pilot/index.ts",
     "test:internet-pilot": "tsx --test tests/internet-pilot.test.ts",
     "invite:internet-pilot": "tsx scripts/pilot-owner-invite.ts",
-    "test:wedding-photo": "tsx --test tests/wedding-photo.test.ts tests/wedding-photo-browser.test.ts"
+    "test:wedding-photo": "tsx --test tests/wedding-photo.test.ts tests/wedding-photo-browser.test.ts",
+    "test:mcp": "tsx --test --test-force-exit tests/book-workflow.test.ts tests/mcp.test.ts tests/mcp-allowlist.test.ts",
+    "test:mcp-browser": "tsx --test --test-force-exit tests/mcp-book-browser.test.ts tests/montage-browser.test.ts",
+    "test:mcp-browser:chromium": "tsx --test --test-force-exit --test-name-pattern=\"MCP owner|chromium\" tests/mcp-book-browser.test.ts tests/montage-browser.test.ts",
+    "test:pilot-regression": "tsx --test --test-force-exit --test-timeout=120000 tests/wedding.test.ts tests/internet-pilot.test.ts tests/wedding-photo.test.ts tests/pilot-commerce.test.ts tests/full-flow.test.ts tests/pilot-startup.test.ts tests/wedding-photo-browser.test.ts tests/wedding-drawing-browser.test.ts tests/pilot-shop-browser.test.ts",
+    "pilot:mcp": "tsx scripts/mcp-local-demo.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/qrcode": "^1.5.5",
     "better-auth": "^1.7.3",
     "cloudinary": "^2.11.0",
@@ -26,6 +32,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fabric": "^7.4.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
@@ -38,6 +45,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
+    "@types/pdfkit": "^0.17.7",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

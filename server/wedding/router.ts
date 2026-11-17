@@ -164,8 +164,8 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
       FROM event_books WHERE invite_token=$1 AND ${productFilter}`, [req.params.token]);
     if (!result.rowCount) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
     const event=result.rows[0];
-    if(event.package_version)guestDevice(req,res);
-    else { delete event.package_version;delete event.submission_start;delete event.submission_end;delete event.access_state; }
+    guestDevice(req,res);
+    if(!event.package_version) { delete event.package_version;delete event.submission_start;delete event.submission_end;delete event.access_state; }
     res.json({ event, ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels } } : {}) });
   }));
   router.post('/guest/:token/submissions', handle(async (req, res) => {

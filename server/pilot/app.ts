@@ -7,6 +7,9 @@ import { cookieName, getPilotSession, ownerId, redeemInvite } from './auth';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { createCommerceRouter } from './commerce';
 import type { CommerceAuth } from './commerce-auth';
+import { createMontageRouter } from '../wedding/montage';
+import { createMemorybookMcpRouter } from '../mcp/server';
+import { createWorkflowRouter } from '../wedding/book-workflow';
 
 export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAuth) {
   const app = express();
@@ -27,6 +30,10 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
     if (!['GET', 'HEAD'].includes(req.method) && req.get('origin') !== origin) { res.status(403).json({ error: 'ORIGIN_NOT_ALLOWED' }); return; }
     next();
   });
+  const getSession = async (req: express.Request) => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req);
+  // Remote MCP/OAuth has its own bearer authentication and CSRF rules; it is not a public admin API.
+  app.use(createMemorybookMcpRouter(pool,origin,getSession));
+  app.use('/api/book-workflow',createWorkflowRouter(pool,getSession,origin));
   const attempts = new Map<string, { count: number; until: number }>();
   app.post('/api/pilot/redeem', express.json({ limit: '2kb' }), async (req, res) => {
     const now = Date.now();
@@ -51,10 +58,12 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
   app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(), shopAvailable:!!commerce,
     env: { NODE_ENV: 'production', WEDDING_ENABLED: 'true', PUBLIC_APP_URL: origin },
     getSession: async req => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req) }));
+  app.use('/api/montage',createMontageRouter(pool,async req=>(commerce?await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}):null)||await getPilotSession(pool,req),origin));
   app.use('/api', (_req, res) => { res.status(404).json({ error: 'NOT_FOUND' }); });
   app.get('/', (_req, res) => { res.redirect(commerce?'/pilot':'/wedding'); });
   app.get('/robots.txt', (_req, res) => { res.type('text').send('User-agent: *\nDisallow: /'); });
   app.use('/assets', express.static(resolve('dist/assets'), { fallthrough: false }));
+  app.use('/fonts',express.static(resolve('dist/fonts'),{fallthrough:false}));
   app.get(/^\/wedding(?:\/.*)?$/, (_req, res) => { res.sendFile(resolve('dist/index.html')); });
   if(commerce) app.get(/^\/pilot(?:\/.*)?$/,(_req,res)=>{res.sendFile(resolve('dist/index.html'));});
   app.use((_req, res) => { res.sendStatus(404); });

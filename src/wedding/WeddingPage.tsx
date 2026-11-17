@@ -243,6 +243,7 @@ export function WeddingPage() {
         </section> : capability && <>
           {!capability.authenticated ? <section className="wedding-card"><p>{capability.internetPilot ? 'A tulajdonosi hozzáféréshez nyisd meg a neked adott egyszer használható meghívót. Jelszó nem szükséges.' : t.loginHint}</p>{!capability.internetPilot && <a className="wedding-button" href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}>{t.login}</a>}</section> : book ? <>
             <a href={book.package_version?'/pilot/books':'/wedding'}>{book.package_version?wt.shop:t.back}</a><h1>{book.title}</h1><p>{book.starts_on} · {t.owner}</p>
+            {capability?.shopAvailable && <p><a href={'/wedding/books/'+book.id+'/montage'}>Montázs, jóváhagyás és ellenőrző PDF</a></p>}
             {book.submission_start&&book.submission_end&&<p>{wt.window} {time(book.submission_start)} – {time(new Date(new Date(book.submission_end).getTime()-1000).toISOString())}</p>}
             <section className="wedding-card"><h2>{t.qr}</h2>
               {book.closed_at ? <p role="status">{t.closed}</p> : <>

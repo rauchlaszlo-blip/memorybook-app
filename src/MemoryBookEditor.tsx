@@ -10,11 +10,14 @@ import * as fabric from 'fabric';
 import type { AppLanguage } from './i18n';
 import { getInviteEditorMessages } from './inviteEditorI18n';
 import { optimizeGuestImage } from './optimizeGuestImage';
+fabric.FabricObject.customProperties = [...new Set([...fabric.FabricObject.customProperties, 'montageId'])];
+// Preserve millimetre geometry through repeated canvas save/undo roundtrips.
+fabric.config.NUM_FRACTION_DIGITS = Math.max(fabric.config.NUM_FRACTION_DIGITS, 8);
 
 export interface PageData {
   id: string;
   pageNumber: number;
-  canvasData?: Record<string, any>;
+  canvasData?: Record<string, unknown>;
   previewImageUrl?: string;
   version: number;
 }
@@ -28,7 +31,7 @@ interface MemoryBookEditorProps {
   page: PageData;
   onSavePage: (
     pageId: string,
-    canvasJson: Record<string, any>,
+    canvasJson: Record<string, unknown>,
     previewDataUrl: string,
     expectedVersion: number
   ) => Promise<{ newVersion: number }>;
@@ -41,11 +44,14 @@ interface MemoryBookEditorProps {
   enableBackgroundControls?: boolean;
   compactLayout?: boolean;
   optimizeUploadedImages?: boolean;
+  montageMode?: boolean;
+  canvasHeight?: number;
+  onSelected?: (id: string | null) => void;
 }
 
 type PendingSave = {
   revision: number;
-  json: Record<string, any>;
+  json: Record<string, unknown>;
   previewUrl: string;
 };
 
@@ -61,7 +67,7 @@ type PageSaveState = {
 type WorkerResult = 'drained' | 'network-error' | 'conflict';
 
 const CANVAS_WIDTH = 750;
-const CANVAS_HEIGHT = 1064;
+
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const MAX_IMAGE_INITIAL_DIM = 400;
 const DEFAULT_TEXT_FONT_SIZE = 33;
@@ -174,7 +180,10 @@ const editorStyles: Record<string, React.CSSProperties> = {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false, montageMode = false, canvasHeight = 1064, onSelected }, ref) => {
+  const CANVAS_HEIGHT = canvasHeight;
+  const selectionCallback = useRef(onSelected);
+  useEffect(() => { selectionCallback.current = onSelected; }, [onSelected]);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -244,7 +253,7 @@ export const MemoryBookEditor = forwardRef<
       observer?.disconnect();
       window.removeEventListener('resize', updateScale);
     };
-  }, [compactLayout]);
+  }, [compactLayout, CANVAS_HEIGHT]);
 
   const getPageState = useCallback(
     (pageId: string, initialVersion = 1): PageSaveState => {
@@ -312,13 +321,14 @@ export const MemoryBookEditor = forwardRef<
               state.mutationRevision === state.savedRevision && !state.pending;
             setSaveStatus(isFullySynced ? 'saved' : 'unsaved');
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           state.pending = snapshotToSave;
+          const failure = err && typeof err === 'object' ? err as {status?:unknown;message?:unknown} : {};
 
           if (
-            err?.status === 409 ||
-            err?.message?.includes('conflict') ||
-            err?.message === 'PAGE_CONFLICT'
+            failure.status === 409 ||
+            (typeof failure.message === 'string' && failure.message.includes('conflict')) ||
+            failure.message === 'PAGE_CONFLICT'
           ) {
             state.conflict = true;
 
@@ -373,7 +383,7 @@ export const MemoryBookEditor = forwardRef<
   const enqueueSave = useCallback(
     (
       targetPageId: string,
-      explicitJson?: Record<string, any>,
+      explicitJson?: Record<string, unknown>,
       explicitPreviewUrl?: string,
       explicitRevision?: number
     ): Promise<void> => {
@@ -539,8 +549,8 @@ export const MemoryBookEditor = forwardRef<
     fabricRef.current = canvas;
 
     const brush = new fabric.PencilBrush(canvas);
-    brush.color = brushColor;
-    brush.width = brushWidth;
+    brush.color = '#1F2937';
+    brush.width = 5;
     canvas.freeDrawingBrush = brush;
 
     canvas.on('object:modified', () =>
@@ -636,6 +646,7 @@ export const MemoryBookEditor = forwardRef<
     const syncSelectionState = () => {
       const activeObject = canvas.getActiveObject();
       setHasSelection(canvas.getActiveObjects().length > 0);
+      selectionCallback.current?.(activeObject?.get('montageId') || null);
       if (activeObject) configureObjectControls(activeObject);
     };
 
@@ -733,7 +744,7 @@ export const MemoryBookEditor = forwardRef<
       canvas.dispose();
       fabricRef.current = null;
     };
-  }, []);
+  }, [CANVAS_HEIGHT]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -788,6 +799,7 @@ export const MemoryBookEditor = forwardRef<
       );
 
       try {
+        if (montageMode) await document.fonts.load('12px "DejaVu Sans"');
         if (currentState.pending) {
           await canvas.loadFromJSON(
             currentState.pending.json,
@@ -825,7 +837,13 @@ export const MemoryBookEditor = forwardRef<
           }
 
           constrainTextboxToCanvas(configuredObject);
+          const montageRotationLocked = configuredObject.lockRotation;
           configureObjectControls(configuredObject);
+          if (montageMode) {
+            configuredObject.set({ lockRotation: montageRotationLocked, lockSkewingX: true, lockSkewingY: true });
+            configuredObject.setControlsVisibility({ mtr: !configuredObject.lockRotation, ml: false, mr: false, mt: false, mb: false });
+            if (configuredObject instanceof fabric.Textbox) configuredObject.editable = false;
+          }
         });
         canvas.renderAll();
 
@@ -843,8 +861,8 @@ export const MemoryBookEditor = forwardRef<
 
           setSaveStatus(isSynced ? 'saved' : 'unsaved');
         }
-      } catch (err: any) {
-        if (err?.name !== 'AbortError') {
+      } catch (err: unknown) {
+        if (!(err instanceof Error) || err.name !== 'AbortError') {
           console.error('Hiba az oldal betA�ltA�se kA�zben:', err);
         }
       } finally {
@@ -861,7 +879,7 @@ export const MemoryBookEditor = forwardRef<
         loadAbortControllerRef.current.abort();
       }
     };
-  }, [page.id, enqueueSave, getPageState, updateHistoryButtons]);
+  }, [page.id, enqueueSave, getPageState, updateHistoryButtons, montageMode, CANVAS_HEIGHT]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -909,7 +927,7 @@ export const MemoryBookEditor = forwardRef<
       canvas.freeDrawingBrush.width = isErasing
         ? eraserWidth
         : Math.max(1, Math.round(brushWidth * profile.widthMultiplier));
-      (canvas.freeDrawingBrush as any).strokeLineCap = brushTool === 'brush' ? 'round' : 'butt';
+      canvas.freeDrawingBrush.strokeLineCap = brushTool === 'brush' ? 'round' : 'butt';
     }
   }, [isDrawing, isErasing, brushColor, brushWidth, brushTool, eraserWidth]);
 
@@ -1250,8 +1268,9 @@ export const MemoryBookEditor = forwardRef<
 
   return (
     <div
+      className={montageMode ? 'memorybook-montage-mode' : undefined}
       style={{
-        minHeight: compactLayout ? 'auto' : '100vh',
+        minHeight: compactLayout || montageMode ? 'auto' : '100vh',
         width: '100%',
         maxWidth: '100vw',
         overflowX: 'hidden',
@@ -1319,6 +1338,13 @@ export const MemoryBookEditor = forwardRef<
           }
         }
       `}</style>
+      {montageMode && <div style={{display:'flex',gap:8,padding:8,flexWrap:'wrap'}}>
+        <button onClick={handleSelectMode}>Mozgatás / méretezés</button>
+        <button onClick={handleUndo} disabled={!canUndo}>Visszavonás</button>
+        <button onClick={handleRedo} disabled={!canRedo}>Újra</button>
+        <span role="status">{saveStatus === 'saved' ? 'Mentve' : saveStatus === 'saving' ? 'Mentés…' : 'Még nincs mentve – a rajzfelület megőrzi a módosítást'}</span>
+        <style>{`.memorybook-montage-mode .memorybook-editor-toolbar{display:none!important}`}</style>
+      </div>}
 
       <div
         ref={toolbarRef}
