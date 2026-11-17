@@ -32,7 +32,7 @@ A felhasználó külön engedélyezte a saját gép egyetlen /32 IP-címének id
 5. Új kiadás és hivatalos MCP SDK-val HTTPS OAuth, eszközfelfedezés, képbájtok, verziómentés, tulajdonosi jóváhagyás és védett PDF-export ellenőrzés. A technikai próba grantjét visszavonjuk.
 6. Tulajdonosi böngészős próba és pontos felhasználói kapcsolódási útmutató.
 
-Az internetes ellenőrzés eredményeit a végrehajtás után alább kell rögzíteni. A hivatalos SDK-próba nem tényleges ChatGPT-kapcsolat; a mobil nézet nem fizikai telefonos PASS. Titkos tokenek és belépési adatok nem kerülnek ebbe a naplóba vagy Gitbe.
+Az internetes végrehajtás tényleges eredményei alább szerepelnek. A hivatalos SDK-próba nem tényleges ChatGPT-kapcsolat; a mobil nézet nem fizikai telefonos PASS. Titkos tokenek és belépési adatok nem kerülnek ebbe a naplóba vagy Gitbe.
 
 ## Tényleges internetes végrehajtás
 
@@ -50,3 +50,15 @@ Az internetes ellenőrzés eredményeit a végrehajtás után alább kell rögz�
 Bizonyítékok (Gitből kizárva): `test-results/mcp-internet/{seed-verification,verification,anonymous-security,preservation-verification,pdf-validation,browser-verification}.json`, `approved-proof.pdf`, `mcp-image.png`, PDF-oldalképek és böngészőképek. A próbarendezés determinisztikus tesztterv; nem állítjuk, hogy ChatGPT készítette.
 
 **Valódi ChatGPT-fiókos eszközfelfedezés/képértés/írás és fizikai Samsung/iPhone: NYITOTT.** A felhasználói csatlakozási lépések és pontos HTTPS-/tulajdonosi címek a [bekötési útmutatóban](MCP_CONNECTION_20261117.md) találhatók. Az ingyenes adatbázis 2026-12-07-én lejár; a jelen mentés helyben megmarad, automatikus fizetős váltást nem kértünk.
+
+## Végső kiadás és újraindítás utáni ellenőrzés
+
+- Telepített alkalmazáscommit: `ee56f11b3e0af114acdb07a840bbe65bd5ef9045`; deploy `dep-dbtuorqfngtc73a9uc70`, **LIVE 2026-11-17 05:57:04 UTC**.
+- A telefonos PDF-link térköze javítva, a kijelentkezett tulajdonos közvetlen próbalinkjén érthető belépési útmutató jelenik meg. Frontend típusellenőrzés/build és érintett lint PASS.
+- Végső élő böngészőpróba: asztali + 390 px érintéses emuláció **PASS**. Mindkettőben a várt jóváhagyott verzió, 30 sikeres képválasz, beágyazott font és tényleges vászontartalom. A PDF-link már nem takarja a verziósort (mobilon 4 px térköz); vízszintes túlcsordulás 0. Névtelen mobilnézet 401-es védelem és tulajdonosi belépési link, privát könyvtartalom nélkül. Minden író kérés tiltva a próba során; a mentett szerverállapot változatlan.
+- Új kiadás/újraindítás után **PASS**: meglévő tulajdonosi session, pillanatkép, mentett változat, jóváhagyás és exportmunka megmaradt. A letöltött PDF SHA-256 lenyomata azonos; aktív technikai MCP-grant 0 (a próba grantje visszavonva maradt).
+- Az összes korábbi pilotadat élő HTTPS összehasonlítását a végső kiadás után ismételtük: 7 könyv, 17 beküldés, 10 eredeti kép és 4 rajzréteg továbbra is egyezik a kiadás előtti mentéssel.
+- Main SHA változatlan: `5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff`. Az éles MemoryBook szolgáltatás beállításai és kiadása változatlanok. Új szolgáltatás, csomagváltás, külső modellhívás vagy fizetés nem történt.
+- Végső bizonyíték: `restart-verification.json`, friss `preservation-verification.json` és `browser-verification.json`; képek: `mobile-workflow.png`, `mobile-anonymous-login.png`, asztali/mobil szerkesztő és vászon. Mind a `test-results/mcp-internet` könyvtárban, Gitből kizárva.
+
+A napló ezt követő dokumentációs commitja nem módosítja a telepített alkalmazáskódot; az automatikus deploy kikapcsolva marad.

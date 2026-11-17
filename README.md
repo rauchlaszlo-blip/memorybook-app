@@ -1,13 +1,18 @@
 # MemoryBook
 
-## 2026-11-17 local MCP book pilot
+## 2026-11-17 isolated internet MCP book pilot
 
-The current, unpublished pilot uses authenticated remote MCP (Streamable HTTP),
+The separate pilot uses authenticated remote MCP (Streamable HTTP),
 editable source-linked book versions, owner approval and a durable PDF export queue.
 It builds on the wedding editor; the historical WebMCP demo below is a separate integration.
-See [the current handoff](docs/MCP_PILOT_20261117.md) and
+The pilot endpoint is https://memorybook-wedding-text-pilot-ukd0.onrender.com/mcp,
+restricted to one explicitly fictional book. See the
+[verified release](docs/MCP_INTERNET_RELEASE_20261117.md),
+[original local handoff](docs/MCP_PILOT_20261117.md) and
 [ChatGPT connection instructions](docs/MCP_CONNECTION_20261117.md).
-No deployment, commit or push is authorized by this implementation task.
+Commit, pilot-branch push and deployment were subsequently authorized and completed.
+Main and production are unchanged. HTTPS SDK and browser checks passed;
+actual ChatGPT connection and physical-phone acceptance remain untested.
 
 ## Judge Quick Start
 
