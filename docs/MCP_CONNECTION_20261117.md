@@ -87,11 +87,11 @@ A függő vagy kihagyott források szűrése nem jelenthet néma hozzájárulóv
 
 ## Jelenlegi médiakorlát
 
-A korábbi V7 kiadás JPEG/PNG képet és külön rajz-/kézírás-annotációt támogatott, hangot/videót még nem. A V8 munkaváltozat rövid hang- és videóeredetiket is fogad, megőriz és a tulajdonosnak védett lejátszást ad. A `get_book.mediaSupport` külön jelzi: `audioUpload:true`, `videoUpload:true`, `ownerPlayback:true`, ugyanakkor `audioVideoInterpretation:false`, `audioVideoPdfEmbedding:false`, `transcription:false`, `permanentMediaQr:false`.
+A korábbi V7 kiadás JPEG/PNG képet és külön rajz-/kézírás-annotációt támogatott, hangot/videót még nem. A 2026-11-17-én külön pilotra telepített V8 (`57e2434`) rövid hang- és videóeredetiket is fogad, megőriz és a tulajdonosnak védett lejátszást ad. A `get_book.mediaSupport` külön jelzi: `audioUpload:true`, `videoUpload:true`, `ownerPlayback:true`, ugyanakkor `audioVideoInterpretation:false`, `audioVideoPdfEmbedding:false`, `transcription:false`, `permanentMediaQr:false`.
 
 A `get_media` fotónál továbbra is valódi MCP `image` blokkot ad. Hangnál/videónál kizárólag típust, MIME-t, mért időtartamot és jogosultságvédett eredeti letöltési URL-t közöl; nincs képpé alakított helyettesítő vagy automatikus átirat. A letöltés OAuth/tulajdonosi hozzáférést igényel, támogatott az egyszeres bájttartomány-kérés, és az MCP tartalmi zárja a régi pillanatképre is vonatkozik. A felvétel puszta metaadat-lekérése nem jelenti, hogy az asszisztens meghallgatta vagy megnézte. Az eredeti felvétel PDF-be vagy tartós QR mögé nem kerül.
 
-A bővített helyi MCP SDK-regresszió **6/6 PASS**: mindkét felvételtípus tényleges, szintetikus eredetije letölthető a jogosult klienssel, tiltott idegen/névtelen hozzáféréssel és új jelzés után. Ez nem élő AV- vagy fizikai telefonos próba; a korábbi internetes PASS eredmények történeti szakaszra vonatkoznak.
+A bővített helyi MCP SDK-regresszió **6/6 PASS**: mindkét felvételtípus tényleges, szintetikus eredetije letölthető a jogosult klienssel, tiltott idegen/névtelen hozzáféréssel és új jelzés után. A külön élő vendégbeküldési és tulajdonosi HTTPS-próbák eredménye a [kamera- és mikrofonjelentésben](GUEST_CAPTURE_20261117.md) olvasható. Ezek nem valódi ChatGPT-eszközhívások vagy fizikai telefonos próbák; azok továbbra is NYITOTTAK.
 
 ## Ellenőrzési bizonyíték
 
