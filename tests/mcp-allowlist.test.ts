@@ -108,6 +108,8 @@ test('MCP deployment allowlist excludes a second owned book from consent, old gr
     assert.equal((await call('get_book', { bookId: allowed.id })).isError, undefined);
     for (const [name, args] of [
       ['get_book', { bookId: excluded.id }],
+      ['list_content_flags', { bookId: excluded.id }],
+      ['create_content_flag', { bookId: excluded.id, key: randomUUID(), sourceId: excluded.sourceId, categories: ['offensive_text'], reason: 'Fiktív bizonytalan kézi ellenőrzési jelzés.', scope: { kind: 'unspecified' } }],
       ['list_submissions', { bookId: excluded.id }],
       ['get_submission', { bookId: excluded.id, submissionId: excluded.sourceId }],
       ['get_media', { bookId: excluded.id, mediaId: excluded.mediaId }],

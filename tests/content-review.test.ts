@@ -1,0 +1,157 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import { Pool } from 'pg';
+import sharp from 'sharp';
+import { migrateWedding } from '../server/wedding/migrate';
+import { localDatabaseUrl } from '../server/wedding/local-db';
+import { createContentReviewService, ContentReviewError, reviewState, filterReviewSources, reviewDraftPolicy, getReviewClearance, clearReviewForVersion } from '../server/wedding/content-review';
+import { createWorkflowService } from '../server/wedding/book-workflow';
+import { montageSources } from '../server/wedding/montage-sources';
+import { blankElement, defaultProfile } from '../shared/montage';
+import type { Draft } from '../shared/montage';
+import type { CreateReviewInput, DecideReviewInput } from '../shared/content-review';
+
+const errorCode = (code: string) => (e: unknown) => e instanceof ContentReviewError && e.code === code;
+const full = { kind: 'full' as const };
+test('content review domain: immutable evidence, exact hashes, strict actors, scopes, changes and release clearances', { timeout: 90000 }, async t => {
+  const connectionString = localDatabaseUrl(), schema = 'content_review_' + randomUUID().replaceAll('-', '');
+  const admin = new Pool({ connectionString }); await admin.query(`CREATE SCHEMA ${schema}`);
+  const pool = new Pool({ connectionString, options: `-c search_path=${schema}` });
+  const bookId = randomUUID(), otherBook = randomUUID(), sourceId = randomUUID(), otherSource = randomUUID(), mediaId = randomUUID();
+  const owner = { ownerId: 'fictional-review-owner', kind: 'owner' as const }, mcp = { ...owner, kind: 'mcp' as const, allowedBookIds: [bookId, otherBook] };
+  const service = createContentReviewService(pool), workflow = createWorkflowService(pool);
+  const flag = (overrides: Partial<CreateReviewInput> = {}): CreateReviewInput => ({ key: randomUUID(), sourceId, categories: ['offensive_text'], reason: 'Ártalmatlan fiktív jelzés tesztelésre.', scope: full, ...overrides });
+  const decide = (decision: DecideReviewInput['decision'], overrides: Partial<DecideReviewInput> = {}): DecideReviewInput => ({ key: randomUUID(), decision, scope: full, ...overrides });
+  const previousAllowlist = process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS;
+  try {
+    await migrateWedding(pool); await migrateWedding(pool);
+    for (const id of [bookId, otherBook]) await pool.query(`INSERT INTO event_books(id,owner_user_id,product,event_type,title,subjects,template_id,template_version,invite_token,closed_at) VALUES($1,$2,'celebration','wedding','Kitalált átnézés','[]','wedding-classic',1,$3,CURRENT_TIMESTAMP)`, [id, owner.ownerId, randomUUID()]);
+    for (const id of [sourceId, otherSource]) await pool.query('INSERT INTO event_submissions(id,book_id,idempotency_key,guest_name,message,guest_device_id) VALUES($1,$2,$3,$4,$5,$6)', [id, bookId, randomUUID(), 'Azonos fiktív név', 'Árvíztűrő, eredeti és változatlan üzenet.', 'fictional-' + id]);
+    const original = await sharp({ create: { width: 32, height: 24, channels: 3, background: '#ddbb99' } }).png().toBuffer();
+    await pool.query(`INSERT INTO event_media(id,book_id,upload_key,submission_id,mime_type,original_size,sha256,width,height,state,original_bytes,preview_bytes,display_bytes,stored_size) VALUES($1,$2,$3,$4,'image/png',$5,$6,32,24,'attached',$7,$7,$7,$8)`, [mediaId, bookId, randomUUID(), sourceId, original.length, createHash('sha256').update(original).digest('hex'), original, original.length * 3]);
+    const snapshot = await workflow.createSnapshot(owner, bookId, { key: randomUUID(), selectedIds: [sourceId, otherSource] });
+    const draft: Draft = { schema: 1, format: 'A4', spread: false, selected: [sourceId, otherSource], excluded: [], profile: structuredClone(defaultProfile), pages: [{ id: 'p1', background: '#ffffff', locked: false, elements: [{ ...blankElement('text1', sourceId), text: snapshot.sources.find(s => s.id === sourceId)!.message }, { ...blankElement('photo1', sourceId), kind: 'photo', mediaId }] }] };
+    const versionId = randomUUID();
+    await pool.query(`INSERT INTO event_montage_versions(id,book_id,owner_id,action_key,request_hash,kind,draft,snapshot_id) VALUES($1,$2,$3,$4,'fictional-review','manual',$5,$6)`, [versionId, bookId, owner.ownerId, randomUUID(), JSON.stringify(draft), snapshot.id]);
+    await t.test('default unreviewed and strict validation/authorization including old grants', async () => {
+      const clean = await service.list(owner, bookId); assert.equal(clean.totalCount, 0); assert.equal(clean.targetCount, 3); assert.equal(clean.pendingCount, 0);
+      assert.ok(clean.items.every(i => i.status === 'unreviewed' && i.decision === null));
+      const text = clean.items.find(i => i.sourceId === sourceId && !i.mediaId)!;
+      await assert.rejects(service.decide(owner, bookId, text.id, decide('allowed')), errorCode('CONTENT_NOT_FLAGGED'));
+      await assert.rejects(service.list({ ...owner, ownerId: 'foreign' }, bookId), errorCode('BOOK_NOT_FOUND'));
+      await assert.rejects(service.list({ ...mcp, allowedBookIds: [] }, bookId), errorCode('BOOK_NOT_FOUND'));
+      process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS = bookId;
+      await assert.rejects(service.list(mcp, otherBook), errorCode('BOOK_NOT_FOUND'));
+      process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS = '';
+      await assert.rejects(service.create(mcp, bookId, flag()), errorCode('BOOK_NOT_FOUND'));
+      delete process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS;
+      for (const malicious of [{ origin: 'machine' }, { decision: 'allowed' }, { actor: owner }, { key: [randomUUID()] }, { sourceId: [sourceId] }, { scope: { kind: ['full'] } }, { categories: ['offensive_text', 'offensive_text'] }, { scope: { kind: 'partial', startSeconds: 5, endSeconds: 2 } }]) {
+        await assert.rejects(service.create(owner, bookId, { ...flag(), ...malicious } as unknown as CreateReviewInput), errorCode('INVALID_CONTENT_REVIEW'));
+      }
+      await assert.rejects(service.create(owner, bookId, flag({ expectedContentHash: '0'.repeat(64) })), errorCode('CONTENT_REVIEW_CONFLICT'));
+    });
+    let textId = '', photoId = '';
+    await t.test('grouped multi-category flags are idempotent, independent and audited', async () => {
+      const input = flag({ categories: ['possible_extremist', 'offensive_text'] });
+      const pair = await Promise.all([service.create(mcp, bookId, input), service.create(mcp, bookId, input)]);
+      textId = pair[0].item.id; assert.equal(pair[1].item.id, textId); assert.equal(pair[0].item.flags.length, 2); assert.equal(pair[0].revision, 1); assert.equal(pair[1].revision, 1);
+      assert.ok(pair[0].item.flags.every(f => f.origin === 'mcp')); assert.equal(pair[0].item.affectedPages[0].versionId, versionId);
+      await assert.rejects(service.create(mcp, bookId, { ...input, reason: 'Eltérő kérés.' }), errorCode('IDEMPOTENCY_CONFLICT'));
+      const duplicate = await service.create(mcp, bookId, { ...input, key: randomUUID(), reason: 'Más szöveg, ugyanaz a jelzés.' });
+      assert.equal(duplicate.item.flags.length, 2); assert.equal(duplicate.replayed, true); assert.equal(duplicate.revision, 1);
+      const ownerFlag = await service.create(owner, bookId, flag()); assert.equal(ownerFlag.item.flags.length, 3); assert.equal(ownerFlag.item.flags.filter(f => f.origin === 'manual').length, 1);
+      const photo = await service.create(mcp, bookId, flag({ mediaId, categories: ['possible_sexual'], scope: { kind: 'partial', startSeconds: 1, endSeconds: 2, note: 'Részlet' } })); photoId = photo.item.id;
+      assert.notEqual(photoId, textId); assert.equal((await service.list(owner, bookId, { status: 'pending' })).pendingCount, 2);
+      const filtered = filterReviewSources(snapshot.sources, await reviewState(pool, bookId, snapshot.sources, { snapshotId: snapshot.id }));
+      assert.equal(filtered.sources.find(s => s.id === sourceId)!.message, ''); assert.equal(filtered.sources.find(s => s.id === sourceId)!.review!.originalHasMessage, true); assert.equal(filtered.sources.find(s => s.id === sourceId)!.media.length, 0);
+      assert.equal(filtered.sources.find(s => s.id === otherSource)!.message, snapshot.sources.find(s => s.id === otherSource)!.message);
+      assert.equal(snapshot.sources.find(s => s.id === sourceId)!.media.length, 1);
+      assert.equal(filtered.contentReview.omittedItems.length, 2); assert.equal(filtered.contentReview.omittedContributors.length, 1); assert.equal(filtered.contentReview.partialOmissions.length, 0);
+      assert.equal(filtered.contentReview.omittedContributors[0].guestId, snapshot.sources.find(s => s.id === sourceId)!.guestId);
+      assert.deepEqual(filtered.contentReview.omittedContributors[0].reasonLabels, ['Átnézésre váró tartalom miatt kimaradt.']);
+      const sameGuest = structuredClone(snapshot.sources); sameGuest.find(s => s.id === otherSource)!.guestId = sameGuest.find(s => s.id === sourceId)!.guestId;
+      const anotherCleanMessage = filterReviewSources(sameGuest, await reviewState(pool, bookId, snapshot.sources, { snapshotId: snapshot.id }));
+      assert.equal(anotherCleanMessage.contentReview.omittedContributors.length, 0); assert.equal(anotherCleanMessage.contentReview.partialOmissions.length, 2, 'a clean second submission keeps the contributor represented');
+      const p = await reviewDraftPolicy(pool, bookId, draft, snapshot.sources, { versionId, snapshotId: snapshot.id });
+      assert.equal(p.blocked, true); assert.deepEqual(p.affectedPages, [1]); assert.deepEqual(new Set(p.blockedElementIds), new Set(['text1', 'photo1']));
+      await assert.rejects(service.decide(mcp, bookId, textId, decide('allowed')), errorCode('OWNER_REVIEW_REQUIRED'));
+      await assert.rejects(service.decide(owner, bookId, textId, { ...decide('allowed'), decision: ['allowed'] } as unknown as DecideReviewInput), errorCode('INVALID_CONTENT_REVIEW'));
+    });
+    await t.test('stale owner decisions cannot resolve unseen new flags; retry precedes revision CAS', async () => {
+      const viewed = await service.list(owner, bookId);
+      const newFlag = await service.create(mcp, bookId, flag({ categories: ['possible_sexual'] }));
+      await assert.rejects(service.decide(owner, bookId, textId, decide('allowed', { expectedRevision: viewed.revision })), errorCode('CONTENT_REVIEW_CONFLICT'));
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM event_content_review_decisions WHERE item_id=$1', [textId])).rows[0].n), 0);
+      for (const expectedRevision of [-1, 1.5, '1', [newFlag.revision]]) await assert.rejects(service.decide(owner, bookId, textId, { ...decide('allowed'), expectedRevision } as unknown as DecideReviewInput), errorCode('INVALID_CONTENT_REVIEW'));
+      const requests = [decide('allowed', { expectedRevision: newFlag.revision }), decide('omit', { expectedRevision: newFlag.revision })];
+      const race = await Promise.allSettled(requests.map(input => service.decide(owner, bookId, textId, input)));
+      assert.equal(race.filter(r => r.status === 'fulfilled').length, 1); assert.equal(race.filter(r => r.status === 'rejected' && errorCode('CONTENT_REVIEW_CONFLICT')(r.reason)).length, 1);
+      const index = race.findIndex(r => r.status === 'fulfilled'), successful = race[index]; assert.equal(successful.status, 'fulfilled');
+      const replay = await service.decide(owner, bookId, textId, requests[index]); assert.equal(replay.replayed, true); assert.equal(replay.revision, successful.value.revision);
+      assert.equal(Number((await pool.query('SELECT count(*) n FROM event_content_review_decisions WHERE item_id=$1', [textId])).rows[0].n), 1);
+    });
+    await t.test('partial decisions do not clear whole media and reversible decisions preserve history', async () => {
+      const partial = await service.decide(owner, bookId, photoId, decide('allowed', { scope: { kind: 'partial', startSeconds: 1, endSeconds: 2 } }));
+      assert.equal(partial.item.decision, null); assert.equal(partial.item.status, 'pending'); assert.equal(partial.item.history[0].decision, 'allowed');
+      const request = decide('false_positive', { note: 'Fiktív geometriai próba, teljesen átnézve.' });
+      const fullDecision = await service.decide(owner, bookId, photoId, request);
+      assert.equal(fullDecision.item.decision, 'false_positive'); assert.equal(fullDecision.item.history.length, 2);
+      assert.equal((await service.decide(owner, bookId, photoId, request)).revision, fullDecision.revision);
+      await assert.rejects(service.decide(owner, bookId, photoId, { ...request, decision: 'omit' }), errorCode('IDEMPOTENCY_CONFLICT'));
+      await service.decide(owner, bookId, textId, decide('private_only'));
+      assert.equal((await reviewDraftPolicy(pool, bookId, draft, snapshot.sources, { snapshotId: snapshot.id })).blocked, false);
+      const shareable = { ...draft, editionVariant: 'shareable' as const };
+      const blocked = await reviewDraftPolicy(pool, bookId, shareable, snapshot.sources, { snapshotId: snapshot.id }); assert.equal(blocked.blocked, true); assert.deepEqual(blocked.restrictedIds, [textId]);
+      const privateOnly = filterReviewSources(snapshot.sources, await reviewState(pool, bookId, snapshot.sources, { snapshotId: snapshot.id }), 'shareable');
+      assert.equal(privateOnly.sources.find(s => s.id === sourceId)!.message, ''); assert.equal(privateOnly.sources.find(s => s.id === sourceId)!.media.length, 1);
+      assert.equal(privateOnly.contentReview.omittedItems.length, 1); assert.equal(privateOnly.contentReview.partialOmissions.length, 1); assert.equal(privateOnly.contentReview.omittedContributors.length, 0, 'a clean photo means the contributor is not wholly omitted');
+      await service.decide(owner, bookId, textId, decide('allowed'));
+      const policy = await reviewDraftPolicy(pool, bookId, draft, snapshot.sources, { snapshotId: snapshot.id }); assert.equal(policy.blocked, false); assert.equal(policy.requiresReview, true);
+      const db = await pool.connect(); try { await db.query('BEGIN'); await clearReviewForVersion(db, bookId, versionId, policy.revision, owner.ownerId); await db.query('COMMIT'); } finally { db.release(); }
+      const clearance = await getReviewClearance(pool, bookId, versionId);
+      assert.equal((await reviewDraftPolicy(pool, bookId, draft, snapshot.sources, { snapshotId: snapshot.id, clearanceRevision: clearance })).requiresReview, false);
+      await service.decide(owner, bookId, textId, decide('omit')); await service.decide(owner, bookId, textId, decide('allowed'));
+      assert.equal((await reviewDraftPolicy(pool, bookId, draft, snapshot.sources, { snapshotId: snapshot.id, clearanceRevision: clearance })).requiresReview, true);
+      await assert.rejects(pool.query("UPDATE event_content_review_decisions SET decision='allowed' WHERE item_id=$1", [textId]), /Immutable/);
+      await assert.rejects(pool.query('DELETE FROM event_content_review_flags WHERE item_id=$1', [textId]), /Immutable/);
+      assert.ok(Number((await pool.query("SELECT count(*) n FROM event_book_audit WHERE operation='content.decided'")).rows[0].n) >= 6);
+    });
+    await t.test('changed live content cannot inherit an old decision; snapshot hashes remain exact', async () => {
+      const before = (await service.list(owner, bookId)).items.find(i => i.id === textId)!;
+      await pool.query('UPDATE event_submissions SET message=$2 WHERE id=$1', [sourceId, 'Módosult, külön átnézendő fiktív üzenet.']);
+      const changed = (await service.list(owner, bookId, { sourceId, status: 'changed' })).items.find(i => i.kind === 'text')!;
+      assert.notEqual(changed.id, textId); assert.equal(changed.decision, null); assert.equal(changed.contentChanged, true); assert.ok(changed.flags.some(f => f.evidenceContentHash === before.contentHash));
+      await assert.rejects(service.create(owner, bookId, flag({ expectedContentHash: before.contentHash })), errorCode('CONTENT_REVIEW_CONFLICT'));
+      const resolved = await service.decide(owner, bookId, changed.id, decide('allowed')); assert.equal(resolved.item.contentChanged, false); assert.equal(resolved.item.decision, 'allowed');
+      const oldSnapshot = await reviewState(pool, bookId, snapshot.sources, { snapshotId: snapshot.id }); assert.equal(oldSnapshot.items.find(i => i.id === textId)!.contentHash, before.contentHash); assert.equal(oldSnapshot.items.find(i => i.id === textId)!.decision, 'allowed');
+      const livePhoto = (await service.list(owner, bookId)).items.find(i => i.id === photoId)!;
+      const replacement = await sharp({ create: { width: 32, height: 24, channels: 3, background: '#11aaee' } }).png().toBuffer();
+      await pool.query('UPDATE event_media SET original_bytes=$2,original_size=octet_length($2::bytea),stored_size=octet_length($2::bytea)+octet_length(preview_bytes)+octet_length(display_bytes) WHERE id=$1', [mediaId, replacement]);
+      const changedPhoto = (await service.list(owner, bookId)).items.find(i => i.mediaId === mediaId)!; assert.notEqual(changedPhoto.contentHash, livePhoto.contentHash); assert.equal(changedPhoto.decision, null);
+      const frozen = (await reviewState(pool, bookId, snapshot.sources, { snapshotId: snapshot.id })).items.find(i => i.mediaId === mediaId)!; assert.equal(frozen.contentHash, livePhoto.contentHash); assert.equal(frozen.decision, 'false_positive');
+      assert.equal((await pool.query('SELECT original_bytes FROM event_book_snapshot_media WHERE snapshot_id=$1 AND media_id=$2', [snapshot.id, mediaId])).rows[0].original_bytes.equals(original), true);
+    });
+    await t.test('edited text flags follow exact content across new versions, IDs and captions', async () => {
+      const edited = structuredClone(draft); edited.pages[0].elements = [{ ...blankElement('edited1', otherSource), edited: true, textRole: 'caption', text: 'Szerkesztett próbaképaláírás.' }];
+      const editedVersion = randomUUID(); await pool.query(`INSERT INTO event_montage_versions(id,book_id,owner_id,action_key,request_hash,kind,draft,snapshot_id) VALUES($1,$2,$3,$4,'edited-review','manual',$5,$6)`, [editedVersion, bookId, owner.ownerId, randomUUID(), JSON.stringify(edited), snapshot.id]);
+      const result = await service.create(mcp, bookId, flag({ sourceId: otherSource, versionId: editedVersion, elementId: 'edited1' }));
+      assert.equal(result.item.text, 'Szerkesztett próbaképaláírás.'); assert.equal((await service.list(owner, bookId, { versionId: editedVersion })).items.some(i => i.id === result.item.id), true);
+      const laterVersion = randomUUID(); await pool.query(`INSERT INTO event_montage_versions(id,book_id,owner_id,action_key,request_hash,kind,draft,snapshot_id) VALUES($1,$2,$3,$4,'later-review','manual',$5,$6)`, [laterVersion, bookId, owner.ownerId, randomUUID(), JSON.stringify(draft), snapshot.id]);
+      assert.equal((await service.list(mcp, bookId)).items.some(i => i.id === result.item.id), true, 'an earlier edited flag remains discoverable');
+      const clone = structuredClone(edited); clone.pages[0].elements[0].id = 'cloned';
+      assert.equal((await reviewDraftPolicy(pool, bookId, clone, snapshot.sources, { snapshotId: snapshot.id })).blocked, true);
+      const different = structuredClone(clone); different.pages[0].elements[0].text = 'Átírt rész, amely új átnézést igényel.';
+      const changed = await reviewState(pool, bookId, snapshot.sources, { draft: different, snapshotId: snapshot.id });
+      assert.equal(changed.items.find(i => i.elementId === 'cloned')!.contentChanged, true);
+      await service.decide(owner, bookId, result.item.id, decide('allowed'));
+      assert.equal((await reviewDraftPolicy(pool, bookId, clone, snapshot.sources, { snapshotId: snapshot.id })).blocked, false);
+      await service.create(mcp, bookId, flag({ sourceId: otherSource }));
+      assert.equal((await reviewDraftPolicy(pool, bookId, clone, snapshot.sources, { snapshotId: snapshot.id })).blocked, true, 'underlying source flag also gates an allowed edited caption');
+      assert.equal((await montageSources(pool, bookId)).length, 2); assert.equal(Number((await pool.query('SELECT count(*) n FROM event_media')).rows[0].n), 1);
+    });
+  } finally {
+    if (previousAllowlist === undefined) delete process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS; else process.env.MEMORYBOOK_MCP_ALLOWED_BOOK_IDS = previousAllowlist;
+    await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end();
+  }
+});

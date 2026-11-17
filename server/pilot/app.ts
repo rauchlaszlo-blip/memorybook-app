@@ -55,7 +55,7 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
     app.all('/api/auth/*splat', toNodeHandler(commerce.auth));
     app.use('/api/shop', createCommerceRouter(pool,origin,commerce));
   }
-  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(), shopAvailable:!!commerce,
+  app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(), shopAvailable:!!commerce, contentReview:true,
     env: { NODE_ENV: 'production', WEDDING_ENABLED: 'true', PUBLIC_APP_URL: origin },
     getSession: async req => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req) }));
   app.use('/api/montage',createMontageRouter(pool,async req=>(commerce?await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}):null)||await getPilotSession(pool,req),origin));

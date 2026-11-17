@@ -12,7 +12,7 @@ import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {migrateWedding} from '../server/wedding/migrate';
 import {migrateMcp} from '../server/mcp/schema';
 import {localDatabaseUrl} from '../server/wedding/local-db';
-import {createMemorybookMcpRouter} from '../server/mcp/server';
+import {createMemorybookMcpRouter,safeReviewErrorDetails} from '../server/mcp/server';
 import {createWorkflowService,createExportWorker} from '../server/wedding/book-workflow';
 import {seedMcpBook} from './fixtures/mcp-book';
 import {arrange} from '../server/wedding/montage-layout';
@@ -60,7 +60,7 @@ test('official SDK client: initialize, list/call tools, pagination, visible imag
   const call=async(name:string,args:Record<string,unknown>={})=>client.callTool({name,arguments:args}) as Promise<CallToolResult>;
   const parsed=(result:CallToolResult)=>{assert.equal(result.isError,undefined,JSON.stringify(result.content));assert.equal(result.content[0].type,'text');return JSON.parse((result.content[0] as {text:string}).text);};
   try{
-    const tools=await client.listTools();assert.equal(tools.tools.length,13);assert.equal(tools.tools.some(t=>/approve|shell|sql|fetch_url/.test(t.name)),false);
+    const tools=await client.listTools();assert.equal(tools.tools.length,15);assert.equal(tools.tools.some(t=>/approve|resolve|decide|shell|sql|fetch_url/.test(t.name)),false);
     const listed=parsed(await call('list_books'));assert.equal(JSON.stringify(listed).includes(fixture.bookId),true);assert.equal(JSON.stringify(listed).includes(foreign.bookId),false);
     assert.equal((await call('get_book',{bookId:foreign.bookId})).isError,true);
     assert.equal((await call('get_book',{bookId:fixture.bookId,ownerId:'other-owner'})).isError,true,'arguments cannot inject an actor');
@@ -78,10 +78,53 @@ test('official SDK client: initialize, list/call tools, pagination, visible imag
     assert.equal(parsed(await call('get_draft',{bookId:fixture.bookId,versionId:version.id})).draft.format,'A4');
     assert.equal((await call('start_pdf_export',{bookId:fixture.bookId,key:randomUUID(),versionId:version.id})).isError,true);
     await service.approveVersion(owner,fixture.bookId,version.id);
-    const exportBody={bookId:fixture.bookId,key:randomUUID(),versionId:version.id};const job=parsed(await call('start_pdf_export',exportBody));assert.equal(parsed(await call('start_pdf_export',exportBody)).id,job.id);
+    const exportBody={bookId:fixture.bookId,key:randomUUID(),versionId:version.id};const job=parsed(await call('start_pdf_export',exportBody));assert.equal(job.downloadUrl,null,'queued exports do not advertise a download URL');assert.equal(parsed(await call('start_pdf_export',exportBody)).id,job.id);
     const worker=createExportWorker(pool);await worker.runOnce();await worker.stop();const status=parsed(await call('get_export',{bookId:fixture.bookId,jobId:job.id}));assert.equal(status.status,'complete');
     const download=status.downloadUrl.replace(origin,base);assert.equal((await fetch(download)).status,401);assert.equal((await fetch(download,{headers:{'x-test-owner':'other-owner'}})).status,404);const pdf=await fetch(download,{headers:{Authorization:'Bearer '+accessToken}});assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type')?.split(';')[0],'application/pdf');await writeFile('test-results/mcp/approved-mcp-export.pdf',Buffer.from(await pdf.arrayBuffer()));
   }finally{await client.close();}
+});
+
+test('MCP content flags: uncertain grouped reports, idempotent multi-flags, strict arguments and no owner decisions',async()=>{
+  const client=new Client({name:'memorybook-review-test',version:'1.0.0'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+accessToken}}}));
+  const call=(name:string,args:Record<string,unknown>={})=>client.callTool({name,arguments:args}) as Promise<CallToolResult>;
+  const parsed=(result:CallToolResult)=>{assert.equal(result.isError,undefined,JSON.stringify(result.content));assert.equal(result.content[0].type,'text');return JSON.parse((result.content[0] as {text:string}).text);};
+  const rejected=async(name:string,args:Record<string,unknown>,code?:string)=>{const result=await call(name,args);assert.equal(result.isError,true,`${name} must reject`);const details=JSON.parse((result.content[0] as {text:string}).text);if(code)assert.equal(details.error,code);return details;};
+  try{
+    const catalog=await client.listTools(),create=catalog.tools.find(t=>t.name==='create_content_flag')!,list=catalog.tools.find(t=>t.name==='list_content_flags')!;
+    assert.equal(create.annotations?.readOnlyHint,false);assert.equal(create.annotations?.idempotentHint,true);assert.equal(list.annotations?.readOnlyHint,true);
+    assert.equal(create.inputSchema.additionalProperties,false);assert.equal('origin'in(create.inputSchema.properties||{}),false);assert.equal('decision'in(create.inputSchema.properties||{}),false);
+    const initial=parsed(await call('list_content_flags',{bookId:fixture.bookId,status:'all'}));assert.equal(initial.pendingCount,0);assert.ok(initial.items.length>=10);
+    const original=await service.getSubmission(owner,fixture.bookId,fixture.submissionIds[0]);assert.ok(original.submission);assert.ok(original.submission.message.trim());
+    const body={bookId:fixture.bookId,key:randomUUID(),sourceId:fixture.submissionIds[0],categories:['possible_sexual','offensive_text'],reason:'Fiktív bizonytalan észrevétel, tulajdonosi kézi ellenőrzés szükséges.',scope:{kind:'unspecified',note:'Nem történt gépi minősítés.'}};
+    const first=parsed(await call('create_content_flag',body));assert.equal(first.replayed,false);assert.ok(first.item.id);assert.equal(first.item.flags.length,2);assert.ok(first.item.flags.every((f:{origin:string})=>f.origin==='mcp'));assert.equal(Object.hasOwn(first.item,'text'),false);assert.equal(Object.hasOwn(first.item,'previewUrl'),false);assert.equal(JSON.stringify(first).includes(original.submission.message),false,'create results sanitize source bodies too');
+    const firstIds=first.item.flags.map((f:{id:string})=>f.id).sort();const replay=parsed(await call('create_content_flag',body));assert.equal(replay.replayed,true);assert.equal(replay.item.id,first.item.id);assert.deepEqual(replay.item.flags.map((f:{id:string})=>f.id).sort(),firstIds);
+    await rejected('create_content_flag',{...body,reason:'Eltérő kérés ugyanazzal a kulccsal.'},'IDEMPOTENCY_CONFLICT');
+    const multiple=parsed(await call('create_content_flag',{...body,key:randomUUID(),categories:['possible_extremist'],scope:{kind:'partial',note:'Csak a megjelölt rész, nem végleges állítás.'}}));assert.equal(multiple.item.id,first.item.id);assert.equal(multiple.item.flags.length,3);assert.deepEqual([...multiple.item.categories].sort(),['offensive_text','possible_extremist','possible_sexual']);
+    const additional=parsed(await call('create_content_flag',{...body,key:randomUUID(),categories:['offensive_text']}));assert.equal(additional.item.flags.length,3,'the same target hash, category and origin do not duplicate a flag');assert.equal(additional.replayed,true);assert.equal(additional.revision,multiple.revision);
+    const media=parsed(await call('create_content_flag',{...body,key:randomUUID(),mediaId:fixture.mediaIds[0],categories:['possible_sexual']}));assert.notEqual(media.item.id,first.item.id,'a media target is distinct from source text');assert.equal(Object.hasOwn(media.item,'previewUrl'),false);
+    const sameName=parsed(await call('create_content_flag',{...body,key:randomUUID(),sourceId:fixture.submissionIds[1],categories:['offensive_text']}));assert.notEqual(sameName.item.id,first.item.id,'same display names never merge source targets');
+    const pending=parsed(await call('list_content_flags',{bookId:fixture.bookId,status:'pending'}));assert.equal(pending.pendingCount,3);assert.deepEqual([...pending.pendingIds].sort(),[first.item.id,media.item.id,sameName.item.id].sort());assert.equal(pending.items.length,3);
+    const filtered=parsed(await call('list_content_flags',{bookId:fixture.bookId,sourceId:fixture.submissionIds[0],category:'possible_extremist'}));assert.deepEqual(filtered.items.map((item:{id:string})=>item.id),[first.item.id]);
+    assert.equal(JSON.stringify(pending).includes(original.submission.message),false,'MCP review metadata must not expose a blocked source body');assert.equal(JSON.stringify(pending).includes('/api/wedding/media/'),false,'review media URLs are owner-only');
+    const heldJob=(await service.listExports(owner,fixture.bookId)).exports[0];assert.ok(heldJob);const heldExport=parsed(await call('get_export',{bookId:fixture.bookId,jobId:heldJob.id}));assert.equal(heldExport.withheld,true);assert.equal(heldExport.downloadUrl,null,'withheld exports do not advertise a download URL');assert.equal(heldExport.downloadPath,null);
+    for(const extra of [{origin:'manual'},{origin:'machine'},{decision:'keep'},{status:'resolved'},{ownerId:'other-owner'},{scope:{kind:'full',decision:'keep'}},{toString:'inherited-property'}])await rejected('create_content_flag',{...body,key:randomUUID(),...extra},'INVALID_ARGUMENTS');
+    for(const bad of [{categories:[]},{categories:['other']},{categories:['offensive_text','offensive_text']},{reason:' '},{reason:'x'.repeat(1001)},{sourceId:'not-a-uuid'},{scope:{kind:'partial',startSeconds:20,endSeconds:10}},{scope:{kind:'full',startSeconds:86401}},{scope:{kind:'unspecified',note:'x'.repeat(1001)}},{scope:{kind:'unknown'}},{versionId:randomUUID()},{elementId:'missing_version'},{versionId:randomUUID(),elementId:'bad element'}])await rejected('create_content_flag',{...body,key:randomUUID(),...bad},'INVALID_ARGUMENTS');
+    for(const bad of [{sourceId:[fixture.submissionIds[0]]},{scope:{kind:['full']}},{scope:{kind:'full',startSeconds:0}},{mediaId:fixture.mediaIds[0],versionId:randomUUID(),elementId:'element'}])await rejected('create_content_flag',{...body,key:randomUUID(),...bad},'INVALID_ARGUMENTS');
+    for(const bad of [{status:'keep'},{category:'other'},{sourceId:'not-a-uuid'},{origin:'machine'},{decision:'omit'},{toString:'extra'}])await rejected('list_content_flags',{bookId:fixture.bookId,...bad},'INVALID_ARGUMENTS');
+    await rejected('create_content_flag',{...body,key:randomUUID(),sourceId:fixture.submissionIds[0],mediaId:fixture.mediaIds[3]});
+    await rejected('list_content_flags',{bookId:foreign.bookId});await rejected('create_content_flag',{...body,bookId:foreign.bookId,key:randomUUID(),sourceId:foreign.submissionIds[0]});
+    for(const name of ['resolve_content_flag','decide_content_flag','approve_content_flag','delete_content_flag'])await rejected(name,{bookId:fixture.bookId,id:first.item.id,decision:'keep'},'UNKNOWN_TOOL');
+    assert.equal((await json('/mcp',{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'create_content_flag',arguments:body}},{Authorization:'Bearer '+fixture.inviteToken,Accept:'application/json, text/event-stream'})).status,401,'guest invite never becomes review authority');
+    assert.equal(parsed(await call('list_content_flags',{bookId:fixture.bookId,status:'pending'})).pendingCount,3,'invalid calls cannot change review state');
+  }finally{await client.close();}
+});
+
+test('MCP review errors disclose only bounded counts, UUIDs and page numbers',()=>{
+  const id=randomUUID();
+  assert.deepEqual(safeReviewErrorDetails('CONTENT_REVIEW_BLOCKED',{pendingCount:2,pendingIds:[id,'sensitive text'],affectedPages:[1,3,0,301,'secret'],revision:4,sourceId:id,reason:'private',sql:'SELECT',content:{text:'private'},token:'secret'}),{pendingCount:2,pendingIds:[id],affectedPages:[1,3],revision:4,sourceId:id});
+  assert.equal(safeReviewErrorDetails('UNEXPECTED_DATABASE_ERROR',{pendingCount:2,reason:'private'}),undefined);
+  assert.equal(safeReviewErrorDetails('CONTENT_REVIEW_BLOCKED',{pendingCount:Infinity,revision:'private',reason:'private'}),undefined);
+  assert.equal((safeReviewErrorDetails('CONTENT_REVIEW_BLOCKED',{pendingIds:Array(300).fill(id)})!.pendingIds as string[]).length,200);
 });
 
 test('transport origin, tools argument validation, refresh rotation/replay and owner revocation',async()=>{

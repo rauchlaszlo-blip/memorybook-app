@@ -23,6 +23,7 @@ export interface WeddingOptions {
   allowPilotOwner?: string;
   media?: MediaLimits;
   shopAvailable?: boolean;
+  contentReview?: boolean;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -46,7 +47,7 @@ export function canCreateWedding(session: WeddingSession, env: NodeJS.ProcessEnv
     (env.WEDDING_PILOT_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean).includes(session.user.id);
 }
 
-export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner, media, shopAvailable }: WeddingOptions) {
+export function createWeddingRouter({ pool, getSession, env = process.env, loginPilot, publicOrigin, allowPilotOwner, media, shopAvailable, contentReview = false }: WeddingOptions) {
   const router = Router();
   const canCreate = (session: WeddingSession) => canCreateWedding(session, env) ||
     (!!allowPilotOwner && session?.user.id === allowPilotOwner);
@@ -111,7 +112,7 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
   }));
   router.get('/capabilities', handle(async (req, res) => {
     const session = await getSession(req);
-    res.json({ enabled: true, authenticated: !!session, internetPilot: !!allowPilotOwner, shopAvailable:!!shopAvailable, canCreate: canCreate(session) });
+    res.json({ enabled: true, authenticated: !!session, internetPilot: !!allowPilotOwner, shopAvailable:!!shopAvailable, contentReview, canCreate: canCreate(session) });
   }));
   router.get('/books', handle(async (req, res) => {
     const session = await getSession(req);

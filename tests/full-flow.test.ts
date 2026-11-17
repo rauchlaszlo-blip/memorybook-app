@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import {mkdir,writeFile} from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { chromium, expect } from '@playwright/test';
+import type {Page} from '@playwright/test';
 import { localDatabaseUrl } from '../server/wedding/local-db';
 import { migrateWedding } from '../server/wedding/migrate';
 
@@ -49,6 +51,8 @@ test('real auth, legacy regression and wedding browser flow on isolated PostgreS
   }
   const password = randomBytes(24).toString('hex');
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let currentPage:Page|undefined;
+  const browserErrors:string[]=[];
   try {
     await start();
     const a = await request('/api/auth/sign-up/email', 'POST', { name: 'Pilot Owner A', email: 'owner-a@example.test', password });
@@ -89,6 +93,7 @@ test('real auth, legacy regression and wedding browser flow on isolated PostgreS
     }));
     await owner.addInitScript(() => localStorage.setItem('memorybook.appLanguage', 'hu'));
     const page = await owner.newPage();
+    currentPage=page;page.on('pageerror',error=>browserErrors.push(error.message));
     await page.goto(base + '/wedding');
     await page.getByLabel('Megjelenített nevek').fill('Ági és Örs');
     await page.getByLabel('Az esküvő dátuma').fill('2027-06-05');
@@ -142,6 +147,11 @@ test('real auth, legacy regression and wedding browser flow on isolated PostgreS
     await stop(); childEnv.WEDDING_ENABLED = 'false'; await start();
     assert.equal((await request('/api/wedding/books', 'GET', undefined, cookie)).response.status, 404);
     assert.equal((await request('/api/books/legacy-test/pages', 'GET', undefined, cookie)).response.status, 200);
+  } catch(error) {
+    await mkdir('test-results',{recursive:true});
+    if(currentPage&&!currentPage.isClosed())await currentPage.screenshot({path:'test-results/full-flow-failure.png',fullPage:true});
+    await writeFile('test-results/full-flow-failure.json',JSON.stringify({browserErrors,serverOutput:output},null,2));
+    throw error;
   } finally {
     await browser?.close(); await stop(); await pool.end();
     await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end();

@@ -11,6 +11,9 @@ import { PhotoDrawing, AnnotatedPreview } from './PhotoDrawing';
 import { emptyAnnotation, parseAnnotation } from '../../shared/photo-annotation';
 import type { Annotation } from '../../shared/photo-annotation';
 import { windowCopy } from './window-copy';
+import {ContentReviewPanel,ReviewImage} from './ContentReviewPanel';
+import {hasReviewFlag} from './content-review';
+import type {ReviewData} from './content-review';
 
 type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string; package_version?:number;submission_start?:string;submission_end?:string };
 type Photo = { id: string; previewUrl: string; displayUrl: string; originalUrl: string };
@@ -22,7 +25,7 @@ function readDraft(token?: string): Draft {
 }
 type Submission = { media?: Photo[]; id: string; guest_name: string; message: string; created_at: string };
 type GuestEvent = { title: string; starts_on: string; closed: boolean; template_id: string; template_version: number;access_state?:string;submission_start?:string;submission_end?:string;package_version?:number };
-type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean;shopAvailable?:boolean };
+type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean;shopAvailable?:boolean;contentReview?:boolean };
 const apiBase = ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '5173'
   ? `${window.location.protocol}//${window.location.hostname}:3001` : '';
 
@@ -60,6 +63,7 @@ export function WeddingPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [book, setBook] = useState<Book | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [reviewData,setReviewData]=useState<ReviewData|null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [names, setNames] = useState('');
@@ -253,10 +257,11 @@ export function WeddingPage() {
                 {copyStatus && <p role="status">{copyStatus === 'copied' ? t.copied : t.copyFailed}</p>}
               </>}
             </section>
+            {capability.contentReview&&<ContentReviewPanel bookId={book.id} onData={setReviewData}/>}
             <section className="wedding-card"><h2>{t.messages} ({submissions.length})</h2>
               <button disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const data = await api<{ book: Book; submissions: Submission[] }>(`/books/${book.id}`); setBook(data.book); setSubmissions(data.submissions); } catch (e) { report(e); } finally { setBusy(false); } }}>{t.refresh}</button>
               {!submissions.length && <p>{t.empty}</p>}
-              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p>{item.media?.map(photo => <button className="wedding-photo-open" key={photo.id} aria-label={pt.enlarge} onClick={() => {setShowOriginal(false);setLargePhoto(photo);}}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button>)}</article>)}
+              {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time><p className="wedding-message">{item.message}</p>{item.media?.map(photo => <ReviewImage key={photo.id+':'+(reviewData?.revision??'loading')} covered={!!capability.contentReview&&(!reviewData||reviewData.items.some(review=>review.mediaId===photo.id&&hasReviewFlag(review)))} src={apiBase+photo.previewUrl} alt={pt.enlarge}><button className="wedding-photo-open" aria-label={pt.enlarge} onClick={() => {setShowOriginal(false);setLargePhoto(photo);}}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button></ReviewImage>)}</article>)}
             </section>
             {!book.closed_at && <section className="wedding-card">
               <label className="wedding-confirm"><input type="checkbox" checked={confirmClose} onChange={e => setConfirmClose(e.target.checked)} />{t.closeQuestion}</label>
