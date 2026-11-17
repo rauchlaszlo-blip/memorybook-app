@@ -58,7 +58,7 @@ async function authorize(db: Db, actor: ReviewActor, bookId: string, lock = fals
   if (!row) return fail('BOOK_NOT_FOUND', 404);
   return Number(row.content_review_revision);
 }
-type Target = { id: string; logicalKey: string; sourceId: string; mediaId?: string; versionId?: string; elementId?: string; kind: ReviewItem['kind']; contentHash: string; contributor: string; text?: string; previewUrl?: string; mediaEvidence?: { originalSha256: string; annotation: unknown } };
+type Target = { id: string; logicalKey: string; sourceId: string; mediaId?: string; versionId?: string; elementId?: string; kind: ReviewItem['kind']; contentHash: string; contributor: string; text?: string; previewUrl?: string; mimeType?: string; durationSeconds?: number | null; mediaEvidence?: { originalSha256: string; annotation: unknown } };
 type ItemRow = { id: string; logical_key: string; source_id: string; media_id: string | null; version_id: string | null; element_id: string | null; kind: ReviewItem['kind']; content_hash: string; evidence: { contributor: string; text?: string; mediaEvidence?: Target['mediaEvidence'] } };
 type FlagRow = { id: string; item_id: string; category: ReviewFlag['category']; origin: ReviewFlag['origin']; reason: string; scope: ReviewScope; revision: string; created_at: Date };
 type DecisionRow = { item_id: string; decision: ReviewDecision; scope: ReviewScope; note: string | null; actor_id: string; revision: string; created_at: Date };
@@ -68,16 +68,17 @@ async function targets(db: Db, bookId: string, sources: Source[], options: State
   const push = (t: Omit<Target, 'id'>) => { const id = itemId(bookId, t.logicalKey, t.contentHash); if (!result.some(x => x.id === id)) result.push({ id, ...t }); };
   const mediaIds = sources.flatMap(s => s.media.map(m => m.id));
   const media = mediaIds.length ? (options.snapshotId
-    ? await db.query(`SELECT sm.media_id AS id,sm.source_id,sm.original_bytes,sm.annotation AS layer FROM event_book_snapshot_media sm JOIN event_book_snapshots s ON s.id=sm.snapshot_id WHERE sm.snapshot_id=$1 AND s.book_id=$2 AND sm.media_id=ANY($3::uuid[])`, [options.snapshotId, bookId, mediaIds])
-    : await db.query(`SELECT m.id,m.submission_id AS source_id,m.original_bytes,a.layer FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.book_id=$1 AND m.state='attached' AND m.id=ANY($2::uuid[])`, [bookId, mediaIds])).rows : [];
+    ? await db.query(`SELECT sm.media_id AS id,sm.source_id,sm.kind,sm.mime_type,sm.duration_seconds,sm.original_bytes,sm.annotation AS layer FROM event_book_snapshot_media sm JOIN event_book_snapshots s ON s.id=sm.snapshot_id WHERE sm.snapshot_id=$1 AND s.book_id=$2 AND sm.media_id=ANY($3::uuid[])`, [options.snapshotId, bookId, mediaIds])
+    : await db.query(`SELECT m.id,m.submission_id AS source_id,m.kind,m.mime_type,m.duration_seconds,m.original_bytes,a.layer FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.book_id=$1 AND m.state='attached' AND m.id=ANY($2::uuid[])`, [bookId, mediaIds])).rows : [];
   const byMedia = new Map(media.map(m => [m.id, m]));
   for (const s of sources) {
     if (s.message.trim() || historicalKeys.has('text:' + s.id)) push({ logicalKey: 'text:' + s.id, sourceId: s.id, kind: 'text', contentHash: textHash(s.id, s.message), contributor: s.name, text: s.message });
     for (const m of s.media) {
       const bytes = byMedia.get(m.id); if (!bytes || bytes.source_id !== s.id) return fail('REVIEW_SOURCE_UNAVAILABLE', 409);
       const originalSha256 = createHash('sha256').update(bytes.original_bytes).digest('hex');
-      push({ logicalKey: 'media:' + m.id, sourceId: s.id, mediaId: m.id, kind: 'photo', contentHash: hash({ kind: 'photo', sourceId: s.id, mediaId: m.id, bytes: originalSha256, annotation: bytes.layer || null }), mediaEvidence: { originalSha256, annotation: bytes.layer || null }, contributor: s.name,
-        previewUrl: options.snapshotId ? `/api/book-workflow/${bookId}/image/${m.id}?snapshotId=${options.snapshotId}` : `/api/montage/${bookId}/image/${m.id}` });
+      const kind = bytes.kind as 'photo' | 'audio' | 'video';
+      push({ logicalKey: 'media:' + m.id, sourceId: s.id, mediaId: m.id, kind, mimeType: bytes.mime_type, durationSeconds: bytes.duration_seconds, contentHash: hash({ kind, sourceId: s.id, mediaId: m.id, bytes: originalSha256, annotation: bytes.layer || null }), mediaEvidence: { originalSha256, annotation: bytes.layer || null }, contributor: s.name,
+        previewUrl: kind === 'photo' ? options.snapshotId ? `/api/book-workflow/${bookId}/image/${m.id}?snapshotId=${options.snapshotId}` : `/api/montage/${bookId}/image/${m.id}` : `/api/book-workflow/${bookId}/media/${m.id}${options.snapshotId ? '?snapshotId=' + options.snapshotId : ''}` });
     }
   }
   for (const e of options.draft?.pages.flatMap(p => p.elements) || []) if (e.kind === 'text' && e.edited && typeof e.text === 'string') {
@@ -90,8 +91,7 @@ const keyFor = (item: Pick<ReviewItem, 'sourceId' | 'mediaId' | 'elementId'>) =>
 const pending = (item: ReviewItem) => item.flags.length > 0 && item.decision === null;
 const restriction = (item: ReviewItem, variant: 'private' | 'shareable') => pending(item) ? 'pending' : item.decision === 'omit' ? 'omit' : item.decision === 'private_only' && variant === 'shareable' ? 'private_only' : null;
 function fullyCovers(scope: ReviewScope) {
-  // A partial/unspecified acknowledgement never clears an entire photo or message.
-  // Audio/video time ranges are retained as evidence, not a supported release path.
+  // A partial/unspecified acknowledgement never clears the entire image, message or recording.
   return scope.kind === 'full';
 }
 async function buildState(db: Db, bookId: string, sources: Source[], options: StateOptions = {}, extraTargets: Target[] = []): Promise<ReviewState> {
@@ -117,10 +117,10 @@ async function buildState(db: Db, bookId: string, sources: Source[], options: St
       return pageNumbers.length ? [{ versionId: v.id, pageNumbers, approved: !!v.approved_at }] : [];
     });
     const history = decisionRows.rows.filter(d => d.item_id === target.id).map(d => ({ decision: d.decision, scope: d.scope, ...(d.note ? { note: d.note } : {}), actorId: d.actor_id, createdAt: new Date(d.created_at).toISOString(), revision: Number(d.revision) }));
-    return { id: target.id, sourceId: target.sourceId, ...(target.mediaId ? { mediaId: target.mediaId } : {}), ...(target.versionId ? { versionId: target.versionId } : {}), ...(target.elementId ? { elementId: target.elementId } : {}), kind: target.kind, contentHash: target.contentHash, contributor: target.contributor, ...(target.text !== undefined ? { text: target.text } : {}), ...(target.previewUrl ? { previewUrl: target.previewUrl } : {}), categories: [...new Set(flags.map(f => f.category))], flags, decision: effective?.decision || null, ...(latest ? { decidedBy: latest.actor_id, decidedAt: new Date(latest.created_at).toISOString() } : {}), scope: latest?.scope || { kind: 'unspecified' }, contentChanged, status: contentChanged ? 'changed' : flags.length ? effective ? 'resolved' : 'pending' : 'unreviewed', affectedPages, history };
+    return { id: target.id, sourceId: target.sourceId, ...(target.mediaId ? { mediaId: target.mediaId } : {}), ...(target.versionId ? { versionId: target.versionId } : {}), ...(target.elementId ? { elementId: target.elementId } : {}), kind: target.kind, contentHash: target.contentHash, contributor: target.contributor, ...(target.text !== undefined ? { text: target.text } : {}), ...(target.previewUrl ? { previewUrl: target.previewUrl } : {}), ...(target.mimeType ? { mimeType: target.mimeType, durationSeconds: target.durationSeconds ?? null } : {}), categories: [...new Set(flags.map(f => f.category))], flags, decision: effective?.decision || null, ...(latest ? { decidedBy: latest.actor_id, decidedAt: new Date(latest.created_at).toISOString() } : {}), scope: latest?.scope || { kind: 'unspecified' }, contentChanged, status: contentChanged ? 'changed' : flags.length ? effective ? 'resolved' : 'pending' : 'unreviewed', affectedPages, history };
   });
   const pendingIds = items.filter(pending).map(i => i.id);
-  return { revision: Number(book.rows[0].content_review_revision), items, pendingCount: pendingIds.length, pendingIds, totalCount: items.filter(i => i.flags.length).length, targetCount: items.length, capabilities: { delete: false, audio: false, video: false, automatedDetection: false, publicSharing: false } };
+  return { revision: Number(book.rows[0].content_review_revision), items, pendingCount: pendingIds.length, pendingIds, totalCount: items.filter(i => i.flags.length).length, targetCount: items.length, capabilities: { delete: false, audio: true, video: true, ownerPlayback: true, transcription: false, audioVideoInterpretation: false, audioVideoPdfEmbedding: false, automatedDetection: false, publicSharing: false } };
 }
 
 /** Callers supplying a transaction must hold the book row lock through the protected operation. */

@@ -53,8 +53,10 @@ test('workflow: 10 fictional guests, 30 real images, frozen sources, authorized 
     assert.equal((await service.listBooks(mcp)).books.length, 1);
     assert.equal((await service.listSubmissions(mcp, bookId, { limit: 3 })).nextOffset, 3);
     assert.equal((await service.listSubmissions(mcp, bookId, { offset: 9, limit: 3 })).submissions.length, 1);
-    assert.equal((await service.getBook(mcp, bookId)).capabilities.audio, false);
-    assert.equal((await service.getBook(mcp, bookId)).capabilities.video, false);
+    assert.equal((await service.getBook(mcp, bookId)).capabilities.audioUpload, true);
+    assert.equal((await service.getBook(mcp, bookId)).capabilities.videoUpload, true);
+    assert.equal((await service.getBook(mcp, bookId)).capabilities.audioVideoPdfEmbedding, false);
+    assert.equal((await service.getBook(mcp, bookId)).capabilities.transcription, false);
     await assert.rejects(service.getBook(foreign, bookId), errorCode('BOOK_NOT_FOUND'));
     await assert.rejects(service.getBook(mcp, foreignBookId), errorCode('BOOK_NOT_FOUND'));
     await assert.rejects(service.getBook({ ...mcp, allowedBookIds: undefined }, bookId), errorCode('BOOK_NOT_FOUND'));

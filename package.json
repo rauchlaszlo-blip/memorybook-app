@@ -20,12 +20,15 @@
     "test:mcp": "tsx --test --test-force-exit tests/book-workflow.test.ts tests/mcp.test.ts tests/mcp-allowlist.test.ts",
     "test:content-review": "tsx --test --test-force-exit tests/content-review.test.ts tests/content-review-workflow.test.ts tests/content-review-bypass.test.ts tests/mcp-internet-review.test.ts",
     "test:content-review-browser": "tsx --test --test-force-exit tests/content-review-browser.test.ts",
+    "test:guest-media": "tsx --test --test-force-exit tests/av-media.test.ts tests/av-workflow.test.ts tests/wedding-photo.test.ts",
+    "test:guest-media-browser": "tsx --test --test-force-exit tests/guest-media-browser.test.ts tests/wedding-photo-browser.test.ts tests/wedding-drawing-browser.test.ts",
     "test:mcp-browser": "tsx --test --test-force-exit tests/mcp-book-browser.test.ts tests/montage-browser.test.ts",
     "test:mcp-browser:chromium": "tsx --test --test-force-exit --test-name-pattern=\"MCP owner|chromium\" tests/mcp-book-browser.test.ts tests/montage-browser.test.ts",
     "test:pilot-regression": "tsx --test --test-force-exit --test-timeout=120000 tests/wedding.test.ts tests/internet-pilot.test.ts tests/wedding-photo.test.ts tests/pilot-commerce.test.ts tests/full-flow.test.ts tests/pilot-startup.test.ts tests/wedding-photo-browser.test.ts tests/wedding-drawing-browser.test.ts tests/pilot-shop-browser.test.ts",
     "pilot:mcp": "tsx scripts/mcp-local-demo.ts"
   },
   "dependencies": {
+    "@derhuerst/ffprobe-static": "5.3.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/qrcode": "^1.5.5",
     "better-auth": "^1.7.3",
@@ -34,6 +37,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fabric": "^7.4.0",
+    "ffmpeg-static": "5.3.0",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",

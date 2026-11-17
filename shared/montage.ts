@@ -1,4 +1,10 @@
-export type Source = {id:string;guestId:string;name:string;message:string;review?:{originalHasMessage:boolean;textState:'pending'|'omit'|'private_only'|'allowed'|'unreviewed';pendingIds:string[]};media:{id:string;width:number;height:number;annotated:boolean;inkBounds?:{x:number;y:number;w:number;h:number}}[]};
+import type {MediaKind} from './media-limits';
+export type SourceMedia={id:string;kind?:MediaKind;mimeType?:string;durationSeconds?:number|null;width:number;height:number;annotated:boolean;inkBounds?:{x:number;y:number;w:number;h:number}};
+// Missing kind is an earlier immutable photo snapshot, never an inferred AV file.
+export const sourceMediaKind=(media:SourceMedia):MediaKind=>media.kind||'photo';
+export const isPhotoMedia=(media:SourceMedia)=>sourceMediaKind(media)==='photo';
+export const mediaCapabilities={images:true,annotations:true,audio:true,video:true,audioUpload:true,videoUpload:true,ownerPlayback:true,audioVideoInterpretation:false,audioVideoPdfEmbedding:false,transcription:false,durableMediaQr:false} as const;
+export type Source = {id:string;guestId:string;name:string;message:string;review?:{originalHasMessage:boolean;textState:'pending'|'omit'|'private_only'|'allowed'|'unreviewed';pendingIds:string[]};media:SourceMedia[]};
 export type Element = {id:string;kind:'text'|'photo';sourceId:string;mediaId?:string;x:number;y:number;w:number;h:number;locked:boolean;pinToPage?:boolean;rotation?:number;text?:string;textRole?:'message'|'caption';edited?:boolean;partStart?:number;partEnd?:number;fontSize:number;color:string;crop:{x:number;y:number;w:number;h:number};ink:{x:number;y:number;scale:number}};
 export type Page = {id:string;background:string;locked:boolean;elements:Element[]};
 export type PrintProfile = {bleed:number;safe:number;binding:number;minDpi:number;colorProfile:string;pdfRequirement:string;cover:{paper:string;widthMm:number|null;heightMm:number|null;spineMm:number|null;specification:string}};
@@ -40,7 +46,7 @@ export function validateDraft(value:unknown,sources:Source[]):Draft {
       const validPart=Number.isInteger(e.partStart)&&Number.isInteger(e.partEnd)&&e.partStart!>=0&&e.partEnd!>e.partStart!&&e.partEnd!<=s.message.length&&s.message.slice(e.partStart,e.partEnd)===e.text;
       if(e.textRole!==undefined&&(e.kind!=='text'||!['message','caption'].includes(e.textRole)))return fail();
       if(e.kind==='text'&&(typeof e.text!=='string'||e.text.length>5000||(e.text!==s.message&&e.edited!==true&&!validPart)))return fail();
-      if(e.kind==='photo'&&!s.media.some(m=>m.id===e.mediaId))return fail();
+      if(e.kind==='photo'&&!s.media.some(m=>m.id===e.mediaId&&isPhotoMedia(m)))return fail();
       if(!e.crop||!finite(e.crop.x,0,1)||!finite(e.crop.y,0,1)||!finite(e.crop.w,.05,1)||!finite(e.crop.h,.05,1)||e.crop.x+e.crop.w>1.001||e.crop.y+e.crop.h>1.001||!e.ink||!finite(e.ink.x,-1,1)||!finite(e.ink.y,-1,1)||!finite(e.ink.scale,.1,3))return fail();
       return {id:id(e.id),kind:e.kind,sourceId:e.sourceId,...(e.kind==='photo'?{mediaId:e.mediaId}:{}),x:e.x,y:e.y,w:e.w,h:e.h,locked:e.locked,...(e.pinToPage!==undefined?{pinToPage:e.pinToPage}:{}),...(e.rotation!==undefined?{rotation:e.rotation}:{}),...(e.kind==='text'?{text:e.text,...(e.textRole?{textRole:e.textRole}:{}),edited:e.edited===true,...(validPart?{partStart:e.partStart,partEnd:e.partEnd}:{})}:{}),fontSize:e.fontSize,color:color(e.color),crop:{...e.crop},ink:{...e.ink}};
     })};

@@ -4,6 +4,8 @@
 
 A tartalmi jelölésekkel bővített kiadás **LIVE**, 15 MCP-eszközzel. Az új, tényleges HTTPS/SDK-próba **16/16 PASS**, benne a szimulált jelzés miatti média-/PDF-tiltással és tulajdonosi feloldással. A 8 korábbi könyv 87 összehasonlított erőforrása megmaradt. Részletes eredmény és korlátok: [Átnézendő tartalmak](CONTENT_REVIEW_20261117.md). A valódi ChatGPT-fiókos és fizikai telefonos elfogadási próba továbbra is nyitott.
 
+A fenti élő eredmény a fotós felülvizsgálati kiadás történeti bizonyítéka. A későbbi V8 hang-/videóbővítés alább leírt képességei helyben ellenőrzöttek; élő elérhetőségüket a külön V8 kiadási ellenőrzés igazolja majd. Nem következnek a korábbi 16/16 eredményből.
+
 - Név a ChatGPT-ben: **MemoryBook pilot**.
 - MCP-végpont: **https://memorybook-wedding-text-pilot-ukd0.onrender.com/mcp**.
 - Kapcsolat: **Streamable HTTP**, hitelesítés: **OAuth**, kliensregisztráció: **DCR / Dynamic Client Registration**. Kézi client ID, client secret vagy bearer token nem szükséges.
@@ -66,7 +68,7 @@ A jelölés kézi felülvizsgálatot kér, nem bizonyított minősítés. Három
 
 - `list_content_flags(bookId, category?, status?, sourceId?)`: csoportosított esetek, köztük a még nem jelölt források; a `status` értékei `all`, `pending`, `resolved`, `unreviewed`, `changed`. Az eredmény `revision`, `items`, `pendingCount`, `pendingIds`, `totalCount`, `capabilities` mezőket tartalmaz. Az egyes esetek forrás-/média-/változat-/elemazonosítói, hozzájárulója, kategóriái, jelölései, döntése, érintett része, változásjelzése és oldalszámai külön szerepelnek. A jelölés eredete és indoka látható; az MCP-lista nem kerülőút a blokkolt eredeti szöveghez vagy tulajdonosi média-előnézethez.
 - `create_content_flag(bookId, key, sourceId, mediaId?, versionId?, elementId?, categories, reason, scope)`: a `key` új logikai jelzésenként új UUID; ugyanazon kérés újrapróbálásakor ugyanaz. A válasz `{item, revision, replayed}`. Ugyanaz a kulcs eltérő tartalommal `IDEMPOTENCY_CONFLICT`. Ugyanaz a pontos céltartalom, kategória és eredet új kulccsal sem duplázza meg a jelölést: a korábbi megmarad, `replayed:true`, és a felülvizsgálati revízió nem nő. Eltérő kategória vagy eredet külön jelölésként megmarad. A kategórialista 1–3 különböző érték, az indok legfeljebb 1000 karakter. `versionId` és `elementId` csak együtt adható, szerkesztett szövegelemre; az elemazonosító 1–100 betű, szám, `_` vagy `-`.
-- A kötelező `scope.kind` értéke `full`, `partial` vagy `unspecified`. A legfeljebb 1000 karakteres `scope.note` írja le a bizonytalanságot és az érintett részletet. A csak `partial` esetén megadható `startSeconds`/`endSeconds` véges 0–86400 közötti szám, együtt megadva a vég nagyobb a kezdetnél. Ezek a mezők önmagukban nem jelentenek hang-/videófeldolgozási támogatást; a jelenlegi képes pilothoz ne találj ki időkódot vagy átiratot.
+- A kötelező `scope.kind` értéke `full`, `partial` vagy `unspecified`. A legfeljebb 1000 karakteres `scope.note` írja le a bizonytalanságot és az érintett részletet. A csak `partial` esetén megadható `startSeconds`/`endSeconds` véges 0–86400 közötti szám, együtt megadva a vég nagyobb a kezdetnél. Ezek a mezők nem bizonyítanak automatikus hang-/videóértelmezést; ne találj ki időkódot, átiratot vagy el nem végzett meghallgatást. Részleges döntés nem oldja fel a teljes felvételt.
 
 Az MCP nem adhat meg `origin`, `decision`, tulajdonosazonosító vagy kész jóváhagyási állapot mezőt, és nincs döntési, feloldási vagy jóváhagyási eszköz. A tulajdonos az alkalmazásban áttekintheti az eredeti forrást, majd dönthet. A tartalmi döntés különbözik a teljes könyvváltozat kiadási jóváhagyásától; egyik sem hamisítható `save_draft` használatával.
 
@@ -85,7 +87,11 @@ A függő vagy kihagyott források szűrése nem jelenthet néma hozzájárulóv
 
 ## Jelenlegi médiakorlát
 
-A létező feltöltés és adatbázismodell JPEG/PNG képet, külön rajz-/kézírás-annotációt támogat. Hang/videó feltöltés, átirat, videóképkocka és tartós, jogosultságot kezelő médialink nincs megvalósítva. Az MCP ezeket kifejezetten `false` képességként jelzi. Hang/videó nem válik automatikusan értelmezhetővé attól, hogy MCP-kapcsolat van. A pilot nem készít kitalált átiratot vagy lejáró URL-ből nyomtatott QR-t.
+A korábbi V7 kiadás JPEG/PNG képet és külön rajz-/kézírás-annotációt támogatott, hangot/videót még nem. A V8 munkaváltozat rövid hang- és videóeredetiket is fogad, megőriz és a tulajdonosnak védett lejátszást ad. A `get_book.mediaSupport` külön jelzi: `audioUpload:true`, `videoUpload:true`, `ownerPlayback:true`, ugyanakkor `audioVideoInterpretation:false`, `audioVideoPdfEmbedding:false`, `transcription:false`, `permanentMediaQr:false`.
+
+A `get_media` fotónál továbbra is valódi MCP `image` blokkot ad. Hangnál/videónál kizárólag típust, MIME-t, mért időtartamot és jogosultságvédett eredeti letöltési URL-t közöl; nincs képpé alakított helyettesítő vagy automatikus átirat. A letöltés OAuth/tulajdonosi hozzáférést igényel, támogatott az egyszeres bájttartomány-kérés, és az MCP tartalmi zárja a régi pillanatképre is vonatkozik. A felvétel puszta metaadat-lekérése nem jelenti, hogy az asszisztens meghallgatta vagy megnézte. Az eredeti felvétel PDF-be vagy tartós QR mögé nem kerül.
+
+A bővített helyi MCP SDK-regresszió **6/6 PASS**: mindkét felvételtípus tényleges, szintetikus eredetije letölthető a jogosult klienssel, tiltott idegen/névtelen hozzáféréssel és új jelzés után. Ez nem élő AV- vagy fizikai telefonos próba; a korábbi internetes PASS eredmények történeti szakaszra vonatkoznak.
 
 ## Ellenőrzési bizonyíték
 

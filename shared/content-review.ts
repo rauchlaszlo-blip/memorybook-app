@@ -7,7 +7,7 @@ export type ReviewFlag = { id: string; category: ReviewCategory; origin: ReviewO
 export type ReviewItem = {
   id: string; sourceId: string; mediaId?: string; versionId?: string; elementId?: string;
   kind: 'text' | 'photo' | 'audio' | 'video'; contentHash: string; contributor: string;
-  previewUrl?: string; text?: string; categories: ReviewCategory[]; flags: ReviewFlag[];
+  previewUrl?: string; mimeType?: string; durationSeconds?: number | null; text?: string; categories: ReviewCategory[]; flags: ReviewFlag[];
   decision: ReviewDecision | null; decidedBy?: string; decidedAt?: string; scope: ReviewScope;
   contentChanged: boolean; status: 'pending' | 'resolved' | 'unreviewed' | 'changed';
   history: { decision: ReviewDecision; scope: ReviewScope; note?: string; actorId: string; createdAt: string; revision: number }[];
@@ -16,7 +16,7 @@ export type ReviewItem = {
 export type ReviewState = {
   revision: number; items: ReviewItem[]; pendingCount: number; pendingIds: string[];
   totalCount: number; targetCount: number;
-  capabilities: { delete: false; audio: false; video: false; automatedDetection: false; publicSharing: false };
+  capabilities: { delete: false; audio: true; video: true; ownerPlayback: true; transcription: false; audioVideoInterpretation: false; audioVideoPdfEmbedding: false; automatedDetection: false; publicSharing: false };
 };
 export type ReviewOmissionReason = 'pending' | 'omit' | 'private_only';
 export type ReviewOmittedItem = { sourceId: string; guestId: string; contributor: string; reviewId: string; kind: 'text' | 'photo' | 'audio' | 'video'; reason: ReviewOmissionReason; reasonLabel: string };

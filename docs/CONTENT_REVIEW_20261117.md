@@ -2,6 +2,8 @@
 
 Állapotnapló: 2026-11-17. A tartalmi felülvizsgálat a külön díjmentes internetes pilotban él. Alkalmazáscommit: `d42d7f50719cab40392de13712f4c4bb9329f195`; Render-kiadás: `dep-dbu3taon74is73fc4hlg`, LIVE 2026-11-17 11:48:06 UTC. A main és az éles MemoryBook nem változott. Az új HTTPS/MCP-próba 16/16 PASS, a kiadás előtti 8 könyv 87 összehasonlított erőforrása változatlan.
 
+Ez az élő bizonyíték a korábbi, fotós tartalmi felülvizsgálati kiadásra vonatkozik. A később elkészült V8 hang-/videóbővítés helyi eredménye külön, a dokumentum végén szerepel; a korábbi internetes PASS nem igazolja visszamenőleg az új médiatípusokat.
+
 ## Tulajdonosi használat
 
 1. Belépés után nyisd meg a [fiktív próbakönyv átnézési felületét](https://memorybook-wedding-text-pilot-ukd0.onrender.com/wedding/books/4b6039a5-329c-4444-97f8-c299ec3d93a1/montage?szerkesztes=1#tartalom-atnezes).
@@ -32,7 +34,7 @@ A cél beküldéshez, fotónál médiaazonosítóhoz, szerkesztett szövegnél m
 
 A szerver maga számítja ki a tartalom lenyomatát. Szövegnél a pontos szöveg és forrásazonosító, fotónál az eredeti képbájtok és külön annotáció számít. Pillanatkép használatakor a befagyasztott képbájtok és annotáció az alap. A jelzés történeti bizonyítéka megőrzi a szöveget, illetve a média eredeti SHA-256 lenyomatát és annotációját; nem írja át az eredetit.
 
-A kötelező `scope.kind` értékei `full`, `partial`, `unspecified`. A megjegyzés leírhatja a látott részletet vagy a bizonytalanságot. A sémában szereplő részleges időtartomány önmagában nem hang-/videótámogatás. Részleges vagy nem meghatározott körű „engedélyezett”/„téves jelzés” döntés nem oldja fel az egész képet vagy szöveget: a döntési előzmény megmarad, a tartalom továbbra is függő, amíg teljes körű átnézés nem történik.
+A kötelező `scope.kind` értékei `full`, `partial`, `unspecified`. A megjegyzés leírhatja a látott részletet vagy a bizonytalanságot. A részleges időtartomány nem jelent automatikus hang-/videóértelmezést. Részleges vagy nem meghatározott körű „engedélyezett”/„téves jelzés” döntés nem oldja fel az egész képet, szöveget vagy felvételt: a döntési előzmény megmarad, a tartalom továbbra is függő, amíg teljes körű átnézés nem történik.
 
 Megváltozott tartalom más lenyomatot és más esetazonosítót kap. Korábbi döntését nem örökli. Az azonos logikai forrás korábbi jelzései ilyenkor történeti bizonyítékként jelennek meg, `contentChanged:true` és függő állapot mellett. A régi szövegelem új elem- vagy változatazonosítóval történő lemásolása nem kerüli meg a pontos tartalomra vonatkozó ellenőrzést. Szerkesztett szövegnél az eredeti forrásszöveg korlátozása és a szerkesztett szöveg saját jelzése egyaránt számít.
 
@@ -94,7 +96,7 @@ Az eset-, jelzés-, döntés- és kérésrekordok módosítását/törlését ad
 
 ## A pilot tényleges korlátai
 
-- JPEG/PNG és külön rajz-/kézírás-annotáció támogatott. Hang- és videófeltöltés, átirat, képkocka-feldolgozás nem támogatott; `audio:false`, `video:false`, `automatedDetection:false`.
+- A korábbi V7 kiadás JPEG/PNG-t és külön rajz-/kézírás-annotációt támogatott; abban még `audio:false`, `video:false` szerepelt. A későbbi V8 munkaváltozatban rövid hang-/videófeltöltés és védett tulajdonosi lejátszás is van. Automatikus átirat, képkocka-értelmezés, gépi tartalomosztályozás és hang-/videó PDF-beágyazás továbbra sincs.
 - A jelenlegi esküvői pilotban nincs meglévő, külön megerősített forrástörlési művelet. A törlés gomb tiltott, `delete:false`; az `omit` megőrzi az eredetit. Az alkalmazás más, régi könyvmodelljének korábban létező törlési viselkedése ettől nem változik.
 - Nincs nyilvános megosztás, tartós média-QR vagy médiacsomag-export; `publicSharing:false`. A különböző kiadási változatok nem teremtenek új nyilvános hozzáférést.
 - A jelölési indok és vendégtartalom nem végrehajtandó utasítás. A manuális/MCP-folyamat nem minőségi mérés egy gépi tartalomosztályozóról.
@@ -143,3 +145,13 @@ A `tests/content-review-workflow.test.ts` az integrált mentési/jóváhagyási/
 Bizonyítékok: `test-results/mcp-internet/{verification,browser-verification,anonymous-security,restart-verification}.json`, `mobile-review-card-covered.png`, `mobile-review-card-revealed.png`, `mobile-review-panel.png`; mind Gitből kizárt. A későbbi dokumentációs/ellenőrzőszkript-commit nem módosítja a telepített alkalmazáskódot.
 
 **Valódi ChatGPT-fiókos elfogadási próba és fizikai Samsung/iPhone: továbbra is NYITOTT.** A 15 eszközös kapcsolat beállítása a [bekötési útmutatóban](MCP_CONNECTION_20261117.md) szerepel; titkos token nem szükséges a jelentésből.
+
+## Későbbi V8 hang-/videóbővítés – helyi bizonyíték
+
+A V8 forrásmodell `photo`, `audio`, `video` típust, MIME-t és szerver által dekódolt időtartamot tárol. A befagyasztott pillanatkép az eredeti felvételbájtokat és metaadatot is megőrzi. A felülvizsgálati lista valódi hang-/videócélként kezeli ezeket; ugyanazok a bizonytalan kategóriák, részleges/teljes átnézés, tulajdonosi döntések és pontos tartalomlenyomatok érvényesek. Nem készül képnek álcázott felvétel, helyettesítő átirat vagy automatikus minősítés.
+
+A tulajdonosi átnézési panel natív lejátszót ad, automatikus indulás és előtöltés nélkül. Jelölt felvételnél előbb tudatos megnyitás szükséges. A védett `/api/book-workflow/:bookId/media/:id?snapshotId=...` útvonal a befagyasztott eredetit is visszaadja, egyszeres HTTP bájttartomány-kéréssel; névtelen vagy másik tulajdonosi hozzáférés nem megengedett. A böngésző által nem lejátszható kodeknél az eredeti külön letölthető. A `shareable` változatból a `private_only` felvétel szerveroldalon kimarad; a tulajdonos az eredetit ettől még átnézheti.
+
+A PDF modelljében továbbra is csak szöveg és fotó szerepel. A rendező kihagyja a felvételeket, a szerver elutasítja, ha hangot/videót fotóazonosítóként próbálnak menteni, és a renderelő is ellenőriz. Az ellenőrzési jelentés figyelmeztet, hogy a felvétel csak az eredeti gyűjteményben marad meg. Egy PDF-be nem épített hangjelzés nem tiltja le ugyanannak a vendégnek a tiszta szövegéből készült PDF-et; a felvétel olvasási és megosztási korlátja ettől még érvényes.
+
+A helyi `tests/av-workflow.test.ts` **1/1 PASS**: szintetikus WAV/WebM, tényleges dekódolás, védett lejátszás és Range, idegen/névtelen tiltás, változatlan pillanatkép, részleges döntés utáni függő állapot, magán/megosztásra szánt korlát, fényképként történő felhasználás tiltása és felvétel nélküli PDF. A bővített MCP SDK-teszt **6/6 PASS**, benne a két felvételtípus metaadata, valódi védett bájtletöltése és tartalmi zárja. Mindkettő része a végső, **28/28 PASS** kombinált futásnak: `av-workflow`, `content-review`, `content-review-workflow`, `content-review-bypass`, `book-workflow`, `mcp`, `mcp-allowlist`, `mcp-internet-review`, `montage` tesztfájlok. Az 1 és 6 ezért nem adandó újra a 28-hoz. A frontend/backend TypeScript és az érintett fájlok lintje PASS. Ezek helyi, fiktív adatokat használó tesztek; nem bizonyítanak élő AV-telepítést vagy fizikai telefonos felvételt. A feltöltési és felvételkészítési határok, illetve a későbbi kiadási bizonyíték külön feljegyzésben szerepelnek.

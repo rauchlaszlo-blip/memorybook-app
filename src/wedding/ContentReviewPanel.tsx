@@ -15,6 +15,12 @@ export function ReviewImage({covered,src,alt,children}:{covered:boolean;src:stri
   return <div className="review-image">{children||<img src={src} alt={alt} loading="lazy"/>}{covered&&<button type="button" onClick={()=>setRevealed(false)}>Kép ismételt lefedése</button>}</div>;
 }
 
+export function ReviewRecording({covered,src,kind,label}:{covered:boolean;src:string;kind:'audio'|'video';label:string}){
+  const [revealed,setRevealed]=useState(false),[failed,setFailed]=useState(false);
+  if(covered&&!revealed)return <div className="review-covered"><p>A jelzett vagy még nem ellenőrzött felvétel lejátszása fedve van.</p><button type="button" onClick={()=>setRevealed(true)}>Felvétel megnyitása</button></div>;
+  return <div className="review-recording">{kind==='audio'?<audio aria-label={label} src={src} controls preload="none" onError={()=>setFailed(true)}/>:<video aria-label={label} src={src} controls playsInline preload="none" onError={()=>setFailed(true)}/>}<p>A lejátszást te indítod. Nem készült automatikus átirat vagy teljes körű értelmezés.</p>{failed&&<p role="alert">A böngésző ezt a felvételt nem tudta lejátszani. Az eredeti fájl megmaradt.</p>}<a href={src} download="memorybook-felvetel">Eredeti felvétel letöltése</a>{covered&&<button type="button" onClick={()=>setRevealed(false)}>Felvétel ismételt lefedése</button>}</div>;
+}
+
 export function ContentReviewPanel({bookId,versionId,onData,onChanged,onBeforeChange}:{bookId:string;versionId?:string|null;onData?:(data:ReviewData)=>void;onChanged?:()=>Promise<void>|void;onBeforeChange?:()=>Promise<unknown>|unknown}){
   const root='/api/book-workflow/'+bookId+'/reviews',[data,setData]=useState<ReviewData|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[category,setCategory]=useState('all'),[status,setStatus]=useState('pending');
   const onDataRef=useRef(onData),onChangedRef=useRef(onChanged),onBeforeChangeRef=useRef(onBeforeChange);
@@ -31,7 +37,7 @@ export function ContentReviewPanel({bookId,versionId,onData,onChanged,onBeforeCh
       <p>A függő tartalom nem kerülhet új rendezésbe vagy kiadásba. A „Felhasználható” döntés nem ad megosztási jogot. A már letöltött PDF-ek és másolatok nem vonhatók vissza.</p>
       {!filtered.length&&<p>{status==='pending'?'Nincs ebben a szűrésben döntésre váró jelzés. Ez nem jelenti az összes tartalom ellenőrzését.':'Nincs a szűrésnek megfelelő tartalom.'}</p>}
       <fieldset className="review-items" disabled={busy}><legend>Átnézhető tételek</legend>{filtered.map(item=><ReviewCard key={item.id+':'+item.contentHash+':'+(item.decidedAt||'')+':'+item.flags.length} item={item} revision={data.revision} root={root} onChanged={changed} onBeforeChange={()=>onBeforeChangeRef.current?.()} onBusyChange={setBusy}/>)}</fieldset>
-      <p>Hang és videó ebben a pilotban nem tölthető fel és nem játszható le. Egy esetleges részleges jelzés nem jelenti a teljes felvétel átnézését.</p>
+      <p>A rövid hang- és videófelvételek védett eredetije lejátszható. Nincs automatikus átirat vagy értelmezés, és a felvétel nem kerül a PDF-be. A részleges jelzés nem jelenti a teljes felvétel átnézését.</p>
       <p>Törlés: ebben a pilotban nincs meglévő, megerősítéssel használható forrástörlés. A „Kihagyás” megőrzi az eredeti tartalmat és külön döntésként naplózódik.</p>
     </>:!error&&<p role="status">Átnézési lista betöltése…</p>}
     <button type="button" disabled={busy} onClick={()=>{setBusy(true);void changed().catch(reason=>setError(reason.message)).finally(()=>setBusy(false));}}>Átnézési lista frissítése</button>
@@ -54,7 +60,7 @@ function ReviewCard({item,revision,root,onChanged,onBeforeChange,onBusyChange}:{
     {item.contentChanged&&<p role="alert">A korábbi döntés óta változott a tartalom. Új átnézés szükséges.</p>}
     {item.kind==='photo'&&item.previewUrl&&<ReviewImage key={item.contentHash+':'+(item.decision||'')} covered={flagged} src={item.previewUrl} alt={'Átnézendő kép – '+item.contributor}/>}
     {item.kind==='text'&&<blockquote className="review-text">{item.text||'A szöveg előnézete nem elérhető.'}</blockquote>}
-    {(item.kind==='audio'||item.kind==='video')&&<p>A felvétel lejátszása nem támogatott. Nem készült automatikus átirat vagy teljes körű értelmezés.</p>}
+    {(item.kind==='audio'||item.kind==='video')&&item.previewUrl&&<><ReviewRecording key={item.contentHash+':'+(item.decision||'')} covered={flagged} src={item.previewUrl} kind={item.kind} label={'Átnézendő felvétel – '+item.contributor}/>{item.durationSeconds!=null&&<p>Felvétel hossza: {item.durationSeconds.toFixed(1)} másodperc.</p>}</>}
     <p>Átnézés terjedelme: {scopeText(item.scope)}.</p>
     {item.affectedPages?.length>0&&<details><summary>Érintett könyvoldalak</summary>{item.affectedPages.map(affected=><p key={affected.versionId}>Változat {affected.versionId.slice(0,8)}: {affected.pageNumbers.join(', ')}. oldal{affected.approved?' · korábban jóváhagyott':''}</p>)}</details>}
     <details><summary>Jelzések és döntési előzmény ({item.flags.length+(item.history?.length||0)})</summary>{item.flags.map(flag=><div key={flag.id}><p><strong>{reviewCategoryLabels[flag.category]}</strong> · {flag.origin==='manual'?'Tulajdonosi jelzés':'Segédeszköz jelzése – bizonytalan'}</p><p>{flag.reason||'Nincs külön indoklás.'}</p><p>{date(flag.createdAt)} · {scopeText(flag.scope)}</p></div>)}{item.history?.map(entry=><div key={entry.revision}><p>Tulajdonosi döntés: {reviewDecisionLabels[entry.decision]} · {date(entry.createdAt)} · {entry.actorId||'Tulajdonos'}.</p><p>{scopeText(entry.scope)}{entry.note?' · '+entry.note:''}</p></div>)}</details>

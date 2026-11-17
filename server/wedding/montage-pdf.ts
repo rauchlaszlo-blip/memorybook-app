@@ -2,7 +2,7 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import type { Pool } from 'pg';
 import type { Draft, Element, Source } from '../../shared/montage';
-import { sizes } from '../../shared/montage';
+import { sizes,isPhotoMedia } from '../../shared/montage';
 import { annotationSvg } from '../../shared/photo-annotation';
 import type { Annotation } from '../../shared/photo-annotation';
 import { fontPath,pt } from './montage-layout';
@@ -36,8 +36,9 @@ export async function proofPdf(d:Draft,bookId:string,versionId:string,pool:Pool,
         if(e.rotation)doc.rotate(e.rotation,{origin:[(e.x+e.w/2)*pt,(e.y+e.h/2)*pt]});
         if(e.kind==='text'){doc.font(fontPath).fontSize(e.fontSize).fillColor(e.color).text(e.text||'',e.x*pt,e.y*pt,{width:e.w*pt,height:(e.h-7)*pt,lineGap:0});}
         else {
+          if(frozen&&!frozen.sources.some(s=>s.id===e.sourceId&&s.media.some(m=>m.id===e.mediaId&&isPhotoMedia(m))))throw new Error('MEDIA_NOT_IMAGE');
           const captured=frozen?.media.get(e.mediaId!);
-          const row=frozen?(captured?{original_bytes:captured.original,layer:captured.layer}:null):(await pool.query(`SELECT m.original_bytes,a.layer FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.id=$1 AND m.book_id=$2 AND m.state='attached'`,[e.mediaId,bookId])).rows[0];
+          const row=frozen?(captured?{original_bytes:captured.original,layer:captured.layer}:null):(await pool.query(`SELECT m.original_bytes,a.layer FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.id=$1 AND m.book_id=$2 AND m.state='attached' AND m.kind='photo'`,[e.mediaId,bookId])).rows[0];
           if(!row)throw new Error('MISSING_MEDIA');
           const full=await imageWithInk(row.original_bytes,row.layer,e.ink),meta=await sharp(full).metadata();
           const left=Math.round(e.crop.x*meta.width!),top=Math.round(e.crop.y*meta.height!),width=Math.min(meta.width!-left,Math.round(e.crop.w*meta.width!)),height=Math.min(meta.height!-top,Math.round(e.crop.h*meta.height!));

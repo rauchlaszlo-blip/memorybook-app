@@ -18,6 +18,7 @@ import {seedMcpBook} from './fixtures/mcp-book';
 import {arrange} from '../server/wedding/montage-layout';
 import {mockProvider,defaultProfile} from '../shared/montage';
 import type {Draft} from '../shared/montage';
+import {fictionalRecordings} from './fixtures/av-recordings';
 
 const connectionString=localDatabaseUrl(),schema='mcp_'+randomUUID().replaceAll('-','');
 const admin=new Pool({connectionString}),pool=new Pool({connectionString,options:`-c search_path=${schema}`});
@@ -125,6 +126,31 @@ test('MCP review errors disclose only bounded counts, UUIDs and page numbers',()
   assert.equal(safeReviewErrorDetails('UNEXPECTED_DATABASE_ERROR',{pendingCount:2,reason:'private'}),undefined);
   assert.equal(safeReviewErrorDetails('CONTENT_REVIEW_BLOCKED',{pendingCount:Infinity,revision:'private',reason:'private'}),undefined);
   assert.equal((safeReviewErrorDetails('CONTENT_REVIEW_BLOCKED',{pendingIds:Array(300).fill(id)})!.pendingIds as string[]).length,200);
+});
+
+test('MCP AV exposes truthful metadata and protected originals, with review gates and no fake image/transcript',async()=>{
+  // A separate application instance keeps this independent group within the real
+  // 120/minute limiter without weakening production limits or waiting a minute.
+  const app=express();app.use(createMemorybookMcpRouter(pool,origin,async req=>req.get('x-test-owner')?{user:{id:req.get('x-test-owner')!}}:null));
+  const avServer=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>avServer.once('listening',resolve));const address=avServer.address();assert.ok(address&&typeof address!=='string');const avBase='http://127.0.0.1:'+address.port;
+  const client=new Client({name:'memorybook-av-test',version:'1.0.0'});await client.connect(new StreamableHTTPClientTransport(new URL(avBase+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+accessToken}}}));
+  const call=(name:string,args:Record<string,unknown>={})=>client.callTool({name,arguments:args}) as Promise<CallToolResult>;
+  const parsed=(result:CallToolResult)=>{assert.equal(result.isError,undefined,JSON.stringify(result.content));assert.equal(result.content[0].type,'text');return JSON.parse((result.content[0] as {text:string}).text);};
+  try{
+    const support=parsed(await call('get_book',{bookId:fixture.bookId})).mediaSupport;assert.equal(support.audioUpload,true);assert.equal(support.videoUpload,true);assert.equal(support.ownerPlayback,true);assert.equal(support.audioVideoPdfEmbedding,false);assert.equal(support.transcription,false);
+    for(const sample of await fictionalRecordings()){
+      const mediaId=randomUUID(),sourceId=fixture.submissionIds[2];
+      await pool.query(`INSERT INTO event_media(id,book_id,upload_key,submission_id,mime_type,kind,duration_seconds,original_size,sha256,width,height,state,original_bytes,preview_bytes,display_bytes,stored_size) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'attached',$12,$13,$13,$8)`,[mediaId,fixture.bookId,randomUUID(),sourceId,sample.mime,sample.kind,sample.durationSeconds,sample.bytes.length,createHash('sha256').update(sample.bytes).digest('hex'),sample.width,sample.height,sample.bytes,Buffer.alloc(0)]);
+      const snapshot=parsed(await call('create_snapshot',{bookId:fixture.bookId,key:randomUUID(),selectedIds:[sourceId]}));
+      const result=await call('get_media',{bookId:fixture.bookId,mediaId,snapshotId:snapshot.id}),metadata=parsed(result);assert.equal(result.content.length,1);assert.equal(metadata.kind,sample.kind);assert.equal(metadata.mimeType,sample.mime);assert.equal(metadata.durationSeconds,sample.durationSeconds);assert.equal(metadata.audioVideoInterpretation,false);assert.equal(metadata.transcription,false);assert.equal(metadata.audioVideoPdfEmbedding,false);
+      const url=metadata.originalDownloadUrl.replace(origin,avBase);assert.equal((await fetch(url)).status,401);assert.equal((await fetch(url,{headers:{'x-test-owner':'other-owner'}})).status,404);
+      const bytes=await fetch(url,{headers:{Authorization:'Bearer '+accessToken,Range:'bytes=0-15'}});assert.equal(bytes.status,206);assert.deepEqual(Buffer.from(await bytes.arrayBuffer()),sample.bytes.subarray(0,16));
+      const flag=parsed(await call('create_content_flag',{bookId:fixture.bookId,key:randomUUID(),sourceId,mediaId,categories:['possible_sexual'],reason:'Fiktív felvétel: részleges, bizonytalan jelzés; nem gépi értelmezés.',scope:{kind:'partial',startSeconds:0,endSeconds:.1}}));assert.equal(flag.item.kind,sample.kind);
+      assert.equal((await call('get_media',{bookId:fixture.bookId,mediaId,snapshotId:snapshot.id})).isError,true);assert.equal((await fetch(url,{headers:{Authorization:'Bearer '+accessToken}})).status,404);
+      await service.decideContentFlag(owner,fixture.bookId,flag.item.id,{key:randomUUID(),decision:'false_positive',expectedRevision:flag.revision,scope:{kind:'full'}});
+      const restored=await fetch(url,{headers:{Authorization:'Bearer '+accessToken}});assert.equal(restored.status,200);assert.deepEqual(Buffer.from(await restored.arrayBuffer()),sample.bytes);
+    }
+  }finally{await client.close();avServer.closeAllConnections();await new Promise<void>(resolve=>avServer.close(()=>resolve()));}
 });
 
 test('transport origin, tools argument validation, refresh rotation/replay and owner revocation',async()=>{

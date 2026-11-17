@@ -111,6 +111,7 @@ export function createMontageRouter(pool:Pool,getSession:(req:Request)=>Promise<
   r.get('/:bookId/image/:id',handle(async(req,res)=>{if(!uuid.test(String(req.params.id))){res.sendStatus(404);return;}const x=Number(req.query.x||0),y=Number(req.query.y||0),scale=Number(req.query.scale||1);if(![x,y,scale].every(Number.isFinite)||Math.abs(x)>1||Math.abs(y)>1||scale<.1||scale>3){res.sendStatus(400);return;}
     if(req.query.editionVariant!==undefined&&!['private','shareable'].includes(String(req.query.editionVariant)))throw new WorkflowError('INVALID_EDITION_VARIANT');
     const media=await workflow.getMedia({ownerId:res.locals.book.owner_user_id,kind:'owner'},res.locals.book.id,String(req.params.id),{editionVariant:req.query.editionVariant==='shareable'?'shareable':'private',preview:false});
+    if(media.kind!=='photo')throw new WorkflowError('MEDIA_NOT_IMAGE',415);
     const full=await imageWithInk(media.bytes,media.layer,{x,y,scale});res.type('image/png').send(await sharp(full).resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).png().toBuffer());
   }));return r;
 }

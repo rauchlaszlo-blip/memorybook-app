@@ -20,17 +20,19 @@ let base='';
 let jpeg:Buffer,png:Buffer;
 const limits=mediaLimits();
 const env={NODE_ENV:'test',WEDDING_ENABLED:'true',WEDDING_PILOT_CREATE_ENABLED:'true',WEDDING_PILOT_USER_IDS:'a,b'};
+const cookies=new Map<string,string>();
 async function start(config=limits) {
   const app=express();app.use(createWeddingRouter({pool,env,media:config,getSession:async req=>req.get('x-owner')?{user:{id:req.get('x-owner')!}}:null}));
   const srv=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>srv.once('listening',resolve));
   const address=srv.address();assert.ok(address && typeof address!=='string');return {srv,url:'http://127.0.0.1:'+address.port};
 }
 async function call(path:string,body?:unknown,owner?:string,url=base) {
-  return fetch(url+path,{method:body===undefined?'GET':'POST',headers:{...(owner?{'x-owner':owner}:{}),...(body!==undefined?{'Content-Type':'application/json'}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  const cookie=cookies.get(path.split('/')[2]);
+  return fetch(url+path,{method:body===undefined?'GET':'POST',headers:{...(owner?{'x-owner':owner}:{}),...(cookie?{cookie}:{}),...(body!==undefined?{'Content-Type':'application/json'}:{})},body:body===undefined?undefined:JSON.stringify(body)});
 }
-async function book(owner='a') {const r=await call('/books',{names:'Fotópróba – fiktív',date:'2027-06-05'},owner);assert.equal(r.status,201);return (await r.json()).book;}
+async function book(owner='a') {const r=await call('/books',{names:'Fotópróba – fiktív',date:'2027-06-05'},owner);assert.equal(r.status,201);const book=(await r.json()).book;const guest=await call('/guest/'+book.invite_token);cookies.set(book.invite_token,guest.headers.get('set-cookie')!.split(';')[0]);return book;}
 async function upload(b:{invite_token:string},key=randomUUID(),bytes=jpeg,url=base) {
-  return fetch(url+'/guest/'+b.invite_token+'/media/'+key,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new Uint8Array(bytes)});
+  return fetch(url+'/guest/'+b.invite_token+'/media/'+key,{method:'POST',headers:{'Content-Type':'application/octet-stream',cookie:cookies.get(b.invite_token)!},body:new Uint8Array(bytes)});
 }
 const wish=(key:string,mediaId?:string)=>({name:'Fiktív Éva',message:'Árvíztűrő jókívánság!',idempotencyKey:key,...(mediaId?{mediaId}:{})});
 before(async()=>{
@@ -88,7 +90,7 @@ test('parallel upload and replay after lost response do not duplicate storage or
 test('interrupted binary request creates no complete image; retry works',async()=>{
   const b=await book(),key=randomUUID();
   await new Promise<void>(resolve=>{
-    const req=request(base+'/guest/'+b.invite_token+'/media/'+key,{method:'POST',headers:{'Content-Type':'application/octet-stream','Content-Length':jpeg.length}},()=>resolve());
+    const req=request(base+'/guest/'+b.invite_token+'/media/'+key,{method:'POST',headers:{'Content-Type':'application/octet-stream','Content-Length':jpeg.length,cookie:cookies.get(b.invite_token)!}},()=>resolve());
     req.on('error',()=>resolve());req.write(jpeg.subarray(0,30));setTimeout(()=>{req.destroy();resolve();},50);
   });
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_media WHERE book_id=$1',[b.id])).rows[0].n,0);

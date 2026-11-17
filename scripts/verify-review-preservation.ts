@@ -10,12 +10,13 @@ const hash=(x:unknown)=>createHash('sha256').update(Buffer.isBuffer(x)?x:JSON.st
 type RecordEntry={account:number;path:string;kind:'book'|'snapshot'|'version'|'binary'|'json';file:string;sha256:string};
 function normalize(kind:RecordEntry['kind'],value:unknown){
   const v=value as Record<string,unknown>;
+  if(kind==='book'&&process.argv.includes('--capture-release'))return {...v,submissions:(v.submissions as {media?:Record<string,unknown>[]}[]).map(s=>({...s,media:(s.media||[]).map(m=>({id:m.id,previewUrl:m.previewUrl,displayUrl:m.displayUrl,originalUrl:m.originalUrl}))}))};
   if(kind==='snapshot')return {id:v.id,contentHash:v.contentHash,selectedIds:v.selectedIds,sources:(v.sources as Record<string,unknown>[]).map(source=>Object.fromEntries(Object.entries(source).filter(([key])=>key!=='review')))};
   if(kind==='version')return {id:v.id,draft:v.draft,snapshotId:v.snapshotId,approved_at:v.approved_at};
   return value;
 }
 const {config,storagePath}=await loadInternetConfig(process.argv.find(a=>a.endsWith('.local'))),mode=process.argv.includes('--capture')?'capture':'verify';
-const dir=resolve('test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
+const dir=resolve(process.argv.includes('--capture-release')?'test-results/guest-capture/pre-release':'test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
 const contexts:APIRequestContext[]=[];
 try {
   contexts.push(await createOwnerContext(config,storagePath));
@@ -57,9 +58,15 @@ try {
     for(const entry of manifest.entries) {
       const local=await readFile(resolve(dir,entry.file)),expected=entry.kind==='binary'?local:JSON.parse(local.toString());ensure(hash(expected)===entry.sha256,'LOCAL_COPY_HASH_MISMATCH');
       const response=await contexts[entry.account].get(entry.path,{maxRedirects:0});ensure(response.status()===200,'PRESERVATION_HTTP_'+response.status());
-      const actual=entry.kind==='binary'?await response.body():normalize(entry.kind,await response.json());ensure(hash(actual)===entry.sha256,'SOURCE_OR_FROZEN_ARTIFACT_CHANGED');
+      let actual=entry.kind==='binary'?await response.body():normalize(entry.kind,await response.json());
+      if(entry.kind==='book'&&entry.path==='/api/wedding/books/'+config.bookId&&process.argv.includes('--capture-release')&&process.argv.includes('--allow-new-submissions')){
+        const expectedIds=new Set((expected.submissions as {id:string}[]).map(s=>s.id));
+        const current=actual as {submissions:{id:string}[]};
+        actual={...current,submissions:current.submissions.filter(s=>expectedIds.has(s.id))};
+      }
+      ensure(hash(actual)===entry.sha256,'SOURCE_OR_FROZEN_ARTIFACT_CHANGED');
     }
-    const report={at:new Date().toISOString(),status:'PASS',books:manifest.books,unchangedResources:manifest.entries.length,comparison:'All captured source fields, originals, annotations, saved drafts, snapshot content and completed PDF bytes match the pre-release HTTPS copy'};
+    const report={at:new Date().toISOString(),status:'PASS',books:manifest.books,unchangedResources:manifest.entries.length,additionalSubmissionsAllowed:process.argv.includes('--capture-release')&&process.argv.includes('--allow-new-submissions'),comparison:'All captured source fields, originals, annotations, saved drafts, snapshot content and completed PDF bytes match the pre-release HTTPS copy'};
     await writeFile(resolve(dir,'verification.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
   }
 } finally {for(const context of contexts)await context.dispose();}

@@ -1,11 +1,11 @@
 import type { Draft,Page,Source } from '../../shared/montage';
-import { sizes } from '../../shared/montage';
+import { sizes,isPhotoMedia } from '../../shared/montage';
 export function canvasPage(page:Page,draft:Draft,sources:Source[],bookId:string,snapshotId?:string|null,hiddenElementIds:string[]=[],coveredMediaIds:string[]=[]){
   const f=750/sizes[draft.format].w;
   return {version:'7.4.0',background:page.background,objects:page.elements.map(e=>{
     const common={montageId:e.id,originX:'center',originY:'center',left:(e.x+e.w/2)*f,top:(e.y+e.h/2)*f,angle:e.rotation||0,strokeWidth:0,lockRotation:e.locked,lockMovementX:e.locked,lockMovementY:e.locked,lockScalingX:e.locked,lockScalingY:e.locked};
     const media=sources.find(source=>source.id===e.sourceId)?.media.find(item=>item.id===e.mediaId);
-    if(hiddenElementIds.includes(e.id)||e.kind==='photo'&&(!media||coveredMediaIds.includes(e.mediaId!)))return {...common,montageId:undefined,type:'Rect',width:e.w*f,height:e.h*f,fill:'#e8e0e4',stroke:'#aa929e',strokeWidth:1,selectable:false,evented:false};
+    if(hiddenElementIds.includes(e.id)||e.kind==='photo'&&(!media||!isPhotoMedia(media)||coveredMediaIds.includes(e.mediaId!)))return {...common,montageId:undefined,type:'Rect',width:e.w*f,height:e.h*f,fill:'#e8e0e4',stroke:'#aa929e',strokeWidth:1,selectable:false,evented:false};
     if(e.kind==='text'){
       const radians=(e.rotation||0)*Math.PI/180;
       // Fabric measures text height itself. Keep its top-left at the transformed

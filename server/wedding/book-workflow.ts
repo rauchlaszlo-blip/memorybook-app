@@ -3,7 +3,7 @@ import { Router, json } from 'express';
 import type { Request, RequestHandler } from 'express';
 import type { Pool, PoolClient } from 'pg';
 import sharp from 'sharp';
-import { coverage, validateDraft } from '../../shared/montage';
+import { coverage, validateDraft, mediaCapabilities } from '../../shared/montage';
 import type { Draft, Element, Source } from '../../shared/montage';
 import type { Annotation } from '../../shared/photo-annotation';
 import type { ReviewListOptions } from '../../shared/content-review';
@@ -13,6 +13,8 @@ import { preflight } from './montage-layout';
 import { imageWithInk, proofPdf } from './montage-pdf';
 import { allowedMcpBookIds, deploymentAllowsMcpBook } from '../mcp/book-policy';
 import { ContentReviewError, createContentReviewService, reviewState, filterReviewSources, reviewDraftPolicy, getReviewClearance, clearReviewForVersion } from './content-review';
+import { sendMediaBytes } from './media-response';
+import type { MediaKind } from '../../shared/media-limits';
 
 export type WorkflowActor = { ownerId: string; kind: 'owner' | 'mcp'; allowedBookIds?: string[]; grantId?: string };
 type Database = Pick<Pool, 'query'>;
@@ -21,7 +23,7 @@ const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(
   ? Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)])) : value;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const validId = (value: unknown): value is string => typeof value === 'string' && uuid.test(value);
-const capabilities = { images: true, annotations: true, audio: false, video: false, transcription: false, durableMediaQr: false, pdf: 'proof-only' };
+const capabilities = { ...mediaCapabilities, pdf: 'proof-only' };
 
 export class WorkflowError extends Error {
   constructor(public code: string, public status = 400, public details?: unknown) { super(code); }
@@ -185,9 +187,9 @@ export function createWorkflowService(pool: Pool) {
     let row;
     if (input.snapshotId) {
       await snapshotRow(client, bookId, input.snapshotId);
-      row = (await client.query('SELECT source_id,mime_type,sha256,original_bytes,preview_bytes,annotation AS layer FROM event_book_snapshot_media WHERE snapshot_id=$1 AND media_id=$2', [input.snapshotId, mediaId])).rows[0];
+      row = (await client.query('SELECT source_id,kind,duration_seconds,mime_type,sha256,original_bytes,preview_bytes,annotation AS layer FROM event_book_snapshot_media WHERE snapshot_id=$1 AND media_id=$2', [input.snapshotId, mediaId])).rows[0];
     } else {
-      row = (await client.query(`SELECT m.submission_id AS source_id,m.mime_type,m.sha256,m.original_bytes,COALESCE(a.preview_bytes,m.preview_bytes) AS preview_bytes,a.layer
+      row = (await client.query(`SELECT m.submission_id AS source_id,m.kind,m.duration_seconds,m.mime_type,m.sha256,m.original_bytes,COALESCE(a.preview_bytes,m.preview_bytes) AS preview_bytes,a.layer
         FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.id=$1 AND m.book_id=$2 AND m.state='attached'`, [mediaId, bookId])).rows[0];
     }
     if (!row) fail('MEDIA_NOT_FOUND', 404);
@@ -196,10 +198,10 @@ export function createWorkflowService(pool: Pool) {
       const filtered = await reviewedSources(client, bookId, sources, input.snapshotId, input.editionVariant);
       if (!filtered.sources.some(s => s.media.some(m => m.id === mediaId))) fail('CONTENT_REVIEW_BLOCKED', 409, filtered.contentReview);
     }
-    const preview = input.preview !== false;
+    const preview = input.preview !== false && row.kind === 'photo';
     // Normalized PNG is a protocol-native image, independent of protected browser URLs.
     const bytes = preview ? await sharp(row.preview_bytes).resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }).png().toBuffer() : row.original_bytes as Buffer;
-    return { bytes, mimeType: preview ? 'image/png' : row.mime_type as string, layer: row.layer as Annotation | null, sourceId: row.source_id as string,
+    return { bytes, kind: row.kind as MediaKind, durationSeconds: row.duration_seconds as number | null, mimeType: preview ? 'image/png' : row.mime_type as string, layer: row.layer as Annotation | null, sourceId: row.source_id as string,
       mediaId, sha256: row.sha256 as string, originalAvailable: true, snapshotId: input.snapshotId || null };
     });
   }
@@ -218,7 +220,7 @@ export function createWorkflowService(pool: Pool) {
       if (input.selectedIds && sources.length !== input.selectedIds.length) fail('INVALID_SOURCE_IDS', 400);
       if (!sources.length) fail('NO_CONTENT', 409);
       const mediaIds = sources.flatMap(s => s.media.map(m => m.id));
-      const media = (await client.query(`SELECT m.id,m.submission_id,m.mime_type,m.sha256,m.original_bytes,COALESCE(a.preview_bytes,m.preview_bytes) AS preview_bytes,a.layer
+      const media = (await client.query(`SELECT m.id,m.submission_id,m.kind,m.duration_seconds,m.mime_type,m.sha256,m.original_bytes,COALESCE(a.preview_bytes,m.preview_bytes) AS preview_bytes,a.layer
         FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.book_id=$1 AND m.id=ANY($2::uuid[]) AND m.state='attached' ORDER BY m.id`, [bookId, mediaIds])).rows;
       if (media.length !== mediaIds.length) fail('MISSING_MEDIA', 409);
       const addedBytes = media.reduce((n, m) => n + m.original_bytes.length + m.preview_bytes.length, Buffer.byteLength(JSON.stringify(sources)));
@@ -228,8 +230,8 @@ export function createWorkflowService(pool: Pool) {
       const id = randomUUID(), contentHash = hash({ sources, media: media.map(m => ({ id: m.id, sha256: m.sha256, annotation: m.layer })) });
       const row = (await client.query(`INSERT INTO event_book_snapshots(id,book_id,owner_id,action_key,request_hash,content_hash,sources,selected_ids,explicit_selection,actor_kind)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [id, bookId, actor.ownerId, input.key, requestHash, contentHash, JSON.stringify(sources), JSON.stringify(sources.map(s => s.id)), input.selectedIds !== undefined, actor.kind])).rows[0];
-      for (const m of media) await client.query(`INSERT INTO event_book_snapshot_media(snapshot_id,media_id,source_id,mime_type,sha256,original_bytes,preview_bytes,annotation)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [id, m.id, m.submission_id, m.mime_type, m.sha256, m.original_bytes, m.preview_bytes, m.layer ? JSON.stringify(m.layer) : null]);
+      for (const m of media) await client.query(`INSERT INTO event_book_snapshot_media(snapshot_id,media_id,source_id,mime_type,sha256,original_bytes,preview_bytes,annotation,kind,duration_seconds)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [id, m.id, m.submission_id, m.mime_type, m.sha256, m.original_bytes, m.preview_bytes, m.layer ? JSON.stringify(m.layer) : null, m.kind, m.duration_seconds]);
       await audit(client, actor, bookId, 'snapshot.created', id, { sources: sources.length, media: media.length, contentHash });
       return { ...snapshotResult(row), ...await reviewedSources(client, bookId, sources, id), replayed: false };
     });
@@ -510,7 +512,13 @@ export function createWorkflowRouter(pool: Pool, getSession: (req: Request) => P
     if (![x, y, scale].every(Number.isFinite) || Math.abs(x) > 1 || Math.abs(y) > 1 || scale < .1 || scale > 3) fail('INVALID_IMAGE_TRANSFORM');
     if (req.query.editionVariant !== undefined && !['private', 'shareable'].includes(String(req.query.editionVariant))) fail('INVALID_EDITION_VARIANT');
     const media = await service.getMedia(actor(res), String(req.params.bookId), String(req.params.id), { snapshotId: req.query.snapshotId ? String(req.query.snapshotId) : undefined, preview: false, editionVariant: req.query.editionVariant === 'shareable' ? 'shareable' : 'private' });
+    if (media.kind !== 'photo') fail('MEDIA_NOT_IMAGE', 415);
     res.type('image/png').send(await sharp(await imageWithInk(media.bytes, media.layer, { x, y, scale })).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).png().toBuffer());
+  }));
+  router.get('/:bookId/media/:id', handle(async (req, res) => {
+    if (req.query.editionVariant !== undefined && !['private', 'shareable'].includes(String(req.query.editionVariant))) fail('INVALID_EDITION_VARIANT');
+    const media = await service.getMedia(actor(res), String(req.params.bookId), String(req.params.id), { snapshotId: req.query.snapshotId ? String(req.query.snapshotId) : undefined, preview: false, editionVariant: req.query.editionVariant === 'shareable' ? 'shareable' : 'private' });
+    sendMediaBytes(req, res, { bytes: media.bytes, mimeType: media.mimeType, filename: 'memorybook-original', range: media.kind !== 'photo' });
   }));
   return router;
 }

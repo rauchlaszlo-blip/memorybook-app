@@ -11,7 +11,7 @@ import { parseAnnotation } from '../../shared/photo-annotation';
 import type { Annotation } from '../../shared/photo-annotation';
 import { annotationHash, attachAnnotation } from './annotation';
 import { accessSql, guestDevice } from './access-window';
-import { weddingPackageFor } from '../../shared/wedding-package';
+import { guestMediaLimits, maxMediaDurationSeconds, supportedMediaMimeTypes } from '../../shared/media-limits';
 
 export type WeddingSession = { user: { id: string; email?: string | null } } | null;
 export interface WeddingOptions {
@@ -142,9 +142,11 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     const submissions = await pool.query('SELECT id, guest_name, message, created_at, occurred_on::text FROM event_submissions WHERE book_id=$1 ORDER BY created_at DESC, id', [req.params.id]);
     let items = submissions.rows;
     if (media) {
-      const photos = await pool.query("SELECT id,submission_id FROM event_media WHERE book_id=$1 AND state='attached' ORDER BY created_at", [req.params.id]);
+      const photos = await pool.query("SELECT id,submission_id,kind,mime_type,duration_seconds FROM event_media WHERE book_id=$1 AND state='attached' ORDER BY created_at", [req.params.id]);
       items = items.map(item => ({ ...item, media: photos.rows.filter(photo => photo.submission_id === item.id).map(photo => ({
-        id: photo.id, previewUrl: '/api/wedding/media/' + photo.id + '/preview', displayUrl: '/api/wedding/media/' + photo.id + '/display', originalUrl: '/api/wedding/media/' + photo.id + '/original'
+        id: photo.id, kind:photo.kind,mimeType:photo.mime_type,durationSeconds:photo.duration_seconds,
+        previewUrl:photo.kind==='photo'?'/api/wedding/media/' + photo.id + '/preview':null, displayUrl:photo.kind==='photo'?'/api/wedding/media/' + photo.id + '/display':null,
+        playbackUrl:photo.kind!=='photo'?'/api/wedding/media/'+photo.id+'/playback':null, originalUrl: '/api/wedding/media/' + photo.id + '/original'
       })) }));
     }
     res.json({ book: withLink(book.rows[0]), submissions: items });
@@ -161,17 +163,25 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
   }));
   router.get('/guest/:token', handle(async (req, res) => {
     if (!tokenPattern.test(String(req.params.token))) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-    const result = await pool.query(`SELECT title, starts_on::text, template_id, template_version, closed_at IS NOT NULL AS closed, package_version,submission_start,submission_end,${accessSql()} AS access_state
+    const result = await pool.query(`SELECT id,title, starts_on::text, template_id, template_version, closed_at IS NOT NULL AS closed, package_version,submission_start,submission_end,${accessSql()} AS access_state
       FROM event_books WHERE invite_token=$1 AND ${productFilter}`, [req.params.token]);
     if (!result.rowCount) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
     const event=result.rows[0];
-    guestDevice(req,res);
+    const device=guestDevice(req,res);
+    const used={photo:0,video:0,audio:0};
+    if(media) {
+      const counts=await pool.query(`SELECT m.kind,count(*)::int AS n FROM event_submissions s JOIN event_media m ON m.submission_id=s.id WHERE s.book_id=$1 AND s.guest_device_id=$2 GROUP BY m.kind`,[event.id,device]);
+      for(const row of counts.rows) if(Object.hasOwn(used,row.kind))used[row.kind as keyof typeof used]=row.n;
+    }
+    delete event.id;
     if(!event.package_version) { delete event.package_version;delete event.submission_start;delete event.submission_end;delete event.access_state; }
-    res.json({ event, ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels } } : {}) });
+    res.json({ event, ...(media ? { photo: { maxBytes: media.maxBytes, maxPixels: media.maxPixels },media:{maxDurationSeconds:maxMediaDurationSeconds,limits:{...guestMediaLimits,photo:{...guestMediaLimits.photo,maxBytes:media.maxBytes}},used,remaining:{photo:Math.max(0,10-used.photo),video:Math.max(0,2-used.video),audio:Math.max(0,2-used.audio)},supportedMimeTypes:supportedMediaMimeTypes} } : {}) });
   }));
   router.post('/guest/:token/submissions', handle(async (req, res) => {
     const name = cleanText(req.body?.name, 100);
-    const message = cleanText(req.body?.message, 4000);
+    const rawMessage=req.body?.message;
+    const emptyMediaMessage=typeof rawMessage==='string' && rawMessage.length<=4000 && rawMessage.trim()==='' && !Array.from(rawMessage).some(c=>c.charCodeAt(0)<32 && ![9,10,13].includes(c.charCodeAt(0))) && req.body?.mediaId;
+    const message = emptyMediaMessage ? '' : cleanText(rawMessage, 4000);
     const key: unknown = req.body?.idempotencyKey;
     const mediaId: unknown = req.body?.mediaId;
     let annotation: Annotation | null = null;
@@ -181,18 +191,20 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
     }
     if (mediaId !== undefined && (!media || typeof mediaId !== 'string' || !uuid.test(mediaId))) { res.status(400).json({ error: 'PHOTO_INVALID' }); return; }
     if (!tokenPattern.test(String(req.params.token))) { res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-    if (!name || !message || typeof key !== 'string' || !uuid.test(key)) { res.status(400).json({ error: 'INVALID_SUBMISSION' }); return; }
+    if (!name || message===null || typeof key !== 'string' || !uuid.test(key)) { res.status(400).json({ error: 'INVALID_SUBMISSION' }); return; }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       if (annotation?.strokes.length) await client.query('SELECT pg_advisory_xact_lock(61107,2)');
       const book = await client.query(`SELECT id, closed_at,package_version,${accessSql()} AS access_state FROM event_books WHERE invite_token=$1 AND ${productFilter} FOR UPDATE`, [req.params.token]);
       if (!book.rowCount) { await client.query('ROLLBACK'); res.status(404).json({ error: 'INVITE_NOT_FOUND' }); return; }
-      const prior = await client.query('SELECT id, guest_name, message FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
+      const device=guestDevice(req);
+      if((book.rows[0].package_version || mediaId) && !device){await client.query('ROLLBACK');res.status(428).json({error:'GUEST_SESSION_REQUIRED'});return;}
+      const prior = await client.query('SELECT id, guest_name, message,guest_device_id FROM event_submissions WHERE book_id=$1 AND idempotency_key=$2', [book.rows[0].id, key]);
       if (prior.rowCount) {
         const priorMedia = media ? await client.query('SELECT m.id,a.layer_hash FROM event_media m LEFT JOIN event_media_annotations a ON a.media_id=m.id WHERE m.submission_id=$1', [prior.rows[0].id]) : { rows: [] };
         await client.query('COMMIT');
-        if ((priorMedia.rows[0]?.id || undefined) !== mediaId || (priorMedia.rows[0]?.layer_hash || null) !== annotationHash(annotation) || prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
+        if ((prior.rows[0].guest_device_id && prior.rows[0].guest_device_id!==device) || (priorMedia.rows[0]?.id || undefined) !== mediaId || (priorMedia.rows[0]?.layer_hash || null) !== annotationHash(annotation) || prior.rows[0].guest_name !== name || prior.rows[0].message !== message) {
           res.status(409).json({ error: 'IDEMPOTENCY_CONFLICT' }); return;
         }
         // A committed request can be acknowledged even after closure; no new write.
@@ -200,15 +212,14 @@ export function createWeddingRouter({ pool, getSession, env = process.env, login
       }
       if (book.rows[0].closed_at) { await client.query('ROLLBACK'); res.status(410).json({ error: 'SUBMISSIONS_CLOSED' }); return; }
       if(book.rows[0].access_state!=='open'){await client.query('ROLLBACK');res.status(410).json({error:book.rows[0].access_state==='early'?'SUBMISSIONS_EARLY':'SUBMISSIONS_ENDED'});return;}
-      const device=guestDevice(req);
-      if(book.rows[0].package_version && !device){await client.query('ROLLBACK');res.status(428).json({error:'GUEST_SESSION_REQUIRED'});return;}
-      if(book.rows[0].package_version && mediaId){
-        const used=await client.query('SELECT count(*)::int n FROM event_submissions s JOIN event_media m ON m.submission_id=s.id WHERE s.book_id=$1 AND s.guest_device_id=$2',[book.rows[0].id,device]);
-        if(used.rows[0].n>=weddingPackageFor(book.rows[0].package_version).perDevice.photos){await client.query('ROLLBACK');res.status(413).json({error:'PHOTO_DEVICE_LIMIT'});return;}
-      }
       if (mediaId) {
-        const photo = await client.query("SELECT id,display_bytes FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
+        const photo = await client.query("SELECT id,display_bytes,kind,guest_device_id FROM event_media WHERE id=$1 AND book_id=$2 AND upload_key=$3 AND state='uploaded' AND expires_at>CURRENT_TIMESTAMP FOR UPDATE", [mediaId,book.rows[0].id,key]);
         if (!photo.rowCount) { await client.query('ROLLBACK'); res.status(409).json({ error: 'PHOTO_EXPIRED' }); return; }
+        if(photo.rows[0].guest_device_id && photo.rows[0].guest_device_id!==device){await client.query('ROLLBACK');res.status(409).json({error:'MEDIA_GUEST_MISMATCH'});return;}
+        const kind=photo.rows[0].kind as keyof typeof guestMediaLimits;
+        if(annotation && kind!=='photo'){await client.query('ROLLBACK');res.status(400).json({error:'ANNOTATION_INVALID'});return;}
+        const used=await client.query('SELECT count(*)::int n FROM event_submissions s JOIN event_media m ON m.submission_id=s.id WHERE s.book_id=$1 AND s.guest_device_id=$2 AND m.kind=$3',[book.rows[0].id,device,kind]);
+        if(used.rows[0].n>=guestMediaLimits[kind].maxCount){await client.query('ROLLBACK');res.status(413).json({error:'MEDIA_GUEST_LIMIT',kind,limit:guestMediaLimits[kind].maxCount});return;}
         if (annotation?.strokes.length && media) await attachAnnotation(client, mediaId as string, book.rows[0].id, photo.rows[0].display_bytes, annotation, media);
       }
       const submissionId = randomUUID();
