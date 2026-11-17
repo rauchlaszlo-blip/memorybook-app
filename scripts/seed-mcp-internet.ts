@@ -8,13 +8,15 @@ import {resolve} from 'node:path';
 import sharp from 'sharp';
 import type {APIRequestContext,APIResponse} from '@playwright/test';
 import {weddingPackage} from '../shared/wedding-package';
+import {parseAnnotation} from '../shared/photo-annotation';
 import {loadInternetConfig,createRemoteContext,createOwnerContext,getJson,postJson,fictionalBook,hash,ensure,readOptionalJson,writeJson} from './mcp-internet-utils';
 import type {OwnerBookDetail} from './mcp-internet-utils';
 
 type SeedCheckpoint={runId:string;title:string;orderKey:string;baselineOrderIds?:string[];orderId?:string;bookId?:string;uploadKeys:string[];done:number[]};
 let stage='load_config',owner:APIRequestContext|undefined,operator:APIRequestContext|undefined,outputDirectory:string|undefined;
-const report:{status:string;stage:string;bookId?:string;contributors:number;images:number;mediaOnlyViaHttp:boolean;existingBooksUnchanged?:boolean}={status:'RUNNING',stage,contributors:0,images:0,mediaOnlyViaHttp:false};
+const report:{status:string;stage:string;bookId?:string;contributors:number;images:number;mediaOnlyViaHttp:boolean;existingBooksUnchanged?:boolean;errorCode?:string}={status:'RUNNING',stage,contributors:0,images:0,mediaOnlyViaHttp:false};
 async function seedResponse(action:()=>Promise<APIResponse>){let response=await action();if(response.status()===429){const seconds=Math.min(60,Math.max(1,Number(response.headers()['retry-after']||'60')));await new Promise(r=>setTimeout(r,seconds*1000));response=await action();}return response;}
+async function requireSeedResponse(response:APIResponse,code:string){if([200,201].includes(response.status()))return;const body=await response.json().catch(()=>null) as {error?:unknown}|null;const serverCode=typeof body?.error==='string'&&/^[A-Z0-9_]{1,64}$/.test(body.error)?body.error:'UNKNOWN';throw new Error(`${code}_${response.status()}_${serverCode}`);}
 try{
   const loaded=await loadInternetConfig(process.argv.find(a=>a.endsWith('.local')),false),{config}=loaded;outputDirectory=loaded.outputDirectory;
   if(process.argv.includes('--check-config')){console.log('PASS: seed scope and ignored input files validated; no remote request.');process.exit(0);}
@@ -56,15 +58,15 @@ try{
       for(let picture=0;picture<3;picture++){
         const index=guestIndex*3+picture;if(checkpoint.done.includes(index))continue;const portrait=index%2===0,width=portrait?900:1200,height=portrait?1200:800;
         const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f8eddb"/><circle cx="${width*.3}" cy="${height*.38}" r="${width*.19}" fill="${['#b76446','#577e69','#7c6594','#437c9c','#bc8b31'][guestIndex%5]}"/><path d="M${width*.55} ${height*.2}L${width*.85} ${height*.64}L${width*.45} ${height*.64}Z" fill="#d7a653"/><rect x="25" y="25" width="60" height="60" fill="#d72e35"/><text x="${width*.12}" y="${height*.85}" font-family="sans-serif" font-size="${width*.055}" fill="#332d30">FIKTIV ${guestIndex+1} / ${picture+1}</text></svg>`;
-        const bytes=await sharp(Buffer.from(svg)).png().toBuffer(),key=checkpoint.uploadKeys[index];const uploaded=await seedResponse(()=>guest.post(guestPath+'/media/'+key,{headers:{'Content-Type':'application/octet-stream'},data:bytes,maxRedirects:0}));ensure([200,201].includes(uploaded.status()),'SEED_UPLOAD_REJECTED');const {mediaId}=await uploaded.json() as {mediaId:string};
+        const bytes=await sharp(Buffer.from(svg)).png().toBuffer(),key=checkpoint.uploadKeys[index];const uploaded=await seedResponse(()=>guest.post(guestPath+'/media/'+key,{headers:{'Content-Type':'application/octet-stream'},data:bytes,maxRedirects:0}));await requireSeedResponse(uploaded,'SEED_UPLOAD_REJECTED');const {mediaId}=await uploaded.json() as {mediaId:string};
         const message=guestIndex===2&&picture===0?'Őrizzétek az együtt töltött idő örömét! Árvíztűrő tükörfúrógép, ősz, üdvözlet és boldogság. '.repeat(24):`Fiktív üzenet ${guestIndex+1}/${picture+1}. Őszinte örömöt, sok közös élményt és boldogságot kívánunk!`;
-        const annotation=index===0||index===4?{version:1,space:'exif-oriented-normalized',strokes:[{color:'#c82731',width:.012,points:[[.15,.2],[.22,.42],[.3,.19],[.38,.42],[.46,.2],[.54,.42]]},{color:'#263c98',width:.008,points:[[.18,.53],[.35,.62],[.53,.53],[.68,.64],[.8,.53]]}]}:undefined;
-        const sent=await seedResponse(()=>guest.post(guestPath+'/submissions',{data:{name:guestIndex<2?'Fiktív Éva':`Fiktív vendég ${guestIndex+1}`,message,idempotencyKey:key,mediaId,...(annotation?{annotation}:{})},maxRedirects:0}));ensure([200,201].includes(sent.status()),'SEED_SUBMISSION_REJECTED');checkpoint.done.push(index);await writeJson(checkpointPath,checkpoint);
+        const annotation=index===0||index===4?parseAnnotation({version:1,space:'exif-oriented-normalized',strokes:[{color:'#d62828',width:.014,points:[[.15,.2],[.22,.42],[.3,.19],[.38,.42],[.46,.2],[.54,.42]]},{color:'#1764c0',width:.007,points:[[.18,.53],[.35,.62],[.53,.53],[.68,.64],[.8,.53]]}]}):undefined;
+        const sent=await seedResponse(()=>guest.post(guestPath+'/submissions',{data:{name:guestIndex<2?'Fiktív Éva':`Fiktív vendég ${guestIndex+1}`,message,idempotencyKey:key,mediaId,...(annotation?{annotation}:{})},maxRedirects:0}));await requireSeedResponse(sent,'SEED_SUBMISSION_REJECTED');checkpoint.done.push(index);await writeJson(checkpointPath,checkpoint);
       }
     }finally{await guest.dispose();}
     report.contributors=guestIndex+1;report.images=checkpoint.done.length;report.stage=stage;await writeJson(resolve(outputDirectory,'seed-verification.json'),report);console.log(`Fictional seed progress: ${report.contributors}/10 guest groups, ${report.images}/30 images.`);
   }
   stage='verify_new_sources_and_preserve_old_books';const complete=await fictionalBook(owner,config);ensure(complete.submissions.length===30&&complete.submissions.reduce((n,s)=>n+s.media.length,0)===30,'SEED_COUNTS_MISMATCH');
   for(const [id,fingerprint] of before)if(id!==config.bookId)ensure(hash(await getJson(owner,'/api/wedding/books/'+id))===fingerprint,'PREEXISTING_BOOK_CHANGED');report.existingBooksUnchanged=true;report.status='PASS';
-}catch(error){report.status='FAIL';report.stage=stage;process.exitCode=1;console.log(`Seed stopped safely: ${error instanceof Error&&/^[A-Z_]+$/.test(error.message)?error.message:'SEED_FAILED'}. No secrets printed.`);}
+}catch(error){report.status='FAIL';report.stage=stage;report.errorCode=error instanceof Error&&/^[A-Z0-9_]+$/.test(error.message)?error.message:'SEED_FAILED';process.exitCode=1;console.log(`Seed stopped safely: ${report.errorCode}. No secrets printed.`);}
 finally{await owner?.dispose();await operator?.dispose();if(outputDirectory)await writeJson(resolve(outputDirectory,'seed-verification.json'),report);console.log(`${report.status}: HTTP-only fictional seed; bookId=${report.bookId||'not-created'}; no database connection or paid service used.`);}

@@ -41,8 +41,8 @@ export async function createOwnerContext(config:InternetConfig,storagePath:strin
     ensure(session.user||session.operator,'EXISTING_OWNER_SESSION_REQUIRED');return owner;
   }catch(error){await owner.dispose();throw error;}
 }
-export async function getJson<T>(context:APIRequestContext,path:string,status=200):Promise<T>{const response=await context.get(pathFor(path),{maxRedirects:0});ensure(response.status()===status,'HTTP_READ_FAILED');return response.json() as Promise<T>;}
-export async function postJson<T>(context:APIRequestContext,path:string,data:unknown,statuses=[200,201]):Promise<T>{const response=await context.post(pathFor(path),{data,maxRedirects:0});ensure(statuses.includes(response.status()),'HTTP_WRITE_FAILED');return response.json() as Promise<T>;}
+export async function getJson<T>(context:APIRequestContext,path:string,status=200):Promise<T>{const response=await context.get(pathFor(path),{maxRedirects:0});ensure(response.status()===status,'HTTP_READ_FAILED_'+response.status());return response.json() as Promise<T>;}
+export async function postJson<T>(context:APIRequestContext,path:string,data:unknown,statuses=[200,201]):Promise<T>{const response=await context.post(pathFor(path),{data,maxRedirects:0});ensure(statuses.includes(response.status()),'HTTP_WRITE_FAILED_'+response.status());return response.json() as Promise<T>;}
 export function safeStatus(response:APIResponse,status:number,code:string){ensure(response.status()===status,code);}
 export type OwnerBookDetail={book:{id:string;title:string;invite_token:string;closed_at:string|null};submissions:{id:string;guest_name:string;message:string;media:{id:string}[]}[]};
 export async function fictionalBook(owner:APIRequestContext,config:InternetConfig){ensure(config.bookId&&uuid.test(config.bookId),'DESIGNATED_BOOK_REQUIRED');const detail=await getJson<OwnerBookDetail>(owner,'/api/wedding/books/'+config.bookId);ensure(detail.book.id===config.bookId&&detail.book.title===config.expectedTitle&&/fiktív/i.test(detail.book.title),'FICTIONAL_BOOK_TITLE_MISMATCH');return detail;}
