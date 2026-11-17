@@ -2,6 +2,8 @@
 
 ## Élő külön pilot – 2026-11-17
 
+A tartalmi jelölésekkel bővített kiadás **LIVE**, 15 MCP-eszközzel. Az új, tényleges HTTPS/SDK-próba **16/16 PASS**, benne a szimulált jelzés miatti média-/PDF-tiltással és tulajdonosi feloldással. A 8 korábbi könyv 87 összehasonlított erőforrása megmaradt. Részletes eredmény és korlátok: [Átnézendő tartalmak](CONTENT_REVIEW_20261117.md). A valódi ChatGPT-fiókos és fizikai telefonos elfogadási próba továbbra is nyitott.
+
 - Név a ChatGPT-ben: **MemoryBook pilot**.
 - MCP-végpont: **https://memorybook-wedding-text-pilot-ukd0.onrender.com/mcp**.
 - Kapcsolat: **Streamable HTTP**, hitelesítés: **OAuth**, kliensregisztráció: **DCR / Dynamic Client Registration**. Kézi client ID, client secret vagy bearer token nem szükséges.

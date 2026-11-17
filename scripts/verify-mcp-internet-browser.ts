@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 import type { APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test';
 import type { Draft } from '../shared/montage';
+import type { ReviewState } from '../shared/content-review';
 import { pilotOrigin, loadInternetConfig, createRemoteContext, getJson, fictionalBook, hash, ensure, writeJson } from './mcp-internet-utils';
 
 type Head = { latestVersionId: string | null; versions: { id: string }[]; snapshots: { id: string }[] };
@@ -15,10 +16,11 @@ type Export = { id: string; version_id: string; status: string };
 type ViewResult = { name: string; status: 'PASS' | 'FAIL'; viewport: { width: number; height: number }; mobileEmulation: boolean;
   versionId?: string; imageResponses?: number; canvas?: { width: number; height: number; colors: number }; fontLoaded?: boolean;
   horizontalOverflowPx?: number; approvalButtonDisabled?: boolean; exportButtonEnabled?: boolean; pdfLinkPresent?: boolean; pdfLinkGapPx?:number;
+  maskedBeforeReveal?:boolean; maskedPhotoCount?:number; reviewRevision?:number; reviewCardMaskedBeforeReveal?:boolean; reviewCardRevealed?:boolean;
   blockedWrites: number; blockedExternalRequests: number; runtimeErrorCount: number; failedResponseCount: number; failedResponses?: {path:string;status:number}[]; screenshots: string[] };
 type AnonymousResult={status:'PASS'|'FAIL';ownerLoginHref?:string;privateBookContentVisible?:boolean;unauthorizedReadObserved?:boolean;blockedWrites:number;blockedExternalRequests:number;runtimeErrorCount:number;screenshot?:string};
 type Report = { status: 'RUNNING' | 'PASS' | 'FAIL'; stage: string; startedAt: string; completedAt?: string; origin: string;
-  bookId?: string; versionId?: string; approved?: boolean; views: ViewResult[]; anonymousMobile?:AnonymousResult; serverStateUnchanged?: boolean;
+  bookId?: string; versionId?: string; approved?: boolean; views: ViewResult[]; anonymousMobile?:AnonymousResult; serverStateUnchanged?: boolean; reviewStateUnchanged?:boolean;
   actualChatGpt: 'NOT_TESTED'; physicalSamsung: 'NOT_TESTED'; physicalIPhone: 'NOT_TESTED'; mode: 'READ_ONLY_ALL_WRITES_BLOCKED'; errorCode?: string; errorDetail?:string };
 
 const report: Report = { status: 'RUNNING', stage: 'load_config', startedAt: new Date().toISOString(), origin: pilotOrigin, views: [],
@@ -50,12 +52,18 @@ try {
   const version = await getJson<Version>(owner, root + '/versions/' + initial.latestVersionId);
   ensure(version.id === initial.latestVersionId && version.snapshotId, 'VERSION_SNAPSHOT_REQUIRED');
   const initialExports = await getJson<{ exports: Export[] }>(owner, root + '/exports');
+  const reviewsPath=root+'/reviews?versionId='+encodeURIComponent(version.id),initialReviews=await getJson<ReviewState>(owner,reviewsPath);
   const completeExport = initialExports.exports.find(job => job.version_id === version.id && job.status === 'complete');
   ensure(version.approved_at && completeExport, 'APPROVED_SAVED_VERSION_AND_COMPLETED_EXPORT_REQUIRED');
   const firstPhotoPage = version.draft.pages.findIndex(item => item.elements.some(element => element.kind === 'photo'));
   ensure(firstPhotoPage >= 0, 'SAVED_DRAFT_MUST_CONTAIN_REAL_IMAGE');
+  const firstPagePhotos=version.draft.pages[firstPhotoPage].elements.filter(element=>element.kind==='photo');
+  const flaggedMediaIds=new Set(initialReviews.items.filter(item=>item.mediaId&&item.flags.length>0).map(item=>item.mediaId!));
+  const maskedPhotos=firstPagePhotos.filter((element,index)=>flaggedMediaIds.has(element.mediaId!)&&firstPagePhotos.findIndex(photo=>photo.mediaId===element.mediaId)===index);
+  const reviewedPhoto=initialReviews.items.find(item=>item.kind==='photo'&&item.flags.length>0&&item.decision==='false_positive'&&!item.contentChanged&&maskedPhotos.some(element=>element.mediaId===item.mediaId));
+  ensure(reviewedPhoto?.mediaId&&maskedPhotos.length>0,'RESOLVED_FLAGGED_PHOTO_REQUIRED_ON_FIRST_PHOTO_PAGE');
   report.versionId = version.id; report.approved = true;
-  const baseline = hash({ head: initial, version, exports: initialExports });
+  const baseline = hash({ head: initial, version, exports: initialExports, reviews:initialReviews });
   const rawStorage = JSON.parse(await readFile(storagePath, 'utf8')) as { cookies: Parameters<BrowserContext['addCookies']>[0] };
   ensure(Array.isArray(rawStorage.cookies) && rawStorage.cookies.length > 0, 'EXISTING_OWNER_COOKIES_REQUIRED');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -71,7 +79,8 @@ try {
     page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000);
     page.on('pageerror', () => { result.runtimeErrorCount++; });
     page.on('dialog', dialog => { result.runtimeErrorCount++; void dialog.dismiss(); });
-    const successfulImages = new Set<string>();
+    const successfulImages = new Set<string>(),requestedFrozenImages=new Set<string>();
+    page.on('request',request=>{const url=new URL(request.url());if(url.origin===pilotOrigin&&url.pathname.startsWith(root+'/image/'))requestedFrozenImages.add(url.pathname.split('/').pop()!);});
     page.on('response', response => {
       const url = new URL(response.url());
       if (url.origin !== pilotOrigin) return;
@@ -83,11 +92,31 @@ try {
     report.stage=name+'_saved_version_controls';
     await expect(page.getByRole('heading', { name: config.expectedTitle + ' – montázs', exact: true })).toBeVisible();
     await expect(page.getByLabel('Korábbi változat')).toHaveValue(version.id, {timeout:30000});
+    const reviewPanel=page.getByRole('region',{name:'Átnézendő tartalmak',exact:true});
+    await expect(reviewPanel.getByRole('status')).toContainText(initialReviews.pendingCount+' függő tétel');
     if (firstPhotoPage !== 0) await page.getByRole('button', { name: new RegExp('^' + (firstPhotoPage + 1) + '\\. oldal(?: 🔒)?$') }).click();
-    const imageIds = version.draft.pages[firstPhotoPage].elements.filter(element => element.kind === 'photo').map(element => element.mediaId!);
+    const imageIds = firstPagePhotos.map(element => element.mediaId!);
+    report.stage=name+'_flagged_photos_masked';
+    const canvas = page.locator('canvas.lower-canvas'); await expect(canvas).toBeVisible();
+    await expect.poll(()=>imageIds.filter(id=>!flaggedMediaIds.has(id)).every(id=>successfulImages.has(id)),{timeout:60000}).toBe(true);
+    ensure(maskedPhotos.every(element=>!requestedFrozenImages.has(element.mediaId!)&&!successfulImages.has(element.mediaId!)),'FLAGGED_CANVAS_PHOTO_LOADED_WITHOUT_REVEAL');
+    result.maskedBeforeReveal=true;result.maskedPhotoCount=maskedPhotos.length;result.reviewRevision=initialReviews.revision;
+    // Selection and reveal change browser UI state only. The write guard remains active.
+    for(const photo of maskedPhotos){await page.getByLabel('Szerkesztendő elem').selectOption(photo.id);await page.getByRole('button',{name:'Kijelölt kép megtekintése',exact:true}).click();}
     report.stage=name+'_images_loaded';
     await expect.poll(() => imageIds.every(id => successfulImages.has(id)), { timeout: 60000 }).toBe(true);
-    const canvas = page.locator('canvas.lower-canvas'); await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible();
+    report.stage=name+'_review_card_deliberate_reveal';
+    await reviewPanel.getByLabel('Átnézési állapot').selectOption('resolved');
+    const reviewCard=reviewPanel.locator('.review-card').filter({has:page.locator('.review-identity').filter({hasText:'média: '+reviewedPhoto.mediaId.slice(0,8)})});
+    await expect(reviewCard).toHaveCount(1);await expect(reviewCard.locator('p > strong').filter({hasText:/^Téves jelzés$/})).toBeVisible();await expect(reviewCard.locator('img')).toHaveCount(0);
+    result.reviewCardMaskedBeforeReveal=true;
+    if(mobile){const file='mobile-review-card-covered.png';await reviewCard.screenshot({path:resolve(outputDirectory,file)});result.screenshots.push(file);}
+    await reviewCard.getByRole('button',{name:'Kép megtekintése',exact:true}).click();const reviewImage=reviewCard.locator('img');await expect(reviewImage).toBeVisible();
+    await expect.poll(()=>reviewImage.evaluate((element:HTMLImageElement)=>element.complete&&element.naturalWidth>0),{timeout:30000}).toBe(true);result.reviewCardRevealed=true;
+    if(mobile){const file='mobile-review-card-revealed.png';await reviewCard.screenshot({path:resolve(outputDirectory,file)});result.screenshots.push(file);}
+    await reviewCard.getByRole('button',{name:'Kép ismételt lefedése',exact:true}).click();await expect(reviewCard.locator('img')).toHaveCount(0);
+    if(mobile){const file='mobile-review-panel.png';await reviewPanel.screenshot({path:resolve(outputDirectory,file)});result.screenshots.push(file);}
     report.stage=name+'_font_loaded';
     await page.evaluate(async () => { await document.fonts.ready; });
     const fontLoaded = await page.evaluate(() => Array.from(document.fonts).some(face => face.family.replace(/['"]/g, '') === 'DejaVu Sans' && face.status === 'loaded') && document.fonts.check('16px "DejaVu Sans"', 'Árvíztűrő tükörfúrógép'));
@@ -143,8 +172,9 @@ try {
   anonymous.screenshot='mobile-anonymous-login.png';await page.screenshot({path:resolve(outputDirectory,anonymous.screenshot),fullPage:true});anonymous.status='PASS';
   await context.close();context=undefined;page=undefined;
   report.stage = 'confirm_readonly_server_state';
-  const finalHead = await getJson<Head>(owner, root), finalVersion = await getJson<Version>(owner, root + '/versions/' + version.id), finalExports = await getJson<{ exports: Export[] }>(owner, root + '/exports');
-  report.serverStateUnchanged = baseline === hash({ head: finalHead, version: finalVersion, exports: finalExports });
+  const finalHead = await getJson<Head>(owner, root), finalVersion = await getJson<Version>(owner, root + '/versions/' + version.id), finalExports = await getJson<{ exports: Export[] }>(owner, root + '/exports'),finalReviews=await getJson<ReviewState>(owner,reviewsPath);
+  report.reviewStateUnchanged=hash(initialReviews)===hash(finalReviews);ensure(report.reviewStateUnchanged,'REVIEW_STATE_CHANGED_DURING_READONLY_SMOKE');
+  report.serverStateUnchanged = baseline === hash({ head: finalHead, version: finalVersion, exports: finalExports,reviews:finalReviews });
   ensure(report.serverStateUnchanged, 'SAVED_SERVER_STATE_CHANGED_DURING_READONLY_SMOKE');
   report.status = 'PASS'; report.stage = 'complete';
 } catch (error) {

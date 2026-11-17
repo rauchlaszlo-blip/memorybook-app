@@ -1,6 +1,14 @@
 # MemoryBook – tartalmi jelölések és tulajdonosi felülvizsgálat
 
-Állapotnapló: 2026-11-17. A dokumentum a tartalmi felülvizsgálat helyi megvalósítását és a kiadás előtti ellenőrzési állapotot rögzíti. Az új változat élő telepítése és telepítés utáni adat-összehasonlítása e feljegyzés készítésekor még folyamatban van. A korábbi MCP-pilot sikeres internetes próbája önmagában nem igazolja ezt a bővítést.
+Állapotnapló: 2026-11-17. A tartalmi felülvizsgálat a külön díjmentes internetes pilotban él. Alkalmazáscommit: `d42d7f50719cab40392de13712f4c4bb9329f195`; Render-kiadás: `dep-dbu3taon74is73fc4hlg`, LIVE 2026-11-17 11:48:06 UTC. A main és az éles MemoryBook nem változott. Az új HTTPS/MCP-próba 16/16 PASS, a kiadás előtti 8 könyv 87 összehasonlított erőforrása változatlan.
+
+## Tulajdonosi használat
+
+1. Belépés után nyisd meg a [fiktív próbakönyv átnézési felületét](https://memorybook-wedding-text-pilot-ukd0.onrender.com/wedding/books/4b6039a5-329c-4444-97f8-c299ec3d93a1/montage?szerkesztes=1#tartalom-atnezes).
+2. Új kézi jelzéshez az „Átnézési állapot” szűrőben válaszd a „Nincs jelzés – nem ellenőrzött” vagy „Minden tartalom” lehetőséget. Az elemnél nyisd ki az „Új jelzés hozzáadása” részt, jelöld a kategóriákat, és írd be az indokot és az átnézés terjedelmét.
+3. A függő tételek külön listában jelennek meg. A takart kép csak a „Kép megtekintése” gombbal nyílik meg. A tulajdonosi döntés ugyanitt menthető és később módosítható. A teljes kép/szöveg feloldásához teljes körű átnézést kell megadni; részleges döntés nem számít teljes ellenőrzésnek.
+4. A szerkesztő „Kiadás célja” választója külön privát vagy megosztásra szánt változatot készít. A visszatartott elemek eltávolítása külön megerősítést kér, és az eredeti tartalmat megőrzi.
+5. Új jelzés után a korábbi kiadás hozzáférése visszatartható. A döntések rendezése után az „Átnéztem, ezt a változatot újra jóváhagyom” gombbal lehet ugyanazt a változatot ismét engedélyezni. A már letöltött másolatok nem vonhatók vissza.
 
 ## A jelölés jelentése
 
@@ -94,7 +102,7 @@ Az eset-, jelzés-, döntés- és kérésrekordok módosítását/törlését ad
 
 ## Adatmegőrzési és ellenőrzési bizonyíték
 
-A korábbi, MCP-bővítés előtti teljes adatbázismentés helyi visszaállítási próbája megtörtént. A mostani V7-kiadás előtt külön HTTPS-alapú, csak olvasási tartalommásolat készült: 8 könyv, 87 erőforrás. Ez **nem teljes adatbázismentés**: az elérhető alkalmazástartalom másolata nem igazolja valamennyi háttértábla, jogosultsági rekord vagy munkasor mentését. Az adatbázis külső tűzfala zárva maradt. A telepítés utáni tartalmi összehasonlítás e dokumentum állapotában még nyitott; a V7 migráció megőrzési próbáját és az élő összehasonlítást külön kell eredményként rögzíteni. A mentésekben lévő érzékeny adatok nem kerülnek ebbe a dokumentumba vagy Gitbe.
+A korábbi, MCP-bővítés előtti teljes adatbázismentés helyi visszaállítási próbája megtörtént. A mostani V7-kiadás előtt külön HTTPS-alapú, csak olvasási tartalommásolat készült: 8 könyv, 87 erőforrás. Ez **nem teljes adatbázismentés**: az elérhető alkalmazástartalom másolata nem igazolja valamennyi háttértábla, jogosultsági rekord vagy munkasor mentését. Az adatbázis külső tűzfala zárva maradt. A V7 migráció helyi ismétlési/adatmegőrzési próbája PASS; telepítés után mind a 87 rögzített erőforrás tartalma és lenyomata egyezett. Az új jelzések és döntések külön, hozzáfűzött rekordok. A mentésekben lévő érzékeny adatok nem kerülnek ebbe a dokumentumba vagy Gitbe.
 
 | Ellenőrzés | E dokumentum készítésekor ismert eredmény |
 | --- | --- |
@@ -109,7 +117,7 @@ A korábbi, MCP-bővítés előtti teljes adatbázismentés helyi visszaállít�
 | Új felülvizsgálati mobilfelület | **1/1 PASS** a végső felülettel: maszkolás, kézi jelzés, részleges vizsgálat, döntési napló, kiadásvisszatartás, új jóváhagyás, privát/megosztható váltás és zárolt oldal megtartása. Chromium mobilméretű emuláció; nem fizikai telefon. |
 | Meglévő fotó-, rajzolási és webshop-böngészőpróbák | **5/5 PASS**: 3 Chromium és 2 WebKit. A korábban tapasztalt WebKit-indítási akadály ezen a futáson nem jelentkezett; OS-beállítás nem változott. |
 | Megosztható próba-PDF bájtjai és renderelt képe | PASS: 1 oldal, 1 megmaradó kép; a privát próbaszöveg és a másik kép hiányzik, a tiszta üzenet szerepel. Nem került kizárt média a renderelőnek átadott médiakészletbe. |
-| Új kiadás élő telepítése és ellenőrzése | NYITOTT; a korábbi internetes pilot eredménye ettől különálló. |
+| Új kiadás élő telepítése és ellenőrzése | LIVE; HTTPS/MCP **16/16 PASS**, névtelen/origin-védelem **8/8 PASS**, élő asztali/mobilméretű böngésző **PASS**. |
 
 A csoportok átfedhetnek, ezért a sorok számai nem összeadandó független tesztesetszámok.
 
@@ -120,3 +128,18 @@ Az internetes próba külön kapcsolóval indítható: `node --import tsx script
 A `tests/content-review.test.ts` ellenőrzi a szigorú paramétereket, hamis eredet/döntés tiltását, régi MCP-engedély korlátozását, párhuzamos idempotenciát, több kategóriát, azonos nevű beküldők külön kezelését, részleges döntés után fennmaradó zárat, változatlan auditot, megváltozott szöveget/képet és befagyasztott médiahash-t, másolt szerkesztett szöveg ellenőrzését és a kiadási újraellenőrzés szükségességét. Az új ütközési alteszt igazolja, hogy közben érkező jelzés után a régi revízióra adott döntés elutasított, két párhuzamos döntés közül egy kerül be, és a már elfogadott kérés azonos kulcsú ismétlése továbbra is működik. Külön állítás ellenőrzi, hogy egy vendég másik tiszta szövege vagy képe mellett csak részleges kimaradás jelenthető.
 
 A `tests/content-review-workflow.test.ts` az integrált mentési/jóváhagyási/export-/letöltési zárat, régi PDF-aliasokat, magán/megosztásra szánt változatot, változatlan korábbi kiadást és renderelés közbeni új jelzés hatását vizsgálja. A korábbi workflow- és montázsteszt valódi PDF-et generál 30 szintetikus képpel, illetve 100 stabil vendégazonosítóval. A tesztműtermékek a Gitből kizárt `test-results/content-review`, `test-results/mcp` és a meglévő pilot-ellenőrzési mappákban vannak; nem éles vendégtartalmat használnak.
+
+## Telepítés utáni tényleges eredmény
+
+- A `d42d7f50719cab40392de13712f4c4bb9329f195` alkalmazáscommit a `codex/wedding-internet-pilot` ágról került a meglévő Free szolgáltatásra; `dep-dbu3taon74is73fc4hlg` LIVE 2026-11-17 11:48:06 UTC. Automatikus deploy kikapcsolva, új erőforrás/csomagváltás/modellhívás nélkül.
+- A hivatalos MCP SDK-val végzett HTTPS-próba **16/16 PASS**: OAuth/DCR/PKCE, 15 eszköz, kizárólag a fiktív könyv, másik saját könyv tiltása, valós PNG-képbájtok, korábbi tervezet és export idempotens visszaolvasása. A próba ténylegesen létrehozott két külön kategóriájú MCP-jelzést egy ártalmatlan szintetikus képre; az ismétlés nem duplázott. Hamis döntés/eredet és más könyv elutasítva.
+- Jelzés után a történeti pillanatkép képe, a korábbi tervezet MCP-lekérése és a kész PDF tulajdonosi letöltése tiltott; az export visszatartott állapotban letöltési URL-t sem ad. A saját technikai jelzés tulajdonosi végponton „Téves jelzés” döntést kapott, az eredeti változat új jóváhagyással ismét elérhető. A PDF változatlan: 805 903 bájt, SHA-256 `41b346bbfafe85e837f3859210d86e4b8bc7b255c433f73ac8f295712a6f24ee`. A teszt OAuth-engedélye visszavonva; aktív technikai grant nincs.
+- A telepítés előtti HTTPS-másolat **8 könyvének 87 erőforrása** bájt-/értékazonos maradt: könyvmezők és beküldések, eredeti képek, annotációk, mentett tervezet, befagyasztott pillanatkép és képei, kész PDF. Bizonyíték: `test-results/content-review/pre-release/verification.json`. A döntési napló új rekordjai szándékos kiegészítések.
+- Élő Chromium asztali (1280×1000) és mobilméretű (390×844) próba **PASS**. A jelzett kép sem az oldalon, sem az átnézési kártyán nem töltődött be a tudatos megnyitás előtt; utána megjelent. Nincs vízszintes túlcsordulás, JavaScript-hiba vagy hibás hálózati válasz. A könyv-, kiadás-, export- és átnézési állapot változatlan maradt; a próba minden író kérést tiltott. A névtelen mobilnézet 401-es védelmet és belépési linket adott, könyvtartalom nélkül.
+- Külön névtelen/origin/discovery-ellenőrzés **8/8 PASS**. A telepítés után a meglévő tulajdonosi munkamenet, jóváhagyás, export és visszavont grant állapota megmaradt.
+- A vizsgált 11 alkalmazásnapló-bejegyzésben nem volt hibamintázat vagy tokent/kapcsolati titkot jelző minta. A megfigyelt folyamatmemória legfeljebb körülbelül 131 MiB volt az 512 MiB-os keretből; ez rövid üzemeltetési ellenőrzés, nem terheléses mérés.
+- A PostgreSQL továbbra is Free, külső IP-engedélylista `[]`. Az ingyenes adatbázis lejárata **2026-12-07 10:53:45 UTC**. A main SHA változatlan: `5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff`; az éles szolgáltatás `updatedAt` értéke változatlanul 2026-09-14 08:49:25 UTC.
+
+Bizonyítékok: `test-results/mcp-internet/{verification,browser-verification,anonymous-security,restart-verification}.json`, `mobile-review-card-covered.png`, `mobile-review-card-revealed.png`, `mobile-review-panel.png`; mind Gitből kizárt. A későbbi dokumentációs/ellenőrzőszkript-commit nem módosítja a telepített alkalmazáskódot.
+
+**Valódi ChatGPT-fiókos elfogadási próba és fizikai Samsung/iPhone: továbbra is NYITOTT.** A 15 eszközös kapcsolat beállítása a [bekötési útmutatóban](MCP_CONNECTION_20261117.md) szerepel; titkos token nem szükséges a jelentésből.

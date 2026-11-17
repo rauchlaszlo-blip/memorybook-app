@@ -1,5 +1,7 @@
 # MCP internetes pilot – kiadási napló, 2026-11-17
 
+Frissítés: az „Átnézendő tartalmak” bővítés külön kiadása `d42d7f50719cab40392de13712f4c4bb9329f195`, `dep-dbu3taon74is73fc4hlg`, LIVE 2026-11-17 11:48:06 UTC. Az új HTTPS/MCP-próba 16/16 PASS, az adatmegőrzési összehasonlítás 8 könyv/87 erőforrás PASS, élő asztali/mobilméretű olvasási próba PASS. Részletek és fennmaradó korlátok a [tartalomátnézési naplóban](CONTENT_REVIEW_20261117.md). Az alábbi korábbi kiadási eredmények történeti adatok.
+
 ## Felhatalmazás és hatókör
 
 A felhasználó 2026-11-17-én engedélyezte a szükséges commitot, a `codex/wedding-internet-pilot` ág pusholását és a meglévő díjmentes, elkülönített pilot kiadását. Main, éles MemoryBook, meglévő pilotadatok változatlanul megőrzendők. Új fizetős szolgáltatás és modellhívás nem megengedett.
