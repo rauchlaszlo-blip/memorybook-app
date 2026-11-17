@@ -1,5 +1,23 @@
 # MemoryBook – ChatGPT MCP-bekötés és ellenőrzés
 
+## Élő külön pilot – 2026-11-17
+
+- Név a ChatGPT-ben: **MemoryBook pilot**.
+- MCP-végpont: **https://memorybook-wedding-text-pilot-ukd0.onrender.com/mcp**.
+- Kapcsolat: **Streamable HTTP**, hitelesítés: **OAuth**, kliensregisztráció: **DCR / Dynamic Client Registration**. Kézi client ID, client secret vagy bearer token nem szükséges.
+- Scope, ha a felület külön kéri: `memorybook:edit offline_access`.
+- Tulajdonosi belépés: https://memorybook-wedding-text-pilot-ukd0.onrender.com/pilot/account . A próbakönyv a már meglévő fiktív tesztfiókhoz tartozik; a helyi, Gitből kizárt `test-results/commerce-account.local` tartalmazza a belépési adatokat. Ezek nem részei a jelentésnek vagy a nyilvános kódnak.
+- Telefonról is megnyitható tulajdonosi próbalink, belépés után: https://memorybook-wedding-text-pilot-ukd0.onrender.com/wedding/books/4b6039a5-329c-4444-97f8-c299ec3d93a1/montage?szerkesztes=1 . Ha előbb nyitottad meg, a belépést követően nyisd meg újra.
+- Kizárólagos MCP-próbakönyv: **MCP internetpilot – fiktív e2e27b2e**, UUID `4b6039a5-329c-4444-97f8-c299ec3d93a1`. A telepítési engedélylista csak ezt tartalmazza; más saját könyvet sem lehet OAuth-hozzájárulással hozzáadni.
+
+ChatGPT weben: Plugins → plusz → Add custom MCP server → fenti név/cím → OAuth/DCR → a kockázati tájékoztató áttekintése → Create as a plugin. A MemoryBook engedélykérő oldalán jelentkezz be a fenti tesztfiókba, majd jelöld ki az egyetlen fiktív könyvet. A belépés szükség esetén külön lapon nyílik; utána térj vissza és frissítsd az engedélykérő lapot. 13 eszköz várható. Telepítés után új beszélgetésben válaszd ki `@MemoryBook pilot` néven.
+
+Első ellenőrző kérés: „Listázd a hozzáférhető könyveket, majd a fiktív MCP-próbakönyv első képét ténylegesen kérd le és mondd el, mi látható rajta. Egyelőre ne módosíts semmit.” Ezután külön kérésben lehet új szerkeszthető változatot menteni, amit a tulajdonos az alkalmazásban átnéz és jóváhagy.
+
+Ha a custom MCP menüpont nem elérhető, a fiók/munkaterület létrehozási jogosultságát kell rendezni. Nem indítottunk előfizetést vagy fizetős modellhívást. Az aktuális hivatalos útmutató Business/Enterprise/Edu munkaterületi jogosultságokat részletez; az adott felhasználó ChatGPT-felületén való rendelkezésre állást még nem próbáltuk.
+
+Az internetes, hivatalos MCP SDK-val végzett OAuth→eszközök→kép→terv→tulajdonosi tesztjóváhagyás→PDF folyamat **14/14 PASS**. Ez nem ChatGPT-fiókkal végzett elfogadási próba. **Valódi ChatGPT és fizikai Samsung/iPhone: NYITOTT.** Részletes kiadási és adatmegőrzési bizonyíték: [kiadási napló](MCP_INTERNET_RELEASE_20261117.md).
+
 ## Mi készült
 
 Valódi távoli MCP-kiszolgáló a `/mcp` útvonalon, az `@modelcontextprotocol/sdk` 1.32.2 Streamable HTTP megvalósításával. Ez a meglévő Express/PostgreSQL pilot része, nem böngészős WebMCP. Nem igényel beépített modellhívást vagy új szolgáltatót. A PDF munka az alkalmazás tartós sorába kerül; az MCP-hívás nem várja meg a renderelést.
@@ -14,7 +32,7 @@ A választott kapcsolódás DCR + OAuth authorization code, PKCE S256 és `resou
 
 A Streamable HTTP végpont POST-ra JSON-választ ad, az értesítéseket a hivatalos SDK kezeli, a külön GET-es SSE-folyamot nem kínálja (405). A jelen lévő idegen Origin elutasított. Forrás: [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
 
-## Internetes bekötés a külön engedélyezett kiadás után
+## Operátori konfiguráció és kapcsolódás
 
 A kiadás MCP-hozzáférése külön, szerveroldali könyvlistához kötött. A `MEMORYBOOK_MCP_ALLOWED_BOOK_IDS` környezeti változóba csak a kiválasztott **fiktív tesztkönyv tényleges UUID-ja** kerülhet. A vesszővel elválasztott lista legfeljebb 100 érvényes UUID-t fogad, de az engedélyezett internetes próba egyetlen könyvre korlátozódik. Üres érték minden könyvet kizár; `production` vagy más nem helyi környezetben a hiányzó változó is minden MCP-könyvhozzáférést tilt. Hibás UUID-val a kiszolgáló egyértelmű konfigurációs hibával megáll. Csak `NODE_ENV=test`/`development` esetén jelent a hiányzó változó korlátozás nélküli helyi tesztmódot; az explicit üres érték ott is tilt.
 
@@ -22,12 +40,12 @@ Ez az üzemeltetői lista a tulajdonosi OAuth-hozzájáruláson felüli korlát.
 
 1. A külön pilot végleges HTTPS-originjét állítsd `PUBLIC_APP_URL`-ként; a `/mcp`, `/.well-known/*` és `/oauth/*` útvonalak ugyanazon originről legyenek elérhetők. A visszafordító proxy ne írja át az OAuth-útvonalakat és ne naplózzon Authorization fejlécet, kódot, consent mezőt, tokenkérés-/választörzset.
 2. A migrációkat az elkülönített internetes pilot adatbázisán futtasd. A `migrateWedding` az MCP tábláit is létrehozza. A `server/pilot/index.ts` ugyanabban az alkalmazásfolyamatban indítja az exportfeldolgozót.
-3. Jelentkezz be tulajdonosként a MemoryBookba, és legyen hozzáférhető tesztkönyved. ChatGPT-ben nyisd meg a Plugins oldalt → plusz → Add custom MCP server. Név: MemoryBook pilot; endpoint: `https://AZ-ENGEDÉLYEZETT-PILOT-HOST/mcp`. Válaszd az OAuth/DCR kapcsolódást; nincs kézzel bemásolandó szolgáltatói API-kulcs vagy állandó bearer token.
+3. Jelentkezz be tulajdonosként a MemoryBookba, és legyen hozzáférhető tesztkönyved. ChatGPT-ben nyisd meg a Plugins oldalt → plusz → Add custom MCP server. Név: MemoryBook pilot; endpoint: `https://memorybook-wedding-text-pilot-ukd0.onrender.com/mcp`. Válaszd az OAuth/DCR kapcsolódást; nincs kézzel bemásolandó szolgáltatói API-kulcs vagy állandó bearer token.
 4. Az OAuth-ablakban szükség esetén nyisd meg a MemoryBook belépést, majd térj vissza és frissítsd a hozzájárulás oldalát. Csak a fiktív tesztkönyvet jelöld ki. A **Kijelölt könyvek engedélyezése** gomb létrehozza a 30 napos, visszavonható grantet.
 5. Várd meg a 13 eszköz felfedezését. Telepítsd a létrehozott plugint, új beszélgetésben jelöld ki `@`-tal. Először kérd a hozzáférhető könyveket, majd a fiktív könyv egyik képének tényleges megtekintését.
 6. Ha a ChatGPT management oldala eltérő callback címet ír ki, ne engedélyezz tetszőleges domaint. Az exact `redirectUris` operátori konfigurációban csak az ellenőrzött címet add hozzá; az alapértelmezés a fenti stabil callback. A kapcsolódás tényleges eredményét rögzíteni kell.
 
-A localhost-cím önmagában nem internetes ChatGPT-bekötés. Ebben a feladatban nem történt telepítés vagy tunnel létrehozás; a valódi ChatGPT-fiókkal végzett eszközfelfedezés, képfelismerési és írási próba **NYITOTT**. Az SDK-integrációs teszt nem helyettesíti ezt.
+A localhost-cím önmagában nem internetes ChatGPT-bekötés. A külön HTTPS-pilot kiadása és internetes SDK-próbája megtörtént; a valódi ChatGPT-fiókkal végzett eszközfelfedezés, képfelismerési és írási próba **NYITOTT**. Az SDK-integrációs teszt nem helyettesíti ezt.
 
 ## Teljes, kézzel indítható MCP-folyamat
 

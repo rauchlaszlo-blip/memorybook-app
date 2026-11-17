@@ -14,15 +14,29 @@ type Version = { id: string; snapshotId: string | null; approved_at: string | nu
 type Export = { id: string; version_id: string; status: string };
 type ViewResult = { name: string; status: 'PASS' | 'FAIL'; viewport: { width: number; height: number }; mobileEmulation: boolean;
   versionId?: string; imageResponses?: number; canvas?: { width: number; height: number; colors: number }; fontLoaded?: boolean;
-  horizontalOverflowPx?: number; approvalButtonDisabled?: boolean; exportButtonEnabled?: boolean; pdfLinkPresent?: boolean;
-  blockedWrites: number; blockedExternalRequests: number; runtimeErrorCount: number; failedResponseCount: number; screenshots: string[] };
+  horizontalOverflowPx?: number; approvalButtonDisabled?: boolean; exportButtonEnabled?: boolean; pdfLinkPresent?: boolean; pdfLinkGapPx?:number;
+  blockedWrites: number; blockedExternalRequests: number; runtimeErrorCount: number; failedResponseCount: number; failedResponses?: {path:string;status:number}[]; screenshots: string[] };
+type AnonymousResult={status:'PASS'|'FAIL';ownerLoginHref?:string;privateBookContentVisible?:boolean;unauthorizedReadObserved?:boolean;blockedWrites:number;blockedExternalRequests:number;runtimeErrorCount:number;screenshot?:string};
 type Report = { status: 'RUNNING' | 'PASS' | 'FAIL'; stage: string; startedAt: string; completedAt?: string; origin: string;
-  bookId?: string; versionId?: string; approved?: boolean; views: ViewResult[]; serverStateUnchanged?: boolean;
-  actualChatGpt: 'NOT_TESTED'; physicalSamsung: 'NOT_TESTED'; physicalIPhone: 'NOT_TESTED'; mode: 'READ_ONLY_ALL_WRITES_BLOCKED'; errorCode?: string };
+  bookId?: string; versionId?: string; approved?: boolean; views: ViewResult[]; anonymousMobile?:AnonymousResult; serverStateUnchanged?: boolean;
+  actualChatGpt: 'NOT_TESTED'; physicalSamsung: 'NOT_TESTED'; physicalIPhone: 'NOT_TESTED'; mode: 'READ_ONLY_ALL_WRITES_BLOCKED'; errorCode?: string; errorDetail?:string };
 
 const report: Report = { status: 'RUNNING', stage: 'load_config', startedAt: new Date().toISOString(), origin: pilotOrigin, views: [],
   actualChatGpt: 'NOT_TESTED', physicalSamsung: 'NOT_TESTED', physicalIPhone: 'NOT_TESTED', mode: 'READ_ONLY_ALL_WRITES_BLOCKED' };
 let owner: APIRequestContext | undefined, browser: Browser | undefined, context: BrowserContext | undefined, page: Page | undefined, outputDirectory: string | undefined;
+async function installReadOnlyGuards(target:BrowserContext,bookId:string,counters:{blockedWrites:number;blockedExternalRequests:number}){
+  const bookRoot='/api/book-workflow/'+bookId;
+  await target.route('**/*',async route=>{
+    const request=route.request(),url=new URL(request.url());
+    if(url.protocol==='data:'||url.protocol==='blob:'){await route.continue();return;}
+    if(url.origin!==pilotOrigin){counters.blockedExternalRequests++;await route.abort('blockedbyclient');return;}
+    if(!['GET','HEAD'].includes(request.method())){counters.blockedWrites++;await route.abort('blockedbyclient');return;}
+    if(/^\/api\/(?:book-workflow|montage)\//.test(url.pathname)&&!url.pathname.startsWith(bookRoot+'/')&&url.pathname!==bookRoot&&!url.pathname.startsWith('/api/montage/'+bookId+'/')&&url.pathname!=='/api/montage/'+bookId){
+      counters.blockedExternalRequests++;await route.abort('blockedbyclient');return;
+    }
+    await route.continue();
+  });
+}
 try {
   const loaded = await loadInternetConfig(process.argv.find(arg => arg.endsWith('.local')) || 'test-results/mcp-internet/config.local');
   const { config, storagePath } = loaded; outputDirectory = loaded.outputDirectory; report.bookId = config.bookId;
@@ -52,17 +66,8 @@ try {
     report.views.push(result);
     // Deliberately omit any old localStorage recovery draft; the saved server version is inspected.
     context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, locale: 'hu-HU', serviceWorkers: 'block', storageState: { cookies: rawStorage.cookies, origins: [] } });
-    await context.route('**/*', async route => {
-      const request = route.request(), url = new URL(request.url());
-      if (url.protocol === 'data:' || url.protocol === 'blob:') { await route.continue(); return; }
-      if (url.origin !== pilotOrigin) { result.blockedExternalRequests++; await route.abort('blockedbyclient'); return; }
-      if (!['GET', 'HEAD'].includes(request.method())) { result.blockedWrites++; await route.abort('blockedbyclient'); return; }
-      // No request from this browser may read a different book, even with the owner cookie.
-      if (/^\/api\/(?:book-workflow|montage)\//.test(url.pathname) && !url.pathname.startsWith(root + '/') && url.pathname !== root && !url.pathname.startsWith('/api/montage/' + config.bookId + '/') && url.pathname !== '/api/montage/' + config.bookId) {
-        result.blockedExternalRequests++; await route.abort('blockedbyclient'); return;
-      }
-      await route.continue();
-    });
+    // No request may modify server state or read a different book, even with the owner cookie.
+    await installReadOnlyGuards(context,config.bookId!,result);
     page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000);
     page.on('pageerror', () => { result.runtimeErrorCount++; });
     page.on('dialog', dialog => { result.runtimeErrorCount++; void dialog.dismiss(); });
@@ -70,20 +75,24 @@ try {
     page.on('response', response => {
       const url = new URL(response.url());
       if (url.origin !== pilotOrigin) return;
-      if (response.status() >= 400 && url.pathname !== '/favicon.ico') result.failedResponseCount++;
+      if (response.status() >= 400 && !/^\/favicon\.(?:ico|svg|png)$/.test(url.pathname)) {result.failedResponseCount++;(result.failedResponses??=[]).push({path:url.pathname,status:response.status()});}
       if (url.pathname.startsWith(root + '/image/') && response.status() === 200 && response.headers()['content-type']?.startsWith('image/')) successfulImages.add(url.pathname.split('/').pop()!);
     });
     const navigation = await page.goto(pilotOrigin + '/wedding/books/' + config.bookId + '/montage?szerkesztes=1', { waitUntil: 'domcontentloaded' });
     ensure(navigation?.status() === 200, 'EDITOR_NAVIGATION_FAILED');
+    report.stage=name+'_saved_version_controls';
     await expect(page.getByRole('heading', { name: config.expectedTitle + ' – montázs', exact: true })).toBeVisible();
-    await expect(page.getByLabel('Korábbi változat', { exact: true })).toHaveValue(version.id);
+    await expect(page.getByLabel('Korábbi változat')).toHaveValue(version.id, {timeout:30000});
     if (firstPhotoPage !== 0) await page.getByRole('button', { name: new RegExp('^' + (firstPhotoPage + 1) + '\\. oldal(?: 🔒)?$') }).click();
     const imageIds = version.draft.pages[firstPhotoPage].elements.filter(element => element.kind === 'photo').map(element => element.mediaId!);
+    report.stage=name+'_images_loaded';
     await expect.poll(() => imageIds.every(id => successfulImages.has(id)), { timeout: 60000 }).toBe(true);
     const canvas = page.locator('canvas.lower-canvas'); await expect(canvas).toBeVisible();
+    report.stage=name+'_font_loaded';
     await page.evaluate(async () => { await document.fonts.ready; });
     const fontLoaded = await page.evaluate(() => Array.from(document.fonts).some(face => face.family.replace(/['"]/g, '') === 'DejaVu Sans' && face.status === 'loaded') && document.fonts.check('16px "DejaVu Sans"', 'Árvíztűrő tükörfúrógép'));
     ensure(fontLoaded, 'EMBEDDED_EDITOR_FONT_NOT_LOADED'); result.fontLoaded = fontLoaded;
+    report.stage=name+'_canvas_pixels';
     await expect.poll(async () => canvas.evaluate((element: HTMLCanvasElement) => {
       const drawing = element.getContext('2d'); if (!drawing || !element.width || !element.height) return 0;
       const pixels = drawing.getImageData(0, 0, element.width, element.height).data, colors = new Set<string>();
@@ -96,29 +105,50 @@ try {
       return { width: element.width, height: element.height, colors: colors.size };
     });
     const approvalButton = page.getByRole('button', { name: 'Ezt a könyvváltozatot jóváhagyom', exact: true });
+    report.stage=name+'_approval_export_controls';
     const exportButton = page.getByRole('button', { name: 'Jóváhagyott PDF készítése', exact: true });
     await expect(approvalButton).toBeVisible(); await expect(approvalButton).toBeDisabled(); await expect(exportButton).toBeVisible(); await expect(exportButton).toBeEnabled();
     const pdfLink = page.getByRole('link', { name: 'Jóváhagyott ellenőrző PDF letöltése', exact: true });
     await expect(pdfLink).toBeVisible(); await expect(pdfLink).toHaveAttribute('href', root + '/exports/' + completeExport.id + '/download');
+    const editionParagraph=page.getByText('Kiadási változat: '+version.id.slice(0,8),{exact:true});
+    await expect(editionParagraph).toBeVisible();const editionBounds=await editionParagraph.boundingBox(),linkBounds=await pdfLink.boundingBox();
+    ensure(editionBounds&&linkBounds,'PDF_LINK_LAYOUT_BOUNDS_MISSING');result.pdfLinkGapPx=linkBounds.y-(editionBounds.y+editionBounds.height);
+    ensure(result.pdfLinkGapPx>=-0.5,'PDF_LINK_OVERLAPS_EDITION_TEXT');
     result.approvalButtonDisabled = true; result.exportButtonEnabled = true; result.pdfLinkPresent = true;
     result.horizontalOverflowPx = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
     ensure(result.horizontalOverflowPx <= 2, 'HORIZONTAL_PAGE_OVERFLOW');
-    result.versionId = await page.getByLabel('Korábbi változat', { exact: true }).inputValue(); result.imageResponses = successfulImages.size;
+    result.versionId = await page.getByLabel('Korábbi változat').inputValue(); result.imageResponses = successfulImages.size;
     const editorScreenshot = name + '-editor.png', canvasScreenshot = name + '-canvas.png';
     await canvas.scrollIntoViewIfNeeded(); await canvas.screenshot({ path: resolve(outputDirectory, canvasScreenshot) });
     await page.screenshot({ path: resolve(outputDirectory, editorScreenshot), fullPage: true }); result.screenshots.push(editorScreenshot, canvasScreenshot);
+    if(mobile){const workflowScreenshot='mobile-workflow.png';await page.locator('.workflow-panel').screenshot({path:resolve(outputDirectory,workflowScreenshot)});result.screenshots.push(workflowScreenshot);}
     ensure(result.blockedWrites === 0, 'EDITOR_ATTEMPTED_SERVER_WRITE'); ensure(result.blockedExternalRequests === 0, 'EDITOR_ATTEMPTED_OUT_OF_SCOPE_REQUEST');
     ensure(result.runtimeErrorCount === 0 && result.failedResponseCount === 0, 'EDITOR_RUNTIME_OR_NETWORK_ERRORS');
     result.status = 'PASS'; await context.close(); context = undefined; page = undefined;
     await writeJson(resolve(outputDirectory, 'browser-verification.json'), report);
   }
+  report.stage='anonymous_mobile_login';
+  const anonymous:AnonymousResult={status:'FAIL',blockedWrites:0,blockedExternalRequests:0,runtimeErrorCount:0};report.anonymousMobile=anonymous;
+  context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,locale:'hu-HU',serviceWorkers:'block'});
+  await installReadOnlyGuards(context,config.bookId!,anonymous);page=await context.newPage();page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(60000);
+  page.on('pageerror',()=>{anonymous.runtimeErrorCount++;});
+  page.on('response',response=>{const url=new URL(response.url());if(url.origin===pilotOrigin&&[root,'/api/montage/'+config.bookId].includes(url.pathname)&&response.status()===401)anonymous.unauthorizedReadObserved=true;});
+  await page.goto(pilotOrigin+'/wedding/books/'+config.bookId+'/montage?szerkesztes=1',{waitUntil:'domcontentloaded'});
+  const loginLink=page.locator('a[href="/pilot/account"]');await expect(loginLink).toBeVisible({timeout:30000});anonymous.ownerLoginHref=await loginLink.getAttribute('href')||undefined;
+  await expect(page.locator('canvas')).toHaveCount(0);await expect(page.getByLabel('Korábbi változat')).toHaveCount(0);
+  await expect(page.getByRole('link',{name:'Jóváhagyott ellenőrző PDF letöltése',exact:true})).toHaveCount(0);
+  anonymous.privateBookContentVisible=(await page.locator('body').innerText()).includes(config.expectedTitle!);
+  ensure(!anonymous.privateBookContentVisible&&anonymous.unauthorizedReadObserved,'ANONYMOUS_BOOK_CONTENT_OR_AUTH_GUARD_FAILED');
+  ensure(anonymous.blockedWrites===0&&anonymous.blockedExternalRequests===0&&anonymous.runtimeErrorCount===0,'ANONYMOUS_READONLY_GUARD_FAILED');
+  anonymous.screenshot='mobile-anonymous-login.png';await page.screenshot({path:resolve(outputDirectory,anonymous.screenshot),fullPage:true});anonymous.status='PASS';
+  await context.close();context=undefined;page=undefined;
   report.stage = 'confirm_readonly_server_state';
   const finalHead = await getJson<Head>(owner, root), finalVersion = await getJson<Version>(owner, root + '/versions/' + version.id), finalExports = await getJson<{ exports: Export[] }>(owner, root + '/exports');
   report.serverStateUnchanged = baseline === hash({ head: finalHead, version: finalVersion, exports: finalExports });
   ensure(report.serverStateUnchanged, 'SAVED_SERVER_STATE_CHANGED_DURING_READONLY_SMOKE');
   report.status = 'PASS'; report.stage = 'complete';
 } catch (error) {
-  report.status = 'FAIL'; report.errorCode = error instanceof Error && /^[A-Z_0-9]+$/.test(error.message) ? error.message : 'BROWSER_SMOKE_CHECK_FAILED'; process.exitCode = 1;
+  report.status = 'FAIL'; report.errorCode = error instanceof Error && /^[A-Z_0-9]+$/.test(error.message) ? error.message : 'BROWSER_SMOKE_CHECK_FAILED'; report.errorDetail=error instanceof Error?error.message.slice(0,2000):'Unknown error';process.exitCode = 1;
   if (page && outputDirectory) try { const file = report.views.at(-1)?.name + '-failure.png'; await page.screenshot({ path: resolve(outputDirectory, file), fullPage: true }); report.views.at(-1)?.screenshots.push(file); } catch { /* Keep the original failure. */ }
 } finally {
   await context?.close(); await browser?.close(); await owner?.dispose(); report.completedAt = new Date().toISOString();

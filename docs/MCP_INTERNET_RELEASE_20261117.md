@@ -33,3 +33,20 @@ A felhasználó külön engedélyezte a saját gép egyetlen /32 IP-címének id
 6. Tulajdonosi böngészős próba és pontos felhasználói kapcsolódási útmutató.
 
 Az internetes ellenőrzés eredményeit a végrehajtás után alább kell rögzíteni. A hivatalos SDK-próba nem tényleges ChatGPT-kapcsolat; a mobil nézet nem fizikai telefonos PASS. Titkos tokenek és belépési adatok nem kerülnek ebbe a naplóba vagy Gitbe.
+
+## Tényleges internetes végrehajtás
+
+- `22ca4188d3fb8962c7a1a2b3b173fd326d61a590`: teljes MCP/szerkesztő pilotcommit. Első kiadás `dep-dbtuht8n74is73etegc0`, live 05:42:26 UTC, explicit üres MCP-engedélylistával.
+- Új külön tesztkönyv az alkalmazás HTTP API-jával: `4b6039a5-329c-4444-97f8-c299ec3d93a1`, **MCP internetpilot – fiktív e2e27b2e**. Meglévő fiktív tesztfiók; új 0 Ft-os tesztjogosultság, fizetési szolgáltató vagy modell nélkül. 10 technikai vendégcsoport, 30 beküldés, 30 szintetikus kép, 2 rajzréteg. A HTTP-vendégvégpont szöveget követel; média-only beküldést ezen az internetes próbán nem állítottunk elő.
+- Az első szintetikus rajzot a szerver helyesen elutasította (`ANNOTATION_INVALID`). A tesztszkript kanonikus színekkel/vonalvastagsággal és előzetes helyi validálással folytatta ugyanazt az új könyvet. Korábbi könyvet nem módosított.
+- `7b7e772401d85e6fff4e1142a61f4d586811e892`: internetes ellenőrző szkriptek. Második kiadás `dep-dbtuk2cipgvc73a6vnp0`, live 05:47:19 UTC; deployment-lista pontosan az új tesztkönyv UUID-ja.
+- Élő HTTPS és hivatalos MCP SDK: **14 ellenőrzés PASS**. DCR, S256, tulajdonosi hozzájárulás, stabil callback/state/issuer ellenőrzés, 13 eszköz, kizárólag egy könyv, másik saját könyv tiltása, valódi dekódolt PNG, lapozott pillanatkép, idempotens verziómentés/visszaolvasás, jóváhagyás előtti exporttiltás, tulajdonosi végponton végzett technikai jóváhagyás, tartós export, védett letöltés és grant-visszavonás. A callbacket a teszt elfogta; nem hívta a ChatGPT-t.
+- Külön névtelen/origin-ellenőrzés: **8 PASS**. HTTPS-health és discovery; tulajdonosi API, workflow és MCP hitelesítés nélkül tiltott; idegen Origin, idegen callback és helyi belépési kerülőút elutasított.
+- Jóváhagyott tesztverzió: `22b41a68-6838-49c1-b79c-b20706809fd6`; PDF-munka: `7e8cbe2a-1d51-4ab3-8240-a622698a7d44`. PDF: 805 903 bájt, SHA-256 `41b346bbfafe85e837f3859210d86e4b8bc7b255c433f73ac8f295712a6f24ee`. 16 A4-oldal, 30 kép, beágyazott DejaVu, magyar ékezetek, oldalsorrend és minden TrimBox ellenőrzött. Mind a 16 renderelt oldal áttekintve; nincs észlelt levágás. Ellenőrző PDF, nem PDF/X vagy nyomdai megfelelőségi igazolás.
+- Élő adatmegőrzési próba: a mentéshez képest **7 régi könyv, 17 beküldés, 10 kép és 4 annotáció változatlan**. Könyv-/szövegmezők, eredeti képek SHA-256 lenyomata és teljes rajz-JSON összehasonlítva a tulajdonosi HTTPS API válaszaival.
+- Az első telepített böngészős próba asztali és 390 px érintéses mobil-emulációban PASS: a mentett/jóváhagyott változat, 30 kép, font és PDF-link megjelent, vízszintes túlcsordulás és író kérés nélkül. Egy kisebb PDF-link térközproblémát a végső felületjavítás kezel; annak külön végellenőrzését alább rögzítjük.
+- Megvizsgált friss Render alkalmazásnapló: nincs hibaszintű esemény vagy tokenmintázat. Ez az elérhető naplók vizsgálata, nem a szolgáltató belső proxymegőrzésének független auditja. A megfigyelt folyamatmemória a 512 MiB-os csomaghatáron belül volt.
+
+Bizonyítékok (Gitből kizárva): `test-results/mcp-internet/{seed-verification,verification,anonymous-security,preservation-verification,pdf-validation,browser-verification}.json`, `approved-proof.pdf`, `mcp-image.png`, PDF-oldalképek és böngészőképek. A próbarendezés determinisztikus tesztterv; nem állítjuk, hogy ChatGPT készítette.
+
+**Valódi ChatGPT-fiókos eszközfelfedezés/képértés/írás és fizikai Samsung/iPhone: NYITOTT.** A felhasználói csatlakozási lépések és pontos HTTPS-/tulajdonosi címek a [bekötési útmutatóban](MCP_CONNECTION_20261117.md) találhatók. Az ingyenes adatbázis 2026-12-07-én lejár; a jelen mentés helyben megmarad, automatikus fizetős váltást nem kértünk.
