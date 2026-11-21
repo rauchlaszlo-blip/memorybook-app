@@ -16,7 +16,7 @@ function normalize(kind:RecordEntry['kind'],value:unknown){
   return value;
 }
 const {config,storagePath}=await loadInternetConfig(process.argv.find(a=>a.endsWith('.local'))),mode=process.argv.includes('--capture')?'capture':'verify';
-const dir=resolve(process.argv.includes('--capture-release')?'test-results/guest-capture/pre-release':'test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
+const dir=resolve(process.argv.includes('--book-view-release')?'test-results/book-view/pre-release':process.argv.includes('--capture-release')?'test-results/guest-capture/pre-release':'test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
 const contexts:APIRequestContext[]=[];
 try {
   contexts.push(await createOwnerContext(config,storagePath));

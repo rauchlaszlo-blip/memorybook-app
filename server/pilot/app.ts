@@ -10,6 +10,7 @@ import type { CommerceAuth } from './commerce-auth';
 import { createMontageRouter } from '../wedding/montage';
 import { createMemorybookMcpRouter } from '../mcp/server';
 import { createWorkflowRouter } from '../wedding/book-workflow';
+import { createBookViewRouter } from './book-view';
 
 export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAuth) {
   const app = express();
@@ -64,6 +65,7 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
   app.get('/robots.txt', (_req, res) => { res.type('text').send('User-agent: *\nDisallow: /'); });
   app.use('/assets', express.static(resolve('dist/assets'), { fallthrough: false }));
   app.use('/fonts',express.static(resolve('dist/fonts'),{fallthrough:false}));
+  app.use(createBookViewRouter(pool));
   app.get(/^\/wedding(?:\/.*)?$/, (_req, res) => { res.sendFile(resolve('dist/index.html')); });
   if(commerce) app.get(/^\/pilot(?:\/.*)?$/,(_req,res)=>{res.sendFile(resolve('dist/index.html'));});
   app.use((_req, res) => { res.sendStatus(404); });
