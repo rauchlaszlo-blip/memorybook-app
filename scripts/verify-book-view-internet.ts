@@ -15,7 +15,7 @@ type Job = { id: string; version_id: string; status: string; withheld?: boolean 
 type Check = { name: string; method: 'GET' | 'HEAD'; status: number; pass: boolean };
 type BrowserResult = {
   transport: 'PASS' | 'FAIL'; visual: 'OPEN_MANUAL_REVIEW' | 'OPEN_VIEWER_NOT_OBSERVED';
-  loginRedirect: boolean; passwordUi: boolean; nativePdfContainer: boolean; pdfResponseCount: number;
+  loginRedirect: boolean; passwordUi: boolean; nativePdfContainer: boolean; nativePdfDocumentReady: boolean; displayedPageCount?: number; pdfResponseCount: number;
   blockedWrites: number; blockedExternalRequests: number; blockedOtherPaths: number; runtimeErrors: number;
   screenshotCandidate?: string; screenshotMeaning: 'UNREVIEWED_NATIVE_VIEWER' | 'NONE'; navigationError?: 'NATIVE_PDF_NAVIGATION';
 };
@@ -136,14 +136,16 @@ try {
     report.stage = 'fresh_chrome_pdf';
     browser = await chromium.launch({ channel: 'chrome', headless: true });
     browserContext = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: 'hu-HU', serviceWorkers: 'block', acceptDownloads: false });
-    const result: BrowserResult = { transport: 'FAIL', visual: 'OPEN_VIEWER_NOT_OBSERVED', loginRedirect: false, passwordUi: false, nativePdfContainer: false,
+    const result: BrowserResult = { transport: 'FAIL', visual: 'OPEN_VIEWER_NOT_OBSERVED', loginRedirect: false, passwordUi: false, nativePdfContainer: false, nativePdfDocumentReady: false,
       pdfResponseCount: 0, blockedWrites: 0, blockedExternalRequests: 0, blockedOtherPaths: 0, runtimeErrors: 0, screenshotMeaning: 'NONE' };
     report.browser = result;
     await browserContext.route('**/*', async route => {
       const req = route.request(), target = new URL(req.url());
       if (!['GET', 'HEAD'].includes(req.method())) { result.blockedWrites++; await route.abort(); return; }
-      // Native Chrome PDF extension and blob/data resources are local browser internals.
-      if (['data:', 'blob:', 'chrome-extension:'].includes(target.protocol)) { await route.continue(); return; }
+      // Chrome's PDF viewer loads its bundled UI from chrome://resources/.
+      // Permit that proven internal host, never arbitrary chrome or external URLs.
+      const nativeChromeResource = target.protocol === 'chrome:' && target.hostname === 'resources';
+      if (nativeChromeResource || ['data:', 'blob:', 'chrome-extension:'].includes(target.protocol)) { await route.continue(); return; }
       if (target.origin !== pilotOrigin) { result.blockedExternalRequests++; await route.abort(); return; }
       if (target.pathname !== url.pathname && !/^\/favicon\.(?:ico|png|svg)$/.test(target.pathname)) { result.blockedOtherPaths++; await route.abort(); return; }
       await route.continue();
@@ -156,11 +158,25 @@ try {
     });
     try { await page.goto(grant.url, { waitUntil: 'domcontentloaded', timeout: 60000 }); }
     catch { result.navigationError = 'NATIVE_PDF_NAVIGATION'; } // Browser-native PDF navigation sometimes aborts the document navigation.
-    // Poll only observable viewer state; an embed alone never proves page rendering.
-    for (let attempt = 0; attempt < 20; attempt++) {
+    // A newly created embed has an empty dark surface and a URL-derived title.
+    // Wait for the known PDF metadata and exact page count in Chrome's toolbar.
+    // This proves document loading; the resulting pixels still require human review.
+    const viewerDeadline = Date.now() + 15000;
+    while (Date.now() < viewerDeadline) {
       result.nativePdfContainer = (await Promise.all(page.frames().map(frame =>
         frame.locator('embed[type="application/pdf"], object[type="application/pdf"], pdf-viewer').count().catch(() => 0)))).some(count => count > 0);
-      if (result.nativePdfContainer && result.pdfResponseCount > 0) break;
+      const metadata = await Promise.all(page.frames().map(async frame => {
+        const titles = await frame.locator('viewer-toolbar #title').allTextContents().catch(() => []);
+        const counts = await frame.locator('viewer-toolbar #pagelength').allTextContents().catch(() => []);
+        return { knownTitle: titles.some(text => /^MemoryBook\s*[–-]\s*ellenőrző PDF$/.test(text.trim())),
+          pageCount: counts.map(text => Number(text.trim())).find(count => count === baseline.version.draft.pages.length) };
+      }));
+      const ready = metadata.find(item => item.knownTitle && item.pageCount === baseline.version.draft.pages.length);
+      if (ready && result.nativePdfContainer && result.pdfResponseCount > 0) {
+        result.nativePdfDocumentReady = true; result.displayedPageCount = ready.pageCount;
+        await new Promise(resolve => setTimeout(resolve, 500)); // Allow the now-loaded native surface to paint.
+        break;
+      }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     result.loginRedirect = page.frames().some(frame => /\/pilot\/account|\/sign-in|\/login/i.test(new URL(frame.url()).pathname));
@@ -169,7 +185,8 @@ try {
     ensure(result.blockedWrites === 0 && result.blockedExternalRequests === 0 && result.blockedOtherPaths === 0, 'BROWSER_UNEXPECTED_REQUEST_BLOCKED');
     ensure(result.runtimeErrors === 0, 'BROWSER_RUNTIME_ERRORS');
     ensure((await browserContext.cookies()).length === 0, 'BROWSER_SESSION_CREATED');
-    if (result.nativePdfContainer) {
+    ensure(result.nativePdfDocumentReady, 'NATIVE_PDF_DOCUMENT_NOT_READY');
+    if (result.nativePdfDocumentReady) {
       // The address bar is not captured. Never save a page displaying the token in its DOM.
       const visibleTexts = await Promise.all(page.frames().map(frame => frame.locator('body').innerText({ timeout: 2000 }).catch(() => null)));
       if (visibleTexts.every(text => text !== null && !text.includes(token))) {

@@ -1,6 +1,6 @@
 # Emlékkönyv megtekintése név és jelszó nélkül
 
-A tulajdonos 2026-11-21-i kérése alapján külön megtekintési link készül a fiktív próbakönyv már jóváhagyott, 16 oldalas PDF-jéhez. A link birtokosa felhasználónév, jelszó és vendégbeküldés nélkül nyithatja meg a könyvet. Ez a rögzített kiadás megtekintése, nem szerkesztői vagy általános tulajdonosi munkamenet. Az újabb beküldések nem változtatják meg észrevétlenül a kiadást.
+A tulajdonos 2026-11-21-i kérése alapján külön megtekintési link készült a fiktív próbakönyv már jóváhagyott, 16 oldalas PDF-jéhez. A link birtokosa felhasználónév, jelszó és vendégbeküldés nélkül nyithatja meg a könyvet. Ez a rögzített kiadás megtekintése, nem szerkesztői vagy általános tulajdonosi munkamenet. Az újabb beküldések nem változtatják meg észrevétlenül a kiadást.
 
 ## Hatókör és működés
 
@@ -16,7 +16,7 @@ A tulajdonos 2026-11-21-i kérése alapján külön megtekintési link készül 
 
 Könyv: `4b6039a5-329c-4444-97f8-c299ec3d93a1`. Jóváhagyott változat: `22b41a68-6838-49c1-b79c-b20706809fd6`. Export: `7e8cbe2a-1d51-4ab3-8240-a622698a7d44`. A PDF 16 oldalas, 805 903 bájt; SHA-256: `41b346bbfafe85e837f3859210d86e4b8bc7b255c433f73ac8f295712a6f24ee`.
 
-A megtekintési link tervezett lejárata **2026-12-06 23:59:59 magyar idő**. A meglévő díjmentes pilotadatbázis szolgáltatói lejárata december 7. A link nem fizetős hosszabbítás vagy tartós megőrzési ígéret.
+A megtekintési link lejárata **2026-12-06 23:59:59 magyar idő**. A meglévő díjmentes pilotadatbázis szolgáltatói lejárata december 7. A link nem fizetős hosszabbítás vagy tartós megőrzési ígéret.
 
 A megtekintési linket a kért átadás tartalmazza; teljes kulcsa nem kerül a verziókezelt jelentésbe. A helyi példány és konfiguráció a gitből kizárt `test-results/book-view/grant.local` fájlban van.
 
@@ -28,6 +28,10 @@ A megtekintési linket a kért átadás tartalmazza; teljes kulcsa nem kerül a 
 - Meglévő hitelesítési, könyvfolyamat-, tartalmi átnézési, PDF- és MCP-könyvelkülönítési regresszió: **12/12 PASS**.
 - Frontend build, frontend/backend TypeScript és az érintett fájlok lintje **PASS**. Az alkalmazás felületi fájlja változatlan: `index-BOI_M8t9.js`.
 - A meglévő PDF változatlan bájtjaival, az új útvonal válaszfejléceivel végzett helyi Chrome-próbán a 16 oldalas böngészős PDF-olvasó és a könyv első oldala ténylegesen megjelent. Az eredeti PDF első és utolsó oldalát külön is megnyitottuk.
-- Az élő telepítés eredménye az átadás előtt kerül rögzítésre.
+- Kiadott alkalmazás: `0a4e791cf92a563836f483d9e3bce047ab032f14`; a külön díjmentes pilot deployja `dep-dc0t6ejm8hqs73fid040`, **LIVE 2026-11-21 17:23:17 UTC**. A hash-alapú megtekintési engedély szolgáltatói beállításának mentése indította a telepítést; további deploy nem indult.
+- Élő HTTPS-ellenőrzés: **22/22 hozzáférési próba PASS**. A teljes PDF, HEAD és bájttartomány helyes; a PDF bájtonként egyezik a meglévő, tulajdonosként letölthető kiadással. Nyolc hibás/átírt link és tizenegy tulajdonosi adatútvonal hozzáférése tiltva; nem keletkezett munkamenetsüti. A jóváhagyási útvonal élő próbája csak olvasás volt, jóváhagyás vagy más írás nem történt.
+- Friss, névtelen asztali Chrome: a PDF-olvasó és a tényleges első könyvoldal fényképekkel/szöveggel, 1/16 oldalszámmal és bélyegképekkel megjelent, **szemrevételezett PASS** (`test-results/book-view/live-pages.png`). Nincs belépőoldal vagy jelszómező. Az automatizált böngészőpróba először a Chrome saját `chrome://resources` erőforrásait tiltotta; a teszt szűk belső engedélyezésének javítása után a HTTP- és böngészős szállítási ellenőrzés sikeres, 0 futásidejű hiba és 0 váratlan kérés. Az első túl korai, még üres PDF-olvasó képét nem tekintettük vizuális PASS-nak; a betöltött oldalt külön ellenőriztük. Az alkalmazás emiatt nem változott.
+- Telepítés utáni megőrzési összehasonlítás **8 könyv / 95 változatlan erőforrás PASS** (17:24:35 UTC). A `/healthz` rendben; az ellenőrzött telepítés óta nem volt `error` szintű alkalmazásnapló.
+- A `main` változatlan: `5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff`. Az éles MemoryBook változatlan; kizárólag a `codex/wedding-internet-pilot` ág és a külön pilot szolgáltatás módosult. Új fizetős erőforrás, külső adatbázis-engedély vagy modellhívás nem indult.
 
 A fizikai Samsung/Chrome és iPhone/Safari megnyitási próba **NYITOTT**. Az asztali böngésző és a mobil emuláció nem helyettesíti ezt.
