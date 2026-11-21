@@ -19,6 +19,8 @@ import {mediaDuration} from './media-duration';
 import {MediaPlayback} from './MediaPlayback';
 import {mediaCopy} from './media-copy';
 import type {GuestMediaCapability,MediaKind} from './media-copy';
+import {TrialBanner,TrialUnavailable} from './TrialBanner';
+import type {TrialAccess} from './trial-access';
 
 type Book = { id: string; title: string; starts_on: string; closed_at: string | null; invite_token: string; guest_url?: string; package_version?:number;submission_start?:string;submission_end?:string };
 type Photo = { id: string; kind?:MediaKind; mimeType?:string; durationSeconds?:number; previewUrl: string; displayUrl: string; originalUrl: string; playbackUrl?:string };
@@ -30,7 +32,7 @@ function readDraft(token?: string): Draft {
 }
 type Submission = { media?: Photo[]; id: string; guest_name: string; message: string; created_at: string };
 type GuestEvent = { title: string; starts_on: string; closed: boolean; template_id: string; template_version: number;access_state?:string;submission_start?:string;submission_end?:string;package_version?:number };
-type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean;shopAvailable?:boolean;contentReview?:boolean };
+type Capability = { authenticated: boolean; canCreate: boolean; internetPilot?: boolean;shopAvailable?:boolean;contentReview?:boolean;trial?:TrialAccess };
 const apiBase = ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '5173'
   ? `${window.location.protocol}//${window.location.hostname}:3001` : '';
 
@@ -65,6 +67,7 @@ export function WeddingPage() {
   const guestToken = window.location.pathname.match(/^\/wedding\/join\/([A-Za-z0-9_-]+)\/?$/)?.[1];
   const bookId = window.location.pathname.match(/^\/wedding\/books\/([a-f0-9-]+)\/?$/)?.[1];
   const [capability, setCapability] = useState<Capability | null>(null);
+  const [trialDenied,setTrialDenied]=useState(false);
   const [guest, setGuest] = useState<GuestEvent | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [book, setBook] = useState<Book | null>(null);
@@ -108,9 +111,9 @@ export function WeddingPage() {
     async function load() {
       try {
         if (guestToken) {
-          const result = await api<{ event: GuestEvent; photo?: {maxBytes:number;maxPixels:number};media?:GuestMediaCapability }>(`/guest/${guestToken}`);
+          const [result,caps] = await Promise.all([api<{ event: GuestEvent; photo?: {maxBytes:number;maxPixels:number};media?:GuestMediaCapability }>(`/guest/${guestToken}`),api<Capability>('/capabilities').catch(()=>null)]);
           if (result.event.template_id !== weddingTemplate.id || result.event.template_version !== weddingTemplate.version) throw new Error('unavailable');
-          if (!cancelled) { setGuest(result.event); setPhotoLimit(result.photo || null);setMediaCapability(result.media||null); }
+          if (!cancelled) { setGuest(result.event); setPhotoLimit(result.photo || null);setMediaCapability(result.media||null);setCapability(caps); }
         } else {
           const initialCaps = await api<Capability>('/capabilities');
           if (!initialCaps.internetPilot && new URLSearchParams(window.location.search).get('pilot') === '1') {
@@ -128,7 +131,7 @@ export function WeddingPage() {
             if (!cancelled) setBooks(data.books);
           }
         }
-      } catch { if (!cancelled) setError('unavailable'); }
+      } catch (cause) { if (!cancelled) {setError('unavailable');setTrialDenied(cause instanceof Error&&cause.message==='TRIAL_SCOPE_DENIED');} }
       finally { if (!cancelled) setLoading(false); }
     }
     void load();
@@ -251,6 +254,8 @@ export function WeddingPage() {
       {drawing && preview && <PhotoDrawing src={preview} initial={annotation} language={language} onCancel={()=>setDrawing(false)} onDone={a=>{setAnnotation(a);setDrawing(false);setAnnotationError(false);}}/>}
       {largePhoto && <div className="wedding-lightbox" onKeyDown={e => { if (e.key === 'Escape') setLargePhoto(null); }} role="dialog" aria-modal="true" aria-label={pt.enlarge}><button autoFocus onClick={() => setLargePhoto(null)}>{pt.back}</button><img src={apiBase+(showOriginal?largePhoto.originalUrl:largePhoto.displayUrl)} alt={pt.enlarge} /><button onClick={()=>setShowOriginal(v=>!v)}>{showOriginal?pt.enlarge:pt.originalView}</button><a href={apiBase+largePhoto.originalUrl}>{pt.original}</a></div>}
       <header><a href="/wedding">{t.heading}</a><LanguageSwitcher /></header>
+      <TrialBanner trial={capability?.trial} disabled={busy||captureActive}/>
+      {trialDenied&&<TrialUnavailable/>}
       {loading ? <p role="status">{t.loading}</p> : <>
         {photoError && <p className="wedding-error" role="alert">{pt[photoError]}</p>}
         {mediaError && <p className="wedding-error" role="alert">{mt[mediaError]}</p>}
@@ -287,8 +292,8 @@ export function WeddingPage() {
           </>}
         </section> : capability && <>
           {!capability.authenticated ? <section className="wedding-card"><p>{capability.internetPilot ? 'A tulajdonosi hozzáféréshez nyisd meg a neked adott egyszer használható meghívót. Jelszó nem szükséges.' : t.loginHint}</p>{!capability.internetPilot && <a className="wedding-button" href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}>{t.login}</a>}</section> : book ? <>
-            <a href={book.package_version?'/pilot/books':'/wedding'}>{book.package_version?wt.shop:t.back}</a><h1>{book.title}</h1><p>{book.starts_on} · {t.owner}</p>
-            {capability?.shopAvailable && <p><a href={'/wedding/books/'+book.id+'/montage'}>Montázs, jóváhagyás és ellenőrző PDF</a></p>}
+            <a href={book.package_version&&!capability.trial?'/pilot/books':'/wedding'}>{book.package_version&&!capability.trial?wt.shop:t.back}</a><h1>{book.title}</h1><p>{book.starts_on} · {t.owner}</p>
+            {(capability.shopAvailable||capability.trial) && <p><a href={'/wedding/books/'+book.id+'/montage'}>Montázs, jóváhagyás és ellenőrző PDF</a></p>}
             {book.submission_start&&book.submission_end&&<p>{wt.window} {time(book.submission_start)} – {time(new Date(new Date(book.submission_end).getTime()-1000).toISOString())}</p>}
             <section className="wedding-card"><h2>{t.qr}</h2>
               {book.closed_at ? <p role="status">{t.closed}</p> : <>
@@ -304,13 +309,13 @@ export function WeddingPage() {
               {!submissions.length && <p>{t.empty}</p>}
               {submissions.map(item => <article key={item.id}><h3>{item.guest_name}</h3><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(language)}</time>{item.message&&<p className="wedding-message">{item.message}</p>}{item.media?.map(photo => photo.kind&&photo.kind!=='photo'?<MediaPlayback key={photo.id+':'+(reviewData?.revision??'loading')} kind={photo.kind} language={language} src={apiBase+photo.playbackUrl} originalUrl={apiBase+photo.originalUrl} covered={!!capability.contentReview&&(!reviewData||reviewData.items.some(review=>review.mediaId===photo.id&&hasReviewFlag(review)))}/>:<ReviewImage key={photo.id+':'+(reviewData?.revision??'loading')} covered={!!capability.contentReview&&(!reviewData||reviewData.items.some(review=>review.mediaId===photo.id&&hasReviewFlag(review)))} src={apiBase+photo.previewUrl} alt={pt.enlarge}><button className="wedding-photo-open" aria-label={pt.enlarge} onClick={() => {setShowOriginal(false);setLargePhoto(photo);}}><img loading="lazy" src={apiBase+photo.previewUrl} alt={pt.enlarge} /></button></ReviewImage>)}</article>)}
             </section>
-            {!book.closed_at && <section className="wedding-card">
+            {!book.closed_at && !capability.trial && <section className="wedding-card">
               <label className="wedding-confirm"><input type="checkbox" checked={confirmClose} onChange={e => setConfirmClose(e.target.checked)} />{t.closeQuestion}</label>
               <button disabled={busy || !confirmClose} onClick={async () => { setBusy(true); setError(''); try { const data = await api<{ book: Book }>(`/books/${book.id}/close`, {}); setBook(data.book); } catch (e) { report(e); } finally { setBusy(false); } }}>{t.close}</button>
             </section>}
           </> : !bookId && <>
             <h1>{t.heading}</h1><p>{t.intro}</p>
-            {capability.canCreate ? <section className="wedding-card"><form onSubmit={async e => {
+            {capability.canCreate&&!capability.trial ? <section className="wedding-card"><form onSubmit={async e => {
               e.preventDefault(); if (busyRef.current) return; busyRef.current = true; setBusy(true); setError('');
               try { const data = await api<{ book: Book }>('/books', { names, date }); window.location.assign(`/wedding/books/${data.book.id}`); }
               catch (error) { report(error); setBusy(false); busyRef.current = false; }
@@ -318,7 +323,7 @@ export function WeddingPage() {
               <label>{t.names}<input required maxLength={160} value={names} onChange={e => setNames(e.target.value)} /></label>
               <label>{t.date}<input type="date" required value={date} onChange={e => setDate(e.target.value)} /></label>
               <button disabled={busy}>{busy ? t.sending : t.create}</button>
-            </form></section> : <p>{t.pilot}</p>}
+            </form></section> : !capability.trial&&<p>{t.pilot}</p>}
             <section className="wedding-card"><h2>{t.yourBooks}</h2>{books.map(item => <p key={item.id}><a href={`/wedding/books/${item.id}`}>{item.title} · {item.starts_on}</a></p>)}</section>
           </>}
         </>}

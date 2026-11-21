@@ -12,12 +12,12 @@ async function request<T>(url:string,body?:unknown):Promise<T>{
   return response.json();
 }
 
-export function BookWorkflowPanel({bookId,snapshotId,snapshots,sources,versionId,approved,onSnapshot,contentReview,pendingReviewCount}:{bookId:string;snapshotId:string|null;snapshots:Snapshot[];sources:Source[];versionId:string|null;approved:boolean;contentReview?:ContentReviewStatus|null;pendingReviewCount?:number;onSnapshot:(id:string)=>Promise<void>}){
+export function BookWorkflowPanel({bookId,snapshotId,snapshots,sources,versionId,approved,onSnapshot,contentReview,pendingReviewCount,connectionsEnabled=true,trialMode=false}:{bookId:string;snapshotId:string|null;snapshots:Snapshot[];sources:Source[];versionId:string|null;approved:boolean;contentReview?:ContentReviewStatus|null;pendingReviewCount?:number;connectionsEnabled?:boolean;trialMode?:boolean;onSnapshot:(id:string)=>Promise<void>}){
   const root='/api/book-workflow/'+bookId,[selected,setSelected]=useState<string[]|null>(null),[created,setCreated]=useState<string|null>(null),[job,setJob]=useState<Job|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[grants,setGrants]=useState<Grant[]>([]),[endpoint,setEndpoint]=useState(''),[connectionError,setConnectionError]=useState('');
   const snapshotRequest=useRef<{signature:string;key:string}|null>(null),exportRequest=useRef<{version:string;key:string}|null>(null),guard=useRef(false);
   const loadGrants=useCallback(async()=>{try{const result=await request<{endpoint:string;grants:Grant[]}>('/api/mcp/books/'+bookId+'/grants');setEndpoint(result.endpoint);setGrants(result.grants);setConnectionError('');}catch{setConnectionError('A ChatGPT-kapcsolatok listája most nem elérhető.');}},[bookId]);
   const loadExports=useCallback(async()=>{const result=await request<{exports:Job[]}>(root+'/exports');setJob(result.exports.find(item=>item.version_id===versionId)||result.exports[0]||null);},[root,versionId]);
-  useEffect(()=>{void Promise.resolve().then(loadGrants);},[loadGrants]);
+  useEffect(()=>{if(connectionsEnabled)void Promise.resolve().then(loadGrants);},[loadGrants,connectionsEnabled]);
   useEffect(()=>{
     let active=true;
     // Jobs created by ChatGPT or another owner device must appear here too.
@@ -33,8 +33,8 @@ export function BookWorkflowPanel({bookId,snapshotId,snapshots,sources,versionId
   },[job,root,status]);
   async function run(action:()=>Promise<void>){if(guard.current)return;guard.current=true;setBusy(true);setError('');try{await action();}catch(e){setError((e as Error).message);}finally{guard.current=false;setBusy(false);}}
   const selection=selected||sources.map(source=>source.id),complete=status==='complete'||status==='completed'||status==='succeeded',reviewHeld=!!(contentReview?.blocked||contentReview?.requiresReview),jobHeld=!!(job?.withheld||job?.contentReview?.blocked||job?.contentReview?.requiresReview||job?.downloadPath===null);
-  return <section className="workflow-panel" aria-label="ChatGPT és PDF munkafolyamat">
-    <h2>ChatGPT-rendezés és PDF</h2><p><a href={'/wedding/books/'+bookId+'/montage?szerkesztes=1#tartalom-atnezes'}>Átnézendő tartalmak{pendingReviewCount!==undefined?' ('+pendingReviewCount+' függő)':''}</a></p>{reviewHeld&&<p role="alert">A PDF átnézés miatt visszatartva. Ellenőrizd az érintett tartalmakat, majd hagyd jóvá a konkrét mentett változatot.</p>}
+  return <section className="workflow-panel" aria-label={trialMode?'Könyvtervezet és PDF munkafolyamat':'ChatGPT és PDF munkafolyamat'}>
+    <h2>{trialMode?'Könyvtervezet és PDF':'ChatGPT-rendezés és PDF'}</h2><p><a href={'/wedding/books/'+bookId+'/montage?szerkesztes=1#tartalom-atnezes'}>Átnézendő tartalmak{pendingReviewCount!==undefined?' ('+pendingReviewCount+' függő)':''}</a></p>{reviewHeld&&<p role="alert">A PDF átnézés miatt visszatartva. Ellenőrizd az érintett tartalmakat, majd hagyd jóvá a konkrét mentett változatot.</p>}
     {error&&<p role="alert">{error}</p>}
     <details><summary>Feldolgozandó emlékek rögzítése</summary>
       <p>A pillanatkép a kijelölt emlékeket és médiát rögzíti. A később beküldött emlékek külön pillanatképbe kerülhetnek; a mentett könyv nem változik meg ettől.</p>
@@ -42,15 +42,15 @@ export function BookWorkflowPanel({bookId,snapshotId,snapshots,sources,versionId
       <div className="snapshot-sources">{sources.map(source=><label key={source.id}><input type="checkbox" checked={selection.includes(source.id)} onChange={event=>setSelected(event.target.checked?[...selection,source.id]:selection.filter(id=>id!==source.id))}/>{source.name} · {source.id.slice(0,8)} · {source.media.length} kép{source.message?' · üzenet':''}</label>)}</div>
       <button disabled={busy||!selection.length} onClick={()=>void run(async()=>{const signature=JSON.stringify(selection.slice().sort());if(snapshotRequest.current?.signature!==signature)snapshotRequest.current={signature,key:crypto.randomUUID()};const result=await request<{id:string}>(root+'/snapshots',{key:snapshotRequest.current.key,selectedIds:selection});setCreated(result.id);await onSnapshot(result.id);})}>Kijelölt emlékek rögzítése</button>
       <p>{snapshots.length} rögzített pillanatkép. A megnyitott terv alapja: {snapshotId||'még nincs rögzítve'}.</p>
-      {created&&<p role="status">Az új feldolgozási pillanatkép: <code>{created}</code>. Kérd a ChatGPT-t, hogy ebből készítsen új tervezetet.</p>}
+      {created&&<p role="status">Az új feldolgozási pillanatkép: <code>{created}</code>. {!trialMode&&'Kérd a ChatGPT-t, hogy ebből készítsen új tervezetet.'}</p>}
     </details>
-    <details><summary>ChatGPT-kapcsolat és hozzáférések</summary>
+    {connectionsEnabled&&<details><summary>ChatGPT-kapcsolat és hozzáférések</summary>
       <p>A ChatGPT egyéni alkalmazásának MCP-címe: <code>{endpoint||location.origin+'/mcp'}</code>. A csatlakozáskor jelentkezz be, és jelöld ki az engedélyezett könyvet. A vendég QR-kódja nem ad szerkesztői hozzáférést.</p>
       <p>A kapcsolat visszavonása a hozzá engedélyezett összes könyvre érvényes. A könyv jóváhagyását te végzed itt. A ChatGPT csak a már jóváhagyott kiadás PDF-készítését indíthatja el.</p>
       {connectionError&&<p>{connectionError}</p>}{!connectionError&&!grants.length&&<p>Még nincs ehhez a könyvhöz engedélyezett ChatGPT-kapcsolat.</p>}
       {grants.map(grant=><div key={grant.id}><p>{grant.client_name} · {grant.revoked_at?'Visszavonva':'Engedélyezve'} · lejárat: {new Date(grant.expires_at).toLocaleString('hu-HU')}</p><button disabled={busy||!!grant.revoked_at} onClick={()=>void run(async()=>{await request('/api/mcp/grants/'+grant.id+'/revoke',{});await loadGrants();})}>Hozzáférés visszavonása</button></div>)}
       <button disabled={busy} onClick={()=>void loadGrants()}>Kapcsolatok frissítése</button>
-    </details>
+    </details>}
     <p>A PDF a jóváhagyott változatból készül. Ez ellenőrző PDF; a nyomdai megfelelőség még egyeztetendő.</p>
     <button disabled={busy} onClick={()=>void run(loadExports)}>Elkészült PDF-ek keresése</button>
     <button disabled={busy||!approved||!versionId||reviewHeld} onClick={()=>void run(async()=>{if(!versionId)return;if(exportRequest.current?.version!==versionId)exportRequest.current={version:versionId,key:crypto.randomUUID()};const result=await request<Job>(root+'/exports',{key:exportRequest.current.key,versionId});setJob(result);try{localStorage.setItem('memorybook-export:'+bookId,result.id);}catch{ /* The server job remains available. */ }})}>Jóváhagyott PDF készítése</button>

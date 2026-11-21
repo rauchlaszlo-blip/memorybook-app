@@ -11,6 +11,7 @@ import { createMontageRouter } from '../wedding/montage';
 import { createMemorybookMcpRouter } from '../mcp/server';
 import { createWorkflowRouter } from '../wedding/book-workflow';
 import { createBookViewRouter } from './book-view';
+import { createAppTrialAccess } from './app-trial';
 
 export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAuth) {
   const app = express();
@@ -31,7 +32,10 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
     if (!['GET', 'HEAD'].includes(req.method) && req.get('origin') !== origin) { res.status(403).json({ error: 'ORIGIN_NOT_ALLOWED' }); return; }
     next();
   });
-  const getSession = async (req: express.Request) => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req);
+  const trial = createAppTrialAccess(pool, origin);
+  app.use(trial.router);
+  const getSession = async (req: express.Request) => trial.hasTrialCookie(req) ? trial.getSession(req) :
+    (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req);
   // Remote MCP/OAuth has its own bearer authentication and CSRF rules; it is not a public admin API.
   app.use(createMemorybookMcpRouter(pool,origin,getSession));
   app.use('/api/book-workflow',createWorkflowRouter(pool,getSession,origin));
@@ -58,8 +62,8 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
   }
   app.use('/api/wedding', createWeddingRouter({ pool, publicOrigin: origin, allowPilotOwner: ownerId, media: mediaLimits(), shopAvailable:!!commerce, contentReview:true,
     env: { NODE_ENV: 'production', WEDDING_ENABLED: 'true', PUBLIC_APP_URL: origin },
-    getSession: async req => (commerce ? await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}) : null) || await getPilotSession(pool, req) }));
-  app.use('/api/montage',createMontageRouter(pool,async req=>(commerce?await commerce.auth.api.getSession({headers:fromNodeHeaders(req.headers)}):null)||await getPilotSession(pool,req),origin));
+    getSession }));
+  app.use('/api/montage',createMontageRouter(pool,getSession,origin));
   app.use('/api', (_req, res) => { res.status(404).json({ error: 'NOT_FOUND' }); });
   app.get('/', (_req, res) => { res.redirect(commerce?'/pilot':'/wedding'); });
   app.get('/robots.txt', (_req, res) => { res.type('text').send('User-agent: *\nDisallow: /'); });
