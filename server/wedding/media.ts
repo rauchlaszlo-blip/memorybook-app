@@ -1,15 +1,18 @@
 import { Router, raw } from 'express';
 import type { RequestHandler, ErrorRequestHandler } from 'express';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import sharp from 'sharp';
 import type { WeddingOptions } from './router';
-import { accessSql, guestDevice } from './access-window';
+import { guestDevice } from './access-window';
 import { PhotoError } from './media-error';
 import { decodeAv } from './av-decoder';
+import { photoEnvelope } from './photo-envelope';
 import { guestMediaLimits } from '../../shared/media-limits';
 import type { MediaKind } from '../../shared/media-limits';
 import { sendMediaBytes } from './media-response';
+import { createMediaAttemptService, mediaAttemptFailure } from './media-attempts';
+import type { MediaAttemptLease } from './media-attempts';
 export { PhotoError } from './media-error';
 
 sharp.concurrency(1);
@@ -38,7 +41,6 @@ export async function decodePhoto(bytes: Buffer, limits: MediaLimits) {
   const jpeg = bytes[0]===255 && bytes[1]===216 && bytes[2]===255;
   const png = bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
   if (!jpeg && !png) throw new PhotoError('PHOTO_TYPE',415);
-  if(jpeg && (bytes.at(-2)!==255 || bytes.at(-1)!==217))throw new PhotoError('PHOTO_INVALID');
   if(png){
     let offset=8,ended=false;
     while(offset<bytes.length){
@@ -52,7 +54,8 @@ export async function decodePhoto(bytes: Buffer, limits: MediaLimits) {
   if (decoding >= 2) throw new PhotoError('RATE_LIMITED',429);
   decoding++;
   try {
-    const image = sharp(bytes,{limitInputPixels:limits.maxPixels,failOn:'warning'});
+    const imageBytes=jpeg?await photoEnvelope(bytes):bytes;
+    const image = sharp(imageBytes,{limitInputPixels:limits.maxPixels,failOn:'warning'});
     const meta = await image.metadata();
     if (!meta.width || !meta.height || (meta.pages || 1)!==1 || !['jpeg','png'].includes(meta.format || '')) throw new PhotoError('PHOTO_INVALID');
     if(meta.width*meta.height>limits.maxPixels) throw new PhotoError('PHOTO_PIXELS',413);
@@ -66,84 +69,72 @@ export async function decodePhoto(bytes: Buffer, limits: MediaLimits) {
     throw new PhotoError('PHOTO_INVALID');
   } finally { decoding--; }
 }
-export async function cleanupMedia(pool: Pool) {
-  // Never deletes attached media. Active attachment and cleanup serialize on row locks.
-  await pool.query("DELETE FROM event_media WHERE submission_id IS NULL AND state='uploaded' AND expires_at<CURRENT_TIMESTAMP");
-}
+// Expiry gates attachment, never retention. Owner retry can renew an orphan upload.
+export async function cleanupMedia(_pool: Pool) { void _pool; }
 export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSession'], limits: MediaLimits) {
   const router=Router();let active=0;
+  const attempts=createMediaAttemptService(pool,limits,async(bytes,kind)=>kind==='photo'?{...await decodePhoto(bytes,limits),durationSeconds:null}:decodeAv(bytes,kind));
   const uploadKind=(req:Parameters<RequestHandler>[0]):MediaKind=> {
     const value=req.get('x-media-kind') || 'photo';
     if(!['photo','video','audio'].includes(value))throw new PhotoError('MEDIA_TYPE',415);
     return value as MediaKind;
   };
-  const uploadResult=(row:Record<string,unknown>,replayed:boolean)=>({mediaId:row.id,replayed,kind:row.kind,mimeType:row.mime_type,durationSeconds:row.duration_seconds ?? null});
-  const wrap=(fn:RequestHandler):RequestHandler=>async(req,res,next)=>{try{await fn(req,res,next);}catch(error){
-    res.status(error instanceof PhotoError?error.status:503).json({error:error instanceof PhotoError?error.code:'PHOTO_RETRY'});
-  }};
-  // Recover a lost upload response after reload. Never creates an identity, exposes
-  // a different guest's upload or consumes quota. Closure does not erase an upload.
+  const failure=async(res:Parameters<RequestHandler>[1],error:unknown,stage='validation')=>{
+    const attempt=res.locals.mediaAttempt as MediaAttemptLease|undefined;
+    stage=mediaAttemptFailure(error)?.stage||res.locals.mediaStage||stage;
+    if(attempt)await attempts.failed(attempt,error,stage).catch(()=>undefined);
+    const diagnosticId=mediaAttemptFailure(error)?.diagnosticId||attempt?.diagnosticId||randomUUID();
+    const errorCode=error instanceof PhotoError?error.code:'MEDIA_RETRY_REQUIRED';
+    const status=error instanceof PhotoError?error.status:503;
+    console.warn(JSON.stringify({event:'media.failure',diagnosticId,stage,errorCode,status,...(attempt?{bookId:attempt.bookId,kind:attempt.kind}:{})}));
+    if(!res.headersSent&&!res.destroyed)res.status(status).json({error:errorCode,diagnosticId,stage:'upload'});
+  };
+  const wrap=(fn:RequestHandler):RequestHandler=>async(req,res,next)=>{try{await fn(req,res,next);}catch(error){await failure(res,error);}};
   router.get('/guest/:token/media/:key',wrap(async(req,res)=>{
     const device=guestDevice(req);
     if(!device || !token.test(String(req.params.token)) || !uuid.test(String(req.params.key))){res.status(404).json({error:'MEDIA_NOT_FOUND'});return;}
-    const found=await pool.query(`SELECT m.id,m.kind,m.mime_type,m.duration_seconds,m.state FROM event_media m JOIN event_books b ON b.id=m.book_id
-      WHERE b.invite_token=$1 AND m.upload_key=$2 AND m.guest_device_id=$3 AND ${filter}
-      AND (m.state='attached' OR (m.state='uploaded' AND m.expires_at>CURRENT_TIMESTAMP))`,[req.params.token,req.params.key,device]);
-    if(!found.rowCount){res.status(404).json({error:'MEDIA_NOT_FOUND'});return;}
-    const row=found.rows[0];
-    res.json({mediaId:row.id,kind:row.kind,mimeType:row.mime_type,durationSeconds:row.duration_seconds,state:row.state});
+    const book=(await pool.query(`SELECT id FROM event_books WHERE invite_token=$1 AND ${filter}`,[req.params.token])).rows[0];
+    const result=book?await attempts.recovery(book.id,String(req.params.key),device):null;
+    if(!result){res.status(404).json({error:'MEDIA_NOT_FOUND'});return;}
+    res.json(result);
+  }));
+  const ownerBook=async(req:Parameters<RequestHandler>[0])=>{
+    const session=await getSession(req);if(!session)throw new PhotoError('UNAUTHENTICATED',401);
+    if(!uuid.test(String(req.params.bookId)))throw new PhotoError('BOOK_NOT_FOUND',404);
+    const found=await pool.query(`SELECT id FROM event_books WHERE id=$1 AND owner_user_id=$2 AND ${filter}`,[req.params.bookId,session.user.id]);
+    if(!found.rowCount)throw new PhotoError('BOOK_NOT_FOUND',404);return {id:String(req.params.bookId),ownerId:session.user.id};
+  };
+  router.get('/books/:bookId/media-attempts',wrap(async(req,res)=>{res.json(await attempts.list((await ownerBook(req)).id));}));
+  router.post('/books/:bookId/media-attempts/:attemptId/retry',wrap(async(req,res)=>{
+    const book=await ownerBook(req);if(!uuid.test(String(req.params.attemptId)))throw new PhotoError('MEDIA_NOT_FOUND',404);
+    if(req.body&&Object.keys(req.body).length)throw new PhotoError('INVALID_REQUEST',400);
+    if(active>=2)throw new PhotoError('MEDIA_BUSY',429);
+    active++;try{res.json(await attempts.retry(book.id,String(req.params.attemptId),book.ownerId));}finally{active--;}
   }));
   router.post('/guest/:token/media/:key',wrap(async(req,res,next)=>{
+    res.locals.mediaStage='receiving';
     if(!token.test(String(req.params.token)) || !uuid.test(String(req.params.key))){res.status(404).json({error:'INVITE_NOT_FOUND'});return;}
-    const kind=uploadKind(req);
-    if(!guestDevice(req))throw new PhotoError('GUEST_SESSION_REQUIRED',428);
-    const length=Number(req.get('content-length'));
-    if(length>(kind==='photo'?limits.maxBytes:guestMediaLimits[kind].maxBytes))throw new PhotoError(kind==='photo'?'PHOTO_TOO_LARGE':'MEDIA_TOO_LARGE',413);
-    if(active>=2){res.setHeader('Retry-After','5');res.status(429).json({error:'RATE_LIMITED'});return;}
+    const kind=uploadKind(req),device=guestDevice(req);
+    if(!device)throw new PhotoError('GUEST_SESSION_REQUIRED',428);
+    if(active>=2){res.setHeader('Retry-After','5');throw new PhotoError('RATE_LIMITED',429);}
     active++;let released=false;const release=()=>{if(!released){released=true;active--;}};
     res.once('finish',release);res.once('close',release);
-    const book=await pool.query(`SELECT id FROM event_books WHERE invite_token=$1 AND ${filter}`,[req.params.token]);
-    if(!book.rowCount){res.status(404).json({error:'INVITE_NOT_FOUND'});return;}
+    const book=(await pool.query(`SELECT id FROM event_books WHERE invite_token=$1 AND ${filter}`,[req.params.token])).rows[0];
+    if(!book)throw new PhotoError('INVITE_NOT_FOUND',404);
+    const attempt=await attempts.begin(book.id,String(req.params.key),device,kind,{source:req.get('x-media-source'),mime:req.get('x-media-mime')});
+    res.locals.mediaAttempt=attempt;
+    req.once('aborted',()=>{void attempts.failed(attempt,new PhotoError('UPLOAD_INTERRUPTED',400),'receiving').catch(()=>undefined);});
+    if(req.aborted)throw new PhotoError('UPLOAD_INTERRUPTED',400);
+    const length=Number(req.get('content-length'));
+    if(length>(kind==='photo'?limits.maxBytes:guestMediaLimits[kind].maxBytes))throw new PhotoError(kind==='photo'?'PHOTO_TOO_LARGE':'MEDIA_TOO_LARGE',413);
     next();
   }),raw({type:'application/octet-stream',limit:guestMediaLimits.video.maxBytes}),wrap(async(req,res)=>{
-    const kind=uploadKind(req),device=guestDevice(req)!;
-    if(!Buffer.isBuffer(req.body))throw new PhotoError(kind==='photo'?'PHOTO_TYPE':'MEDIA_TYPE',415);
-    const bytes=req.body as Buffer;
-    const hash=createHash('sha256').update(bytes).digest('hex');
-    // A completed upload can be reused without decoding/storing another copy.
-    const prior=await pool.query(`SELECT m.id,m.sha256,m.kind,m.mime_type,m.duration_seconds,m.guest_device_id FROM event_media m JOIN event_books b ON b.id=m.book_id
-      WHERE b.invite_token=$1 AND m.upload_key=$2 AND (m.state='attached' OR m.expires_at>CURRENT_TIMESTAMP)`,[req.params.token,req.params.key]);
-    if(prior.rowCount){if(prior.rows[0].sha256!==hash || prior.rows[0].kind!==kind || (prior.rows[0].guest_device_id && prior.rows[0].guest_device_id!==device))throw new PhotoError('IDEMPOTENCY_CONFLICT',409);res.json(uploadResult(prior.rows[0],true));return;}
-    const photo=kind==='photo'?{...await decodePhoto(bytes,limits),durationSeconds:null}:await decodeAv(bytes,kind);
-    const storedSize=bytes.length+photo.preview.length+photo.display.length;
-    await cleanupMedia(pool);
-    const client=await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(61107,2)');
-      const book=await client.query(`SELECT id,closed_at,${accessSql()} AS access_state FROM event_books WHERE invite_token=$1 AND ${filter} FOR UPDATE`,[req.params.token]);
-      if(!book.rowCount)throw new PhotoError('INVITE_NOT_FOUND',404);
-      const existing=await client.query('SELECT id,sha256,kind,mime_type,duration_seconds,guest_device_id FROM event_media WHERE book_id=$1 AND upload_key=$2',[book.rows[0].id,req.params.key]);
-      if(existing.rowCount){
-        if(existing.rows[0].sha256!==hash || existing.rows[0].kind!==kind || (existing.rows[0].guest_device_id && existing.rows[0].guest_device_id!==device))throw new PhotoError('IDEMPOTENCY_CONFLICT',409);
-        await client.query('COMMIT');res.json(uploadResult(existing.rows[0],true));return;
-      }
-      if(book.rows[0].closed_at)throw new PhotoError('SUBMISSIONS_CLOSED',410);
-      if(book.rows[0].access_state!=='open')throw new PhotoError(book.rows[0].access_state==='early'?'SUBMISSIONS_EARLY':'SUBMISSIONS_ENDED',410);
-      const quota=await client.query(`SELECT COALESCE(sum(stored_size),0)::bigint AS total,
-        COALESCE(sum(stored_size) FILTER (WHERE book_id=$1),0)::bigint AS book,
-        count(*) FILTER (WHERE book_id=$1)::int AS book_count,count(*)::int AS total_count FROM event_media`,[book.rows[0].id]);
-      const q=quota.rows[0];
-      const annotations=(await client.query(`SELECT COALESCE(sum(a.stored_size),0)::bigint AS total,COALESCE(sum(a.stored_size) FILTER(WHERE m.book_id=$1),0)::bigint AS book FROM event_media_annotations a JOIN event_media m ON m.id=a.media_id`,[book.rows[0].id])).rows[0];
-      q.total=Number(q.total)+Number(annotations.total);q.book=Number(q.book)+Number(annotations.book);
-      const size=await client.query('SELECT pg_database_size(current_database()) AS size');
-      if(Number(q.total)+storedSize>limits.totalBytes || Number(q.book)+storedSize>limits.bookBytes || q.book_count>=100 || q.total_count>=1000 || Number(size.rows[0].size)>700*1024*1024)throw new PhotoError('PHOTO_QUOTA',413);
-      const id=randomUUID();
-      await client.query(`INSERT INTO event_media(id,book_id,upload_key,mime_type,original_size,sha256,width,height,state,original_bytes,preview_bytes,display_bytes,stored_size,expires_at,kind,duration_seconds,guest_device_id)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'uploaded',$9,$10,$11,$12,CURRENT_TIMESTAMP + $13*interval '1 second',$14,$15,$16)`,
-        [id,book.rows[0].id,req.params.key,photo.mime,bytes.length,hash,photo.width,photo.height,bytes,photo.preview,photo.display,storedSize,limits.ttlSeconds,kind,photo.durationSeconds,device]);
-      await client.query('COMMIT');res.status(201).json(uploadResult({id,kind,mime_type:photo.mime,duration_seconds:photo.durationSeconds},false));
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    res.locals.mediaStage='validation';
+    const attempt=res.locals.mediaAttempt as MediaAttemptLease;
+    if(!Buffer.isBuffer(req.body))throw new PhotoError(attempt.kind==='photo'?'PHOTO_TYPE':'MEDIA_TYPE',415);
+    if(!req.body.length||req.body.length>(attempt.kind==='photo'?limits.maxBytes:guestMediaLimits[attempt.kind].maxBytes))throw new PhotoError(attempt.kind==='photo'?'PHOTO_TOO_LARGE':'MEDIA_TOO_LARGE',413);
+    const result=await attempts.process(attempt,req.body);
+    res.status(result.replayed?200:201).json(result);
   }));
   router.get('/media/:id/:variant',wrap(async(req,res)=>{
     const session=await getSession(req);
@@ -163,7 +154,7 @@ export function createMediaRouter(pool: Pool, getSession: WeddingOptions['getSes
     const extension:Record<string,string>={'image/png':'png','image/jpeg':'jpg','video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','audio/mp4':'m4a','audio/webm':'webm','audio/ogg':'ogg','audio/wav':'wav'};
     sendMediaBytes(req,res,{bytes:row.bytes,mimeType:['original','playback'].includes(variant)?row.mime_type:'image/jpeg',filename:variant==='original'?`${row.kind}.${extension[row.mime_type]}`:undefined,attachment:variant==='original',range:row.kind!=='photo'});
   }));
-  const failed:ErrorRequestHandler=(err,req,res,next)=>{void next;res.status(err.status===413?413:400).json({error:err.status===413?(req.get('x-media-kind') && req.get('x-media-kind')!=='photo'?'MEDIA_TOO_LARGE':'PHOTO_TOO_LARGE'):'PHOTO_RETRY'});};
+  const failed:ErrorRequestHandler=(err,req,res,next)=>{void next;void failure(res,new PhotoError(err.status===413?(req.get('x-media-kind') && req.get('x-media-kind')!=='photo'?'MEDIA_TOO_LARGE':'PHOTO_TOO_LARGE'):'UPLOAD_INTERRUPTED',err.status===413?413:400),'receiving');};
   router.use(failed);
   return router;
 }

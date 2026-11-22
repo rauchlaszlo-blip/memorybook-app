@@ -134,10 +134,11 @@ test('lost upload response recovery is exact guest/book/key scoped, read-only an
   assert.equal(uploaded.response.status,201);assert.equal(pending.response.status,201);
   const recover=(which:Book,key:string,cookie:string|null=which.cookie)=>fetch(base+'/guest/'+which.invite_token+'/media/'+key,{headers:cookie?{cookie}:{}});
   const read=await recover(b,uploaded.key);assert.equal(read.status,200);assert.equal(read.headers.get('set-cookie'),null);
-  assert.deepEqual(await read.json(),{mediaId:uploaded.body.mediaId,kind:'audio',mimeType:'audio/wav',durationSeconds:uploaded.body.durationSeconds,state:'uploaded'});
-  assert.equal((await submit(b,uploaded.key,uploaded.body.mediaId)).status,201);
+  const recovered=await read.json();assert.match(recovered.diagnosticId,/^[a-f0-9-]{36}$/);
+  assert.deepEqual(recovered,{mediaId:uploaded.body.mediaId,kind:'audio',mimeType:'audio/wav',durationSeconds:uploaded.body.durationSeconds,state:'uploaded',expiresAt:uploaded.body.expiresAt,submissionId:null,diagnosticId:recovered.diagnosticId});
+  const committed=await submit(b,uploaded.key,uploaded.body.mediaId);assert.equal(committed.status,201);const committedBody=await committed.json();
   assert.equal((await submit(b,uploaded.key,uploaded.body.mediaId)).status,200);
-  assert.equal((await(await recover(b,uploaded.key)).json()).state,'attached');
+  const attached=await(await recover(b,uploaded.key)).json();assert.equal(attached.state,'attached');assert.equal(attached.submissionId,committedBody.submissionId);assert.equal(attached.expiresAt,null);
   assert.equal((await fetch(base+'/books/'+b.id+'/close',{method:'POST',headers:{'x-owner':'av-owner'}})).status,200);
   const before=(await pool.query('SELECT id,state,submission_id,stored_size,expires_at FROM event_media WHERE book_id=$1 ORDER BY id',[b.id])).rows;
   assert.equal((await recover(b,uploaded.key)).status,200);assert.equal((await recover(b,pending.key)).status,200);
@@ -147,5 +148,7 @@ test('lost upload response recovery is exact guest/book/key scoped, read-only an
   assert.deepEqual((await pool.query('SELECT id,state,submission_id,stored_size,expires_at FROM event_media WHERE book_id=$1 ORDER BY id',[b.id])).rows,before);
   const usage=await(await fetch(base+'/guest/'+b.invite_token,{headers:{cookie:b.cookie}})).json();assert.deepEqual(usage.media.used,{photo:0,video:0,audio:1});
   await pool.query("UPDATE event_media SET expires_at=CURRENT_TIMESTAMP-interval '1 second' WHERE id=$1",[pending.body.mediaId]);
-  const expired=await recover(b,pending.key);assert.equal(expired.status,404);assert.deepEqual(await expired.json(),{error:'MEDIA_NOT_FOUND'});
+  // Expiry now blocks attachment while retaining the original for owner recovery.
+  const expired=await recover(b,pending.key);assert.equal(expired.status,200);const expiredBody=await expired.json();assert.equal(expiredBody.state,'failed');assert.equal(expiredBody.errorCode,'PHOTO_EXPIRED');assert.equal(expiredBody.mediaId,pending.body.mediaId);assert.equal(expiredBody.retryAvailable,true);
+  assert.equal((await recover(b,pending.key,other.cookie)).status,404);assert.equal((await recover(b,pending.key,null)).status,404);
 });

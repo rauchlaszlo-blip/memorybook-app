@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { chromium, webkit, expect } from '@playwright/test';
 
@@ -9,7 +10,7 @@ for (const engine of ['chromium', 'webkit'] as const) {
     const app = express(); app.use(express.json());
     app.get('/api/wedding/guest/:token', (_req, res) => res.json({ event: { title: 'Startup test', starts_on: '2027-06-05', closed: false, template_id: 'wedding-classic', template_version: 1 } }));
     let sent = 0;
-    app.post('/api/wedding/guest/:token/submissions', (req, res) => { assert.equal(req.body.message, 'Árvíztűrő próba'); sent++; res.status(201).json({ success: true }); });
+    app.post('/api/wedding/guest/:token/submissions', (req, res) => { assert.equal(req.body.message, 'Árvíztűrő próba'); sent++; res.status(201).json({ accepted:true,state:'committed',submissionId:randomUUID(),mediaId:null,replayed:false }); });
     app.use(express.static(resolve('dist'))); app.get(/^\/wedding\/.*$/, (_req, res) => res.sendFile(resolve('dist/index.html')));
     const server = app.listen(0, '127.0.0.1'); await new Promise<void>(r => server.once('listening', r));
     const addr = server.address(); assert.ok(addr && typeof addr !== 'string'); const url = `http://127.0.0.1:${addr.port}/wedding/join/${'A'.repeat(43)}`;

@@ -12,6 +12,8 @@ import { createMemorybookMcpRouter } from '../mcp/server';
 import { createWorkflowRouter } from '../wedding/book-workflow';
 import { createBookViewRouter } from './book-view';
 import { createAppTrialAccess } from './app-trial';
+import { createPilotMediaDiagnostics } from './media-diagnostics';
+import { createClientMediaDiagnostics } from './client-media-diagnostics';
 
 export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAuth) {
   const app = express();
@@ -39,6 +41,8 @@ export function createPilotApp(pool: Pool, origin: string, commerce?: CommerceAu
   // Remote MCP/OAuth has its own bearer authentication and CSRF rules; it is not a public admin API.
   app.use(createMemorybookMcpRouter(pool,origin,getSession));
   app.use('/api/book-workflow',createWorkflowRouter(pool,getSession,origin));
+  app.use(createPilotMediaDiagnostics(pool,getSession));
+  app.use(createClientMediaDiagnostics(pool,origin));
   const attempts = new Map<string, { count: number; until: number }>();
   app.post('/api/pilot/redeem', express.json({ limit: '2kb' }), async (req, res) => {
     const now = Date.now();

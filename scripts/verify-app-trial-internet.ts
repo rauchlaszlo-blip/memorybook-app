@@ -53,7 +53,7 @@ try{
     const pdf=await owner!.get(root+'/exports/'+completed.id+'/download',{maxRedirects:0});ensure(pdf.status()===200,'OWNER_PDF_READ_FAILED');
     return{book,head,version,reviews,exports,pdfSha256:digest(await pdf.body())};
   };
-  const initial=await readState();ensure(initial.book.submissions.length===38,'EXPECTED_38_FICTIONAL_SUBMISSIONS');ensure(initial.version.draft.pages.length===16,'EXPECTED_16_SAVED_PAGES');
+  const initial=await readState(),submissionCount=initial.book.submissions.length;ensure(submissionCount>=38,'PREVIOUS_FICTIONAL_SUBMISSIONS_MISSING');ensure(initial.version.draft.pages.length===16,'EXPECTED_16_SAVED_PAGES');
   baseline=digest(initial);report.baselineHash=baseline;report.pdfSha256=initial.pdfSha256;report.versionId=initial.version.id;
   // Locate a REAL foreign media id through separately authorized existing owner contexts.
   // A random/nonexistent id would not prove cross-book media isolation.
@@ -96,7 +96,7 @@ try{
     await expect(page.locator('input[type=password]')).toHaveCount(0);ensure(!new URL(page.url()).hash,'ENTRY_FRAGMENT_MUST_BE_REMOVED');
     const cookies=await context.cookies();ensure(cookies.length===1&&cookies[0].name===appTrialCookieName&&cookies[0].secure&&cookies[0].httpOnly&&cookies[0].sameSite==='Strict','TRIAL_MUST_NOT_MINT_OWNER_SESSION');
     ensure(view.redeemPosts===1,'ENTRY_REDEEM_REQUIRED');
-    const detail=await getJson<Awaited<ReturnType<typeof fictionalBook>>>(context.request,'/api/wedding/books/'+config.bookId);ensure(detail.submissions.length===38,'TRIAL_SUBMISSION_COUNT_MISMATCH');view.submissions=38;
+    const detail=await getJson<Awaited<ReturnType<typeof fictionalBook>>>(context.request,'/api/wedding/books/'+config.bookId);ensure(detail.submissions.length===submissionCount,'TRIAL_SUBMISSION_COUNT_MISMATCH');view.submissions=submissionCount;
     const listed=await getJson<{books:{id:string}[]}>(context.request,'/api/wedding/books');ensure(listed.books.length===1&&listed.books[0].id===config.bookId,'TRIAL_BOOK_LIST_LEAK');
     const caps=await getJson<{authenticated:boolean;canCreate:boolean;shopAvailable:boolean;trial?:{bookId:string}}>(context.request,'/api/wedding/capabilities');ensure(caps.authenticated&&!caps.canCreate&&!caps.shopAvailable&&caps.trial?.bookId===config.bookId,'TRIAL_CAPABILITY_SCOPE_MISMATCH');
     const reviews=await getJson<ReviewState>(context.request,root+'/reviews?versionId='+initial.version.id);ensure(digest(reviews)===digest(initial.reviews),'TRIAL_REVIEW_READ_MISMATCH');

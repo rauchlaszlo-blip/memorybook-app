@@ -51,6 +51,11 @@ export async function migrateWedding(pool: Pool) {
       await client.query(await readFile(new URL('../migrations/20261117_event_av_v8.sql', import.meta.url), 'utf8'));
       await client.query("INSERT INTO wedding_schema_migrations(version) VALUES ('20261117-v8')");
     }
+    const attemptsFound = await client.query("SELECT version FROM wedding_schema_migrations WHERE version = '20261122-v9'");
+    if (!attemptsFound.rowCount) {
+      await client.query(await readFile(new URL('../migrations/20261122_media_attempts_v9.sql', import.meta.url), 'utf8'));
+      await client.query("INSERT INTO wedding_schema_migrations(version) VALUES ('20261122-v9')");
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

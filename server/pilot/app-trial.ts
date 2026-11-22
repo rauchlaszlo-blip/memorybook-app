@@ -39,6 +39,12 @@ function scope(req:Request,book:TrialBook):Scope|null{
   if(get&&p==='/api/wedding/books')return{kind:'books',label:'book.list'};
   if(get&&(p==='/'||p==='/wedding'||p==='/wedding/books/'+book.id||p==='/wedding/books/'+book.id+'/montage'||p==='/wedding/join/'+book.invite_token))return{kind:'html',label:'app'};
   if(get&&p==='/api/wedding/books/'+book.id)return{kind:'owner',label:'book.read'};
+  const attemptRoot='/api/wedding/books/'+book.id+'/media-attempts';
+  if(get&&p===attemptRoot)return{kind:'owner',label:'media.attempts.read'};
+  if(post&&p.startsWith(attemptRoot+'/')){
+    const parts=p.slice(attemptRoot.length+1).split('/');
+    if(parts.length===2&&uuid.test(parts[0])&&parts[1]==='retry')return{kind:'owner',label:'media.attempt.retry',audit:true};
+  }
   const media=/^\/api\/wedding\/media\/([^/]+)\/(original|preview|display|annotation|playback)$/.exec(p);
   if(get&&media&&uuid.test(media[1]))return{kind:'owner',label:'media.read',mediaId:media[1]};
   const workflow='/api/book-workflow/'+book.id;
@@ -63,6 +69,7 @@ function scope(req:Request,book:TrialBook):Scope|null{
   const guest='/api/wedding/guest/'+book.invite_token;
   if(get&&p===guest)return{kind:'guest',label:'guest.read'};
   if(post&&p===guest+'/submissions')return{kind:'guest',label:'guest.submit',audit:true};
+  if(post&&p===guest+'/media-diagnostics')return{kind:'guest',label:'guest.diagnostic'};
   if(p.startsWith(guest+'/media/')&&uuid.test(p.slice((guest+'/media/').length))&&(get||post))return{kind:'guest',label:get?'guest.media.recovery':'guest.media.upload',audit:post};
   return null;
 }
@@ -118,7 +125,7 @@ export function createAppTrialAccess(pool:Pool,origin:string,env:Environment=pro
       const route=await permitted(req,access);if(!route){deny(res);return;}
       if(req.method!=='GET'&&req.get('origin')!==origin){res.status(403).json({error:'ORIGIN_REQUIRED'});return;}
       if(route.kind==='capabilities'){
-        res.json({enabled:true,authenticated:true,internetPilot:true,shopAvailable:false,contentReview:true,canCreate:false,trial:{bookId:access.book.id,expiresAt:access.grant.expiresAt}});return;
+        res.json({enabled:true,authenticated:true,internetPilot:true,shopAvailable:false,contentReview:true,mediaAttempts:true,canCreate:false,trial:{bookId:access.book.id,expiresAt:access.grant.expiresAt}});return;
       }
       if(route.kind==='books'){
         const {owner_user_id:ownerId,...book}=access.book;void ownerId;

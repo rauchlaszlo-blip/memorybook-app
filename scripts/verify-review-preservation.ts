@@ -7,21 +7,27 @@ import { createOwnerContext, createRemoteContext, loadInternetConfig, ensure, ge
 
 const canonical=(x:unknown):unknown=>Array.isArray(x)?x.map(canonical):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)])):x;
 const hash=(x:unknown)=>createHash('sha256').update(Buffer.isBuffer(x)?x:JSON.stringify(canonical(x))).digest('hex');
-type RecordEntry={account:number;path:string;kind:'book'|'snapshot'|'version'|'binary'|'json';file:string;sha256:string};
+type RecordEntry={account:number;path:string;kind:'book'|'snapshot'|'version'|'binary'|'json'|'workflow';file:string;sha256:string};
 function normalize(kind:RecordEntry['kind'],value:unknown){
   const v=value as Record<string,unknown>;
   if(kind==='book'&&process.argv.includes('--capture-release'))return {...v,submissions:(v.submissions as {media?:Record<string,unknown>[]}[]).map(s=>({...s,media:(s.media||[]).map(m=>({id:m.id,previewUrl:m.previewUrl,displayUrl:m.displayUrl,originalUrl:m.originalUrl}))}))};
   if(kind==='snapshot')return {id:v.id,contentHash:v.contentHash,selectedIds:v.selectedIds,sources:(v.sources as Record<string,unknown>[]).map(source=>Object.fromEntries(Object.entries(source).filter(([key])=>key!=='review')))};
   if(kind==='version')return {id:v.id,draft:v.draft,snapshotId:v.snapshotId,approved_at:v.approved_at};
+  if(kind==='workflow')return {book:v.book,versions:v.versions,snapshots:v.snapshots,latestVersionId:v.latestVersionId,submissionCount:v.submissionCount};
   return value;
 }
 const {config,storagePath}=await loadInternetConfig(process.argv.find(a=>a.endsWith('.local'))),mode=process.argv.includes('--capture')?'capture':'verify';
-const dir=resolve(process.argv.includes('--app-trial-release')?'test-results/app-trial/pre-release':process.argv.includes('--book-view-release')?'test-results/book-view/pre-release':process.argv.includes('--capture-release')?'test-results/guest-capture/pre-release':'test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
+const samsungRelease=process.argv.includes('--samsung-release');
+const dir=resolve(samsungRelease?'test-results/samsung-release/pre-release':process.argv.includes('--app-trial-release')?'test-results/app-trial/pre-release':process.argv.includes('--book-view-release')?'test-results/book-view/pre-release':process.argv.includes('--capture-release')?'test-results/guest-capture/pre-release':'test-results/content-review/pre-release'),manifestPath=resolve(dir,'manifest.local');
 const contexts:APIRequestContext[]=[];
+let stage='existing_sessions',healthStatus:number|undefined;
 try {
-  contexts.push(await createOwnerContext(config,storagePath));
+  // This diagnostic mode is GET-only: an expired session must never silently sign in.
+  contexts.push(samsungRelease?await createRemoteContext(storagePath):await createOwnerContext(config,storagePath));
   ensure(config.operatorStorageState,'EXISTING_OPERATOR_SESSION_REQUIRED');contexts.push(await createRemoteContext(config.operatorStorageState));
+  if(samsungRelease){stage='health_read';healthStatus=(await contexts[0].get('/healthz',{maxRedirects:0})).status();ensure(healthStatus===200,'SERVICE_HEALTH_NOT_READY');}
   if(mode==='capture') {
+    stage='capture';
     try {await readFile(manifestPath);throw new Error('EXISTING_CAPTURE_MUST_NOT_BE_OVERWRITTEN');}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
     await mkdir(dir,{recursive:true});const entries:RecordEntry[]=[],books=new Set<string>();
     const capture=async(account:number,path:string,kind:RecordEntry['kind'])=>{
@@ -41,6 +47,13 @@ try {
           if(response.status()===200)await capture(account,annotation,'json');else ensure(response.status()===404,'ANNOTATION_READ_FAILED');
         }
         const workflow=await getJson<{snapshots:{id:string}[];versions:{id:string}[]}>(contexts[account],'/api/book-workflow/'+book.id);
+        if(samsungRelease){
+          await capture(account,'/api/book-workflow/'+book.id,'workflow');
+          await capture(account,'/api/book-workflow/'+book.id+'/reviews','json');
+          // Source heads, saved version metadata and approval state are data too.
+          // Capture separately from derived capability/summary fields which a release may extend.
+          for(const version of workflow.versions)await capture(account,`/api/book-workflow/${book.id}/versions/${version.id}/approval`,'json');
+        }
         for(const version of workflow.versions)await capture(account,`/api/book-workflow/${book.id}/versions/${version.id}`,'version');
         for(const snapshot of workflow.snapshots) {
           const captured=await capture(account,`/api/book-workflow/${book.id}/snapshots/${snapshot.id}`,'snapshot');
@@ -48,12 +61,14 @@ try {
           if(book.id===config.bookId)for(const source of captured.sources as {media:{id:string}[]}[])for(const media of source.media)await capture(account,`/mcp/media/${book.id}/${media.id}?snapshotId=${snapshot.id}`,'binary');
         }
         const jobs=await getJson<{exports:{id:string;status:string}[]}>(contexts[account],`/api/book-workflow/${book.id}/exports`);
+        if(samsungRelease)await capture(account,`/api/book-workflow/${book.id}/exports`,'json');
         for(const job of jobs.exports.filter(job=>job.status==='complete'))await capture(account,`/api/book-workflow/${book.id}/exports/${job.id}/download`,'binary');
       }
     }
     await writeFile(manifestPath,JSON.stringify({at:new Date().toISOString(),scope:'HTTPS source content, stored drafts/snapshots and complete PDF files; not a full database backup',books:books.size,entries},null,2));
-    console.log(JSON.stringify({status:'PASS',mode,books:books.size,resources:entries.length,firewallChanged:false}));
+    console.log(JSON.stringify({status:'PASS',mode,books:books.size,resources:entries.length,firewallChanged:false,...samsungRelease?{release:'samsung',healthStatus,remoteWrites:0}: {}}));
   } else {
+    stage='compare';
     const manifest=JSON.parse(await readFile(manifestPath,'utf8')) as {books:number;entries:RecordEntry[]};
     for(const entry of manifest.entries) {
       const local=await readFile(resolve(dir,entry.file)),expected=entry.kind==='binary'?local:JSON.parse(local.toString());ensure(hash(expected)===entry.sha256,'LOCAL_COPY_HASH_MISMATCH');
@@ -69,4 +84,10 @@ try {
     const report={at:new Date().toISOString(),status:'PASS',books:manifest.books,unchangedResources:manifest.entries.length,additionalSubmissionsAllowed:process.argv.includes('--capture-release')&&process.argv.includes('--allow-new-submissions'),comparison:'All captured source fields, originals, annotations, saved drafts, snapshot content and completed PDF bytes match the pre-release HTTPS copy'};
     await writeFile(resolve(dir,'verification.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
   }
+} catch(error) {
+  if(!samsungRelease)throw error;
+  const errorCode=error instanceof Error&&/^[A-Z][A-Z0-9_]{1,100}$/.test(error.message)?error.message:'HTTPS_VERIFICATION_INCOMPLETE';
+  const report={at:new Date().toISOString(),status:'INCOMPLETE',mode,stage,errorCode,healthStatus,remoteWrites:0};
+  await mkdir(dir,{recursive:true});await writeFile(resolve(dir,'incomplete.json'),JSON.stringify(report,null,2));
+  console.error(JSON.stringify(report));process.exitCode=1;
 } finally {for(const context of contexts)await context.dispose();}

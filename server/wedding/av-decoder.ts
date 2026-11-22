@@ -38,18 +38,21 @@ function run(file: string, args: string[]) {
 // Codec bytes inside records are subsequently validated by a complete decoder pass.
 function container(bytes: Buffer): 'mov' | 'matroska' | 'ogg' | 'wav' {
   if (bytes.length >= 12 && bytes.toString('ascii', 4, 8) === 'ftyp') {
-    let offset = 0;
+    let offset = 0, fileTypes = 0, movieHeaders = 0, mediaData = 0;
     const allowed = new Set(['ftyp','moov','mdat','free','wide','skip','moof','sidx','styp','mfra','prft','pdin']);
     while (offset < bytes.length) {
       if (offset + 8 > bytes.length) throw new PhotoError('MEDIA_INVALID');
       let size = bytes.readUInt32BE(offset), header = 8;
       const type = bytes.toString('ascii', offset + 4, offset + 8);
       if (!allowed.has(type)) throw new PhotoError('MEDIA_TYPE', 415);
+      if(type==='ftyp' && ++fileTypes!==1 || type==='moov' && ++movieHeaders!==1)throw new PhotoError('MEDIA_INVALID');
+      if(type==='mdat')mediaData++;
       if (size === 1) { if (offset + 16 > bytes.length) throw new PhotoError('MEDIA_INVALID'); const large = bytes.readBigUInt64BE(offset + 8); if (large > BigInt(bytes.length)) throw new PhotoError('MEDIA_INVALID'); size = Number(large); header = 16; }
       if(size===0 && type==='mdat')size=bytes.length-offset;
       if (size < header || offset + size > bytes.length) throw new PhotoError('MEDIA_INVALID');
       offset += size;
     }
+    if(fileTypes!==1 || movieHeaders!==1 || !mediaData)throw new PhotoError('MEDIA_INVALID');
     return 'mov';
   }
   if (bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) {
@@ -130,15 +133,30 @@ export async function decodeAv(bytes: Buffer, kind: AvKind) {
     // Decode actual frames: ffmpeg progress alone reports the last frame's START,
     // which would let a slightly over-limit recording through. No header duration is trusted.
     const decoded=JSON.parse(await run(paths.ffprobe,['-v','error','-err_detect','explode',...inputArgs,'-show_frames','-show_entries','frame=stream_index,best_effort_timestamp_time,duration_time,pkt_duration_time,nb_samples,width,height','-of','json'])) as {frames?:Frame[]};
+    const timelineOrigin=Math.min(...(decoded.frames||[]).map(frame=>Number(frame.best_effort_timestamp_time)));
+    if(!Number.isFinite(timelineOrigin))throw new PhotoError('MEDIA_INVALID');
     const durations=streams.map(stream=>{
       const frames=(decoded.frames||[]).filter(f=>f.stream_index===stream.index);
       if(!frames.length)throw new PhotoError('MEDIA_INVALID');
+      const timestamps=frames.map(frame=>Number(frame.best_effort_timestamp_time));
+      const intervals=timestamps.slice(1).map((timestamp,index)=>timestamp-timestamps[index]);
+      if(stream.codec_type==='video'&&intervals.some(interval=>!Number.isFinite(interval)||interval<=0))throw new PhotoError('MEDIA_INVALID');
+      const [rateN,rateD]=(stream.avg_frame_rate||'0/0').split('/').map(Number),nominalInterval=rateD/rateN;
+      // MediaRecorder WebM SimpleBlocks can omit both BlockDuration and
+      // DefaultDuration. Matroska uses the next presentation timestamp in that
+      // case (RFC9559 5.1.3.5.3). For the final frame there is no successor: use
+      // the longest decoded interval (at least the reported cadence/1/60s),
+      // conservatively keeping the 20s boundary rather than trusting a header.
+      const finalInterval=Math.max(1/60,...intervals,Number.isFinite(nominalInterval)&&nominalInterval>0?nominalInterval:0);
       let first=Infinity,last=-Infinity,samplesDuration=0;
       for(const [frameIndex,frame] of frames.entries()){
         if(stream.codec_type==='video'&&(!frame.width||!frame.height||frame.width>1920||frame.height>1920||frame.width*frame.height>1920*1080))throw new PhotoError('MEDIA_TYPE',415);
         const start=Number(frame.best_effort_timestamp_time),packetDuration=Number(frame.duration_time??frame.pkt_duration_time);
         const sampleDuration=Number(frame.nb_samples)/Number(stream.sample_rate);
         let length=packetDuration;
+        if(stream.codec_type==='video'&&(!Number.isFinite(length)||length<=0)&&format==='matroska'&&frames.length>=2){
+          length=frameIndex<frames.length-1?intervals[frameIndex]:finalInterval;
+        }
         if(stream.codec_type==='audio'){
           if(!Number.isFinite(sampleDuration)||sampleDuration<=0)throw new PhotoError('MEDIA_INVALID');
           // AAC edit lists trim encoder padding in the final packet. Opus frame
@@ -149,8 +167,8 @@ export async function decodeAv(bytes: Buffer, kind: AvKind) {
         if(!Number.isFinite(start)||!Number.isFinite(length)||length<=0)throw new PhotoError('MEDIA_INVALID');
         first=Math.min(first,start);last=Math.max(last,start+length);
       }
-      const timeline=last-first-(format==='matroska'&&stream.codec_type==='audio'?0.001:0);
-      if(stream.codec_type==='video'&&frames.length>Math.ceil(timeline*60))throw new PhotoError('MEDIA_TYPE',415);
+      const timeline=last-timelineOrigin-(format==='matroska'&&stream.codec_type==='audio'?0.001:0);
+      if(stream.codec_type==='video'&&frames.length>Math.ceil((last-first)*60))throw new PhotoError('MEDIA_TYPE',415);
       return Math.max(timeline,samplesDuration);
     });
     const duration=Math.round(Math.max(0,...durations)*1_000_000)/1_000_000;

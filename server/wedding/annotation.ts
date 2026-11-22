@@ -16,7 +16,8 @@ export async function attachAnnotation(client: PoolClient, mediaId: string, book
   const json = JSON.stringify(layer);
   const size = (await client.query('SELECT octet_length($1::jsonb::text) AS size', [json])).rows[0].size + preview.length + display.length;
   const quota = (await client.query(`SELECT COALESCE(sum(size),0)::bigint AS total, COALESCE(sum(size) FILTER(WHERE book_id=$1),0)::bigint AS book FROM (
-    SELECT book_id,stored_size AS size FROM event_media UNION ALL SELECT m.book_id,a.stored_size FROM event_media_annotations a JOIN event_media m ON m.id=a.media_id) q`, [bookId])).rows[0];
+    SELECT book_id,stored_size AS size FROM event_media UNION ALL SELECT m.book_id,a.stored_size FROM event_media_annotations a JOIN event_media m ON m.id=a.media_id
+    UNION ALL SELECT book_id,octet_length(pending_bytes) FROM event_media_attempts WHERE pending_bytes IS NOT NULL) q`, [bookId])).rows[0];
   const physical = (await client.query('SELECT pg_database_size(current_database()) AS size')).rows[0].size;
   if (Number(quota.total)+size>limits.totalBytes || Number(quota.book)+size>limits.bookBytes || Number(physical)>700*1024*1024) throw new PhotoError('PHOTO_QUOTA',413);
   await client.query(`INSERT INTO event_media_annotations(media_id,version,layer,layer_hash,preview_bytes,display_bytes,stored_size) VALUES($1,1,$2,$3,$4,$5,$6)`, [mediaId,json,annotationHash(layer),preview,display,size]);

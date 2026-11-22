@@ -77,8 +77,9 @@ test('book and global quotas reject without storing images',async()=>{
 });
 test('parallel upload and replay after lost response do not duplicate storage or submissions',async()=>{
   const b=await book();const key=randomUUID();const results=await Promise.all([upload(b,key),upload(b,key)]);
-  assert.ok(results.every(r=>[200,201].includes(r.status)));
-  const ids=await Promise.all(results.map(r=>r.json()));assert.equal(ids[0].mediaId,ids[1].mediaId);
+  assert.ok(results.every(r=>[200,201,429].includes(r.status)));
+  assert.ok(results.some(r=>r.status===201));
+  const ids=await Promise.all(results.map(async r=>r.status===429?(await upload(b,key)).json():r.json()));assert.equal(ids[0].mediaId,ids[1].mediaId);
   assert.equal((await upload(b,key,png)).status,409);
   const data=wish(key,ids[0].mediaId);
   const sent=await Promise.all([call('/guest/'+b.invite_token+'/submissions',data),call('/guest/'+b.invite_token+'/submissions',data)]);
@@ -96,7 +97,7 @@ test('interrupted binary request creates no complete image; retry works',async()
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_media WHERE book_id=$1',[b.id])).rows[0].n,0);
   assert.equal((await upload(b,key)).status,201);
 });
-test('close during upload/finalize; foreign book/key; expiry cleanup preserves attached images',async()=>{
+test('close during upload/finalize; foreign book/key; expiry never deletes any original',async()=>{
   const b=await book(),other=await book('b'),key=randomUUID();const {mediaId}=await (await upload(b,key)).json();
   assert.equal((await call('/guest/'+other.invite_token+'/submissions',wish(key,mediaId))).status,409);
   assert.equal((await call('/guest/'+b.invite_token+'/submissions',wish(randomUUID(),mediaId))).status,409);
@@ -106,7 +107,7 @@ test('close during upload/finalize; foreign book/key; expiry cleanup preserves a
   await pool.query("UPDATE event_media SET expires_at=CURRENT_TIMESTAMP-interval '1 second' WHERE id=$1",[mediaId]);
   const attachedBefore=(await pool.query("SELECT count(*)::int AS n FROM event_media WHERE state='attached'")).rows[0].n;
   await cleanupMedia(pool);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_media WHERE id=$1',[mediaId])).rows[0].n,0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM event_media WHERE id=$1',[mediaId])).rows[0].n,1);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM event_media WHERE state='attached'")).rows[0].n,attachedBefore);
   const open=await book(),k=randomUUID(),id=(await (await upload(open,k)).json()).mediaId;
   await pool.query("UPDATE event_media SET expires_at=CURRENT_TIMESTAMP-interval '1 second' WHERE id=$1",[id]);
