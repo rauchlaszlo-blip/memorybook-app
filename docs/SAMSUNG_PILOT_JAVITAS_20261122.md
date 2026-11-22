@@ -46,4 +46,22 @@ A sikertelen eredetik megőrzése miatt a díjmentes pilot korlátozott tárhely
 - Meglévő könyvdomén és ismételt migráció: **14/14 PASS**; blokkolt böngészőtárhely melletti indulás: **2/2 PASS**. Az utóbbi teszt régi, nem szabványos `{success:true}` válaszmintáját az új, szigorú beküldési ACK-ra frissítettük; az első futás ezt helyesen nem fogadta el sikernek.
 - Frontend build, szerver TypeScript, érintett lint és diff-ellenőrzés: **PASS**.
 
-A végső böngészős, internetes és telepítési eredmények az átadáskor egészülnek ki. A fizikai Samsung újratesztelés és az iPhone/Safari-próba **NYITOTT**.
+## Internetes kiadás és ellenőrzés
+
+Kód: `6ebff1bc356baeff15ed76366594bdb8600cc6e4`, kizárólag a `codex/wedding-internet-pilot` ágon. Render deploy: `dep-dc1h7qajnfac738p4llg`, **LIVE 2026-11-22 16:11:46 UTC**. A meglévő ingyenes szolgáltatás és adatbázis maradt használatban. A kiadás utáni alkalmazáshiba-napló lekérése sikeres volt, nem adott hibabejegyzést.
+
+A kijelölt könyv közvetlen, hitelesített metaadat-ellenőrzése: **41 beküldés / 41 látható média, 0 hibás könyvkapcsolat, 0 be nem csatolt feltöltés, eredeti méret- és SHA-256-ellenőrzés PASS**. Jelenlegi foglalás 12 237 651 bájt az 52 428 800 bájtos könyvkeretből; fotó és videó darabkeretnél nincs elért limit. Egy vendégböngésző hangkerete 2/2; ez nem magyarázza a két fotó/videó FAIL-t. A jelen állapotból nem rekonstruálható az akkori sikertelen HTTP-kérés.
+
+Külön új fiktív regressziós könyv: `74528934-bfe9-41b2-b53f-c3ba35bd5f83`. Csak két ártalmatlan mintabeküldés került bele; a felhasználó kijelölt könyvét a teszt nem módosította. HTTPS-ellenőrzés **PASS**:
+
+- Motion Photo kiválasztása galériafájlként, tartós feltöltési válasz szándékos elvesztése, megmaradó űrlap, tulajdonosnál látható várakozó feltöltés, explicit vendég-újrapróbálás, egyszeri végleges megjelenés.
+- Valódi helyi Chromium kamera/mikrofon és MediaRecorder, az MP4-t nem támogató böngésző WebM-visszaesési ágával; külön Beküldés, sikeres szerverdekódolás, tulajdonosi lista és tényleges lejátszás, automatikus lejátszás nélkül.
+- Azonos kulcsú végleges ismétlés változatlan beküldésazonosítóval és kvótával; megőrzött teljes eredeti bájtok és névtelen médiaelérés tiltása.
+
+A belépés nélküli tulajdonosi próba: friss asztali és 390 px mobil emuláció **PASS**, 12/12 tiltási próba mindkét nézeten, szerkesztőbetöltés, kilépés és változatlan könyvállapot. Az első ellenőrzés egy navigációs várakozásnál megállt; a részletesebb lépésjelzéssel megismételt teljes ellenőrzés sikeres volt, alkalmazáskód-módosítás nélkül. Egyik futás sem írt a könyvbe.
+
+Telepítés utáni szigorú megőrzési összehasonlítás: **8 eredeti könyv / 123 változatlan erőforrás PASS**. A távoli `main` továbbra is `5d2d4f5338a5ed891dd3b231cf131bed5b36a9ff`, az éles MemoryBook `updatedAt` értéke változatlan (`2026-09-14T08:49:25.766879Z`); a pilot PostgreSQL külső IP-engedélylistája továbbra is `[]`.
+
+Titokmentes helyi bizonyítékok: `test-results/samsung-release/database-summary.json`, `internet/verification.json`, `pre-release/verification.json`, `isolation.json`, `root-regression.log`, `browser-regression.log`; további beküldési és dekódertesztek a fent hivatkozott szkriptekben. A teljes vendég- és tulajdonosi hozzáférési link kizárólag a kért átadásban és a gitből kizárt helyi konfigurációban szerepel.
+
+**Fizikai Samsung újratesztelés: NYITOTT a felhasználó visszajelzéséig.** iPhone/Safari és tényleges ChatGPT/MCP-próba szintén NYITOTT; a szintetikus eszköz és mobil emuláció nem fizikai telefonos PASS.

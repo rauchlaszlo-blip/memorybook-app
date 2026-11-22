@@ -111,10 +111,10 @@ try{
     for(const path of deniedPaths){const denied=await context.request.get(path,{maxRedirects:0});ensure(denied.status()===404,'TRIAL_READ_SCOPE_NOT_DENIED');}
     view.deniedReadChecks=deniedPaths.length;
     stage(name+'_actual_overview_and_editor_navigation');
-    await page.getByRole('link',{name:'Montázs, jóváhagyás és ellenőrző PDF',exact:true}).click();await expect(page.locator('.simple-book')).toBeVisible();
-    await expect(page.getByText(/^16 oldal ·/)).toBeVisible();await page.getByRole('link',{name:'Tervezet megnyitása és javítása',exact:true}).click();
+    await page.getByRole('link',{name:'Montázs, jóváhagyás és ellenőrző PDF',exact:true}).click();stage(name+'_overview_loaded');await expect(page.locator('.simple-book')).toBeVisible();
+    stage(name+'_overview_page_count');await expect(page.getByText(/^16 oldal ·/)).toBeVisible();await page.getByRole('link',{name:'Tervezet megnyitása és javítása',exact:true}).click();stage(name+'_editor_heading');
     await expect(page.getByRole('heading',{name:config.expectedTitle+' – montázs',exact:true})).toBeVisible();await expect(page.getByRole('complementary',{name:'Próbamód'})).toBeVisible();
-    await expect(page.getByLabel('Korábbi változat')).toHaveValue(initial.version.id);await expect(page.getByRole('button',{name:/^\d+\. oldal(?: 🔒)?$/})).toHaveCount(16);view.pageCount=16;
+    stage(name+'_saved_editor_version');await expect(page.getByLabel('Korábbi változat')).toHaveValue(initial.version.id);await expect(page.getByRole('button',{name:/^\d+\. oldal(?: 🔒)?$/})).toHaveCount(16);view.pageCount=16;
     await expect(page.getByRole('button',{name:'Változat mentése',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Ezt a könyvváltozatot jóváhagyom',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Jóváhagyott PDF készítése',exact:true})).toBeVisible();
     const flagged=new Set(initial.reviews.items.filter(i=>i.mediaId&&i.flags.length).map(i=>i.mediaId));
     const imagePage=initial.version.draft.pages.findIndex(p=>p.elements.some(e=>e.kind==='photo'&&!flagged.has(e.mediaId)));ensure(imagePage>=0,'UNFLAGGED_IMAGE_PAGE_REQUIRED');
