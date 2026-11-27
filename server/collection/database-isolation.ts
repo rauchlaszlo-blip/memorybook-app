@@ -1,4 +1,4 @@
-import type {Pool,PoolConfig} from 'pg';
+import type {Pool,PoolClient,PoolConfig} from 'pg';
 
 export const collectionPilotSchema='collection_pilot_20261127';
 export const collectionPilotBook={id:'collection-wedding-pilot-20261127',ownerId:'collection-pilot-owner-20261127',title:'Esküvői anyaggyűjtés – fiktív próbakönyv'};
@@ -31,10 +31,18 @@ async function assertPath(pool:Pool,schema:string,allowMissing=false){
   if(result.requested!==schema||(!allowMissing&&result.selected!==schema)||result.selected!==null&&result.selected!==schema||result.schemas.some((name:string)=>name!==schema))throw new Error('COLLECTION_PILOT_SCHEMA_NOT_ISOLATED');
 }
 
+/** Connection mode only: no credentials, role names, addresses, SQL values or content. */
+export async function collectionDatabaseState(db:Pool|PoolClient){
+  return(await db.query(`SELECT current_setting('default_transaction_read_only') AS "defaultReadOnly",
+    current_setting('transaction_read_only') AS "transactionReadOnly",pg_is_in_recovery() AS "inRecovery",
+    (SELECT source FROM pg_catalog.pg_settings WHERE name='default_transaction_read_only') AS "defaultSource"`)).rows[0];
+}
+
 /** Must run before every legacy initializer and before Better Auth migrations. */
 export async function initializeCollectionDatabase(pool:Pool,env:NodeJS.ProcessEnv=process.env){
   const schema=pilotSchema(env);if(!schema)return;
   await assertPath(pool,schema,true);
+  console.log('Collection database mode before schema',JSON.stringify(await collectionDatabaseState(pool)));
   // The only schema this operator-controlled bootstrap may create is the approved new pilot schema.
   await pool.query(`CREATE SCHEMA IF NOT EXISTS "${collectionPilotSchema}"`);
   await assertPath(pool,schema);
@@ -45,6 +53,7 @@ export async function collectionPublicSnapshot(pool:Pool,env:NodeJS.ProcessEnv=p
   if(!pilotSchema(env))return null;
   const db=await pool.connect();
   try{
+    console.log('Collection database mode before snapshot',JSON.stringify(await collectionDatabaseState(db)));
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const tables=(await db.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
     const result=[];
@@ -53,7 +62,9 @@ export async function collectionPublicSnapshot(pool:Pool,env:NodeJS.ProcessEnv=p
       const row=(await db.query(`SELECT count(*)::text AS count,encode(sha256(convert_to(COALESCE(string_agg(digest,'' ORDER BY digest),''),'UTF8')),'hex') AS digest FROM (SELECT encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') AS digest FROM public.${quoted} t) fingerprints`)).rows[0];
       result.push({table:name,count:row.count,digest:row.digest});
     }
-    await db.query('COMMIT');return result;
+    await db.query('COMMIT');
+    console.log('Collection database mode after snapshot',JSON.stringify(await collectionDatabaseState(db)));
+    return result;
   }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
 }
 
