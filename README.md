@@ -1,4 +1,16 @@
 # MemoryBook
+
+## Wedding material collection — development branch, 2026-11-26
+
+The main-based `codex/wedding-collection-20261126` branch adds private original
+photo/audio/video collection to the existing QR and text/drawing flow, resumable
+uploads, owner review and original ZIP downloads. No new AI integration or book
+arrangement is included. This work has not been deployed.
+
+See [implementation, configuration, backup and phone acceptance checklist](docs/WEDDING_COLLECTION_20261126.md).
+Build with `npm ci && npm run build`; run `npm run typecheck:collection`.
+Database tests require an explicitly acknowledged, isolated local PostgreSQL
+test database; see the handoff before running them.
 ## Judge Quick Start
 
 Live app: https://memorybook-app.onrender.com

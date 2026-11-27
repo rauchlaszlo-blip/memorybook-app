@@ -6,6 +6,9 @@ import {
 } from './MemoryBookEditor';
 import { detectBrowserAppLanguage, normalizeAppLanguage, type AppLanguage } from './i18n';
 import { getInviteEditorMessages } from './inviteEditorI18n';
+import { GuestCollection, type GuestCollectionRef } from './collection/GuestCollection';
+import { collectionRequest, committedReceipt, type CollectionData, type CollectionReceipt } from './collection/uploader';
+import { guestCopy } from './collection/guest-copy';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -28,6 +31,7 @@ type PageInviteEditorPageProps = {
 
 export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const editorRef = useRef<MemoryBookEditorRef>(null);
+  const collectionRef = useRef<GuestCollectionRef>(null);
   const [fallbackLanguage] = useState<AppLanguage>(() => detectBrowserAppLanguage());
   const [page, setPage] = useState<InvitePageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +39,10 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [authorShareApproved, setAuthorShareApproved] = useState(false);
+  const [collectionReady, setCollectionReady] = useState(false);
+  const [receipt, setReceipt] = useState<CollectionReceipt | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [commitPending, setCommitPending] = useState(false);
 
   const language: AppLanguage = normalizeAppLanguage(page?.language) ?? fallbackLanguage;
   const copy = getInviteEditorMessages(language).page;
@@ -53,6 +61,12 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
 
         if (!response.ok) {
           if (data?.error === 'PAGE_ALREADY_SUBMITTED') {
+            try {
+              const collection = await collectionRequest<CollectionData>(`${API_BASE}/api/collection/invites/${encodeURIComponent(token)}`);
+              if (collection.state === 'submitted' && collection.receipt) {
+                setReceipt(committedReceipt(collection.receipt, collection.groupId)); setSubmitted(true); return;
+              }
+            } catch { /* Older invitations keep their existing submitted message. */ }
             throw new Error('PAGE_ALREADY_SUBMITTED');
           }
           throw new Error('PAGE_INVITE_LOAD_FAILED');
@@ -81,7 +95,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   const savePage = useCallback(
     async (
       _pageId: string,
-      canvasJson: Record<string, any>,
+      canvasJson: Record<string, unknown>,
       previewDataUrl: string,
       expectedVersion: number
     ) => {
@@ -103,8 +117,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        const error: any = new Error(data?.error || 'PAGE_SAVE_FAILED');
-        error.status = response.status;
+        const error = Object.assign(new Error(data?.error || 'PAGE_SAVE_FAILED'), { status: response.status });
         throw error;
       }
 
@@ -125,7 +138,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
   );
 
   const submitPage = async () => {
-    if (submitting) return;
+    if (submitting || imageBusy) return;
 
     const confirmed = window.confirm(copy.confirmSubmit);
     if (!confirmed) return;
@@ -135,6 +148,13 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
       setError(null);
 
       await editorRef.current?.flush();
+
+      if (page?.bookType === 'event') {
+        if (!collectionRef.current || !editorRef.current) throw new Error('COLLECTION_INCOMPLETE');
+        const snapshot = editorRef.current.exportSnapshot();
+        const result = await collectionRef.current.commit(snapshot.version, authorShareApproved, snapshot.previewDataUrl);
+        setReceipt(result); setSubmitted(true); return;
+      }
 
       const response = await fetch(
         `${API_BASE}/api/page-invites/${encodeURIComponent(token)}/submit`,
@@ -163,7 +183,9 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
       setError(
         err instanceof Error && err.message === 'PAGE_CONFLICT'
           ? copy.conflict
-          : copy.submitFailed
+          : err instanceof Error && err.message === 'CANVAS_ASSET_UNAVAILABLE'
+            ? guestCopy[language].assetUnavailable
+            : page?.bookType === 'event' ? guestCopy[language].unconfirmed : copy.submitFailed
       );
     } finally {
       setSubmitting(false);
@@ -177,6 +199,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
           <div style={styles.brand}>MemoryBook</div>
           <h1 style={styles.title}>{page?.bookTitle || 'MemoryBook'}</h1>
           <div style={styles.successBox}>{copy.success}</div>
+          {receipt && <p>{guestCopy[language].receipt}: <strong>{receipt.submissionId}</strong></p>}
           <p style={styles.note}>{copy.submittedLocked}</p>
           <p style={styles.note}>
             {authorShareApproved ? copy.shareApproved : copy.shareDenied}
@@ -191,7 +214,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
     return <div style={styles.message} lang={fallbackLanguage}>{loadingCopy.loading}</div>;
   }
 
-  if (error || !page) {
+  if (!page) {
     const fallbackCopy = getInviteEditorMessages(fallbackLanguage).page;
     return (
       <div style={styles.message} lang={fallbackLanguage}>
@@ -216,6 +239,7 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
             aria-label={copy.shareConsentAria}
             checked={authorShareApproved}
             style={{ width: 20, height: 20, flex: '0 0 auto' }}
+            disabled={submitting || commitPending}
             onChange={(event) => setAuthorShareApproved(event.target.checked)}
           />
           <span>{copy.shareConsent}</span>
@@ -224,16 +248,17 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
           <button
             type="button"
             onClick={submitPage}
-            disabled={submitting}
+            disabled={submitting || imageBusy || (page.bookType === 'event' && !collectionReady)}
             style={styles.submitButton}
           >
             {submitting ? copy.submitting : copy.submit}
           </button>
           <div style={styles.submitWarning}>{copy.submitWarning}</div>
         </div>
-        {error && <div style={styles.error}>{error}</div>}
+        {error && <div style={styles.error} role="alert">{error}</div>}
       </section>
 
+      <div inert={submitting || commitPending}>
       <MemoryBookEditor
         ref={editorRef}
         page={page}
@@ -244,7 +269,19 @@ export function PageInviteEditorPage({ token }: PageInviteEditorPageProps) {
         newTextTop={180}
         newTextAlign="center"
         optimizeUploadedImages={page.bookType === 'event'}
+        onImageProcessingChange={setImageBusy}
+        onOriginalImage={page.bookType === 'event' ? file => {
+          if (!collectionRef.current) return Promise.reject(new Error('COLLECTION_UNAVAILABLE'));
+          return collectionRef.current.addOriginal(file);
+        } : undefined}
       />
+      </div>
+      {page.bookType === 'event' && <GuestCollection
+        ref={collectionRef} token={token} pageId={page.id} apiBase={API_BASE} language={language} disabled={submitting || commitPending}
+        onReady={setCollectionReady} onCommitted={result => { setReceipt(result); setSubmitted(true); }}
+        onPendingCommit={setCommitPending}
+        onRemoveAsset={id => editorRef.current?.removeCollectionAsset(id)}
+      />}
     </main>
   );
 }

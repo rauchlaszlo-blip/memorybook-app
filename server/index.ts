@@ -10,6 +10,11 @@ import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth';
 import { pool } from './db';
+import {createCollectionRouter} from './collection/router';
+import {migrateCollection} from './collection/schema';
+import {initializeCollectionDatabase,seedCollectionPilot,collectionPublicSnapshot} from './collection/database-isolation';
+import {createCollectionTrialAccess} from './collection/trial';
+import {lockCollectionPilotSave,saveCollectionPilotPreview} from './collection/pilot-preview';
 import { getInvoicingCapabilities } from './invoicing';
 import { getPayPalCapabilities, PayPalAdapterError } from './payments/paypal';
 import {
@@ -38,6 +43,8 @@ cloudinary.config({
 
 const app = express();
 app.set('trust proxy', 1);
+const collectionTrial=createCollectionTrialAccess(pool);
+app.use(collectionTrial.router);
 
 app.use(
   cors({
@@ -59,6 +66,8 @@ app.use(express.json({
     }
   },
 }));
+
+app.use(createCollectionRouter({pool,getSession:req=>collectionTrial.hasTrialCookie(req)?collectionTrial.getCollectionTrialSession(req):getSession(req)}));
 
 const MAX_PREVIEW_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_CONTRIBUTION_PHOTO_SIZE_BYTES = 3 * 1024 * 1024;
@@ -438,6 +447,8 @@ async function savePageVersioned(
   requireEditable = false,
   db: any = pool
 ) {
+  const privatePreview=await saveCollectionPilotPreview(pool,db,pageId,canvasData,previewDataUrl,expectedVersion,inviteStatus);
+  if(privatePreview)return privatePreview;
   let newPreviewUrl: string | null = null;
 
   if (previewDataUrl) {
@@ -2957,6 +2968,7 @@ app.put('/api/page-invites/:token', async (req, res) => {
 
   try {
     await client.query('BEGIN');
+    await lockCollectionPilotSave(client);
 
     const inviteResult = await client.query(
       `SELECT
@@ -3039,6 +3051,11 @@ app.put('/api/page-invites/:token', async (req, res) => {
       return;
     }
 
+    if (err?.code === 'STORAGE_QUOTA') {
+      res.status(413).json({error:'STORAGE_QUOTA'});
+      return;
+    }
+
     if (err?.status === 409) {
       res.status(409).json({
         error: 'PAGE_CONFLICT',
@@ -3100,6 +3117,11 @@ app.post('/api/page-invites/:token/submit', async (req, res) => {
 
     if (pageResult.rows[0].bookType === 'event') {
       eventBookId = pageResult.rows[0].bookId;
+      // Once original-media collection starts, only its atomic commit may finalize.
+      const collection = await client.query('SELECT 1 FROM collection_groups WHERE page_id=$1', [pageResult.rows[0].id]);
+      if(collection.rowCount){
+        await client.query('ROLLBACK');res.status(409).json({error:'COLLECTION_COMMIT_REQUIRED'});return;
+      }
     }
 
     if (pageResult.rows[0].inviteStatus === 'submitted') {
@@ -4474,17 +4496,24 @@ async function initializeDatabase(): Promise<void> {
   );
   await pool.query(ownerNotificationsMigration);
 
+  await migrateCollection(pool);
   console.log('Users, books, contributions, pages, notifications, invoices and owner page controls ready.');
 }
 
 async function startServer(): Promise<void> {
   try {
+    const publicBefore=await collectionPublicSnapshot(pool);
+    if(publicBefore)console.log('Collection public-schema before',JSON.stringify(publicBefore));
+    await initializeCollectionDatabase(pool);
     await initializeDatabase();
 
     if (auth) {
       const { runMigrations } = await getMigrations(auth.options);
       await runMigrations();
     }
+    await seedCollectionPilot(pool);
+    const publicAfter=await collectionPublicSnapshot(pool);
+    if(publicAfter){console.log('Collection public-schema after',JSON.stringify(publicAfter));if(JSON.stringify(publicBefore)!==JSON.stringify(publicAfter))throw new Error('COLLECTION_PUBLIC_PRESERVATION_CHANGED');console.log('Collection public-schema unchanged');}
 
     const port = Number(process.env.PORT) || 3001;
 

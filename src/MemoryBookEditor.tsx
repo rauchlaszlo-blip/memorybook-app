@@ -11,6 +11,8 @@ import type { AppLanguage } from './i18n';
 import { getInviteEditorMessages } from './inviteEditorI18n';
 import { optimizeGuestImage } from './optimizeGuestImage';
 
+fabric.FabricObject.customProperties = [...new Set([...fabric.FabricObject.customProperties, 'collectionAssetId'])];
+
 export interface PageData {
   id: string;
   pageNumber: number;
@@ -22,6 +24,8 @@ export interface PageData {
 export interface MemoryBookEditorRef {
   flush: () => Promise<void>;
   resolveConflictKeepLocal: (latestRemoteVersion: number) => void;
+  exportSnapshot: () => { canvasData: Record<string, unknown>; previewDataUrl: string; version: number };
+  removeCollectionAsset: (id: string) => void;
 }
 
 interface MemoryBookEditorProps {
@@ -41,6 +45,8 @@ interface MemoryBookEditorProps {
   enableBackgroundControls?: boolean;
   compactLayout?: boolean;
   optimizeUploadedImages?: boolean;
+  onOriginalImage?: (file: File) => Promise<string>;
+  onImageProcessingChange?: (busy: boolean) => void;
 }
 
 type PendingSave = {
@@ -174,11 +180,12 @@ const editorStyles: Record<string, React.CSSProperties> = {
 export const MemoryBookEditor = forwardRef<
   MemoryBookEditorRef,
   MemoryBookEditorProps
->(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false }, ref) => {
+>(({ page, onSavePage, onConflict, language = 'hu', newTextWidth = DEFAULT_TEXT_WIDTH, newTextFontSize = DEFAULT_TEXT_FONT_SIZE, newTextAlign = 'left', enableBackgroundControls = false, compactLayout = false, optimizeUploadedImages = false, onOriginalImage, onImageProcessingChange }, ref) => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
+  const imageOperations = useRef(0);
   const copy = getInviteEditorMessages(language).editor;
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -448,6 +455,19 @@ export const MemoryBookEditor = forwardRef<
   );
 
   useImperativeHandle(ref, () => ({
+    exportSnapshot: () => {
+      const canvas = fabricRef.current;
+      if (!canvas) throw new Error('PAGE_SAVE_FAILED');
+      return { canvasData: canvas.toJSON(), previewDataUrl: canvas.toDataURL({ format: 'jpeg', quality: 0.8, multiplier: 1 }), version: getPageState(currentPageIdRef.current, pageDataRef.current.version).version };
+    },
+    removeCollectionAsset: (id: string) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const images = canvas.getObjects().filter(object => object.get('collectionAssetId') === id);
+      if (images.length) canvas.remove(...images);
+      if (canvas.backgroundImage?.get('collectionAssetId') === id) { canvas.set({ backgroundImage: undefined }); handleStructuralMutation(); }
+      canvas.requestRenderAll();
+    },
     flush: async () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
@@ -1017,19 +1037,15 @@ export const MemoryBookEditor = forwardRef<
 
     const uploadTargetPageId = currentPageIdRef.current;
     setImageUploadMessage(null);
-
+    imageOperations.current++; onImageProcessingChange?.(true);
     try {
+      const collectionAssetId = await onOriginalImage?.(file);
       const dataUrl = await readUploadedImage(file);
       if (uploadTargetPageId !== currentPageIdRef.current) return;
-      const imgElement = new Image();
-
-      imgElement.onload = () => {
-        if (
-          uploadTargetPageId !== currentPageIdRef.current ||
-          !fabricRef.current
-        ) {
-          return;
-        }
+      const imgElement = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('IMAGE_DECODE_FAILED')); image.src = dataUrl;
+      });
+      if (uploadTargetPageId !== currentPageIdRef.current || !fabricRef.current) return;
 
         const fabricImg = new fabric.FabricImage(imgElement, {
           left: 100,
@@ -1037,6 +1053,7 @@ export const MemoryBookEditor = forwardRef<
           cornerColor: '#3B82F6',
           cornerStyle: 'circle',
         });
+        if (collectionAssetId) fabricImg.set('collectionAssetId', collectionAssetId);
 
         const width = fabricImg.width || 1;
         const height = fabricImg.height || 1;
@@ -1050,9 +1067,6 @@ export const MemoryBookEditor = forwardRef<
         fabricRef.current.add(fabricImg);
         fabricRef.current.setActiveObject(fabricImg);
         fabricRef.current.renderAll();
-      };
-
-      imgElement.src = dataUrl;
     } catch (error) {
       console.error('Image upload failed:', error);
       setImageUploadMessage(language === 'de'
@@ -1060,6 +1074,8 @@ export const MemoryBookEditor = forwardRef<
         : language === 'en'
           ? 'The image could not be processed. Please choose a JPEG, PNG or WebP image.'
           : 'A kép nem dolgozható fel. Válassz JPEG-, PNG- vagy WebP-képet.');
+    } finally {
+      imageOperations.current--; onImageProcessingChange?.(imageOperations.current > 0);
     }
   };
 
@@ -1101,11 +1117,14 @@ export const MemoryBookEditor = forwardRef<
 
     const uploadTargetPageId = currentPageIdRef.current;
     setImageUploadMessage(null);
+    imageOperations.current++; onImageProcessingChange?.(true);
     try {
+      const collectionAssetId = await onOriginalImage?.(file);
       const dataUrl = await readUploadedImage(file);
       if (uploadTargetPageId !== currentPageIdRef.current) return;
-      const imgElement = new Image();
-      imgElement.onload = () => {
+      const imgElement = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('IMAGE_DECODE_FAILED')); image.src = dataUrl;
+      });
         const canvas = fabricRef.current;
         if (!canvas || uploadTargetPageId !== currentPageIdRef.current) return;
         const scale = Math.max(CANVAS_WIDTH / imgElement.width, CANVAS_HEIGHT / imgElement.height);
@@ -1119,11 +1138,10 @@ export const MemoryBookEditor = forwardRef<
           selectable: false,
           evented: false,
         });
+          if (collectionAssetId) backgroundImage.set('collectionAssetId', collectionAssetId);
         canvas.set({ backgroundImage });
         canvas.requestRenderAll();
         handleStructuralMutation();
-      };
-      imgElement.src = dataUrl;
     } catch (error) {
       console.error('Background image upload failed:', error);
       setImageUploadMessage(language === 'de'
@@ -1131,6 +1149,8 @@ export const MemoryBookEditor = forwardRef<
         : language === 'en'
           ? 'The image could not be processed. Please choose a JPEG, PNG or WebP image.'
           : 'A kép nem dolgozható fel. Válassz JPEG-, PNG- vagy WebP-képet.');
+    } finally {
+      imageOperations.current--; onImageProcessingChange?.(imageOperations.current > 0);
     }
   };
 

@@ -36,3 +36,6 @@ dist-ssr
 
 # Runtime user uploads
 public/contribution-photos/
+
+# Local test output (may contain fictional upload fixtures and browser traces)
+test-results/

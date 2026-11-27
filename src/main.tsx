@@ -4,6 +4,8 @@ import { AuthPage } from './AuthPage.tsx'
 import { LandingPage } from './LandingPage.tsx'
 import { MyBooksPage } from './MyBooksPage.tsx'
 import { OwnerBookPage } from './OwnerBookPage.tsx'
+import { OwnerCollectionPage } from './collection/OwnerCollectionPage.tsx'
+import { CollectionTrialPage } from './collection/CollectionTrialPage.tsx'
 import { PageInviteEditorPage } from './PageInviteEditorPage.tsx'
 import { PublicPage } from './PublicPage.tsx'
 import { JoinPage } from './JoinPage.tsx'
@@ -23,6 +25,7 @@ initializeAppLanguage()
 
 const path = window.location.pathname
 const ownerBookMatch = path.match(/^\/my-books\/([^/]+)$/)
+const ownerCollectionMatch = path.match(/^\/my-books\/([^/]+)\/materials$/)
 const pageInviteMatch = path.match(/^\/p\/([^/]+)$/)
 const publicPageMatch = path.match(/^\/share\/([^/]+)$/)
 const joinMatch = path.match(/^\/join\/([^/]+)$/)
@@ -35,7 +38,9 @@ const dedicationCaptureMatch = path.match(/^\/my-books\/([^/]+)\/dedication\/([^
 const ownerMemoryMatch = path.match(/^\/my-books\/([^/]+)\/memory\/([^/]+)$/)
 const DEMO_BOOK_ID = 'book-12b'
 
-const root = path === '/'
+const root = path === '/collection/try'
+  ? <CollectionTrialPage />
+  : path === '/'
   ? <LandingPage />
   : path === '/help' || path === '/help/quick'
     ? <HelpPage kind="quick" />
@@ -59,6 +64,8 @@ const root = path === '/'
     ? <OwnerMemoryEditorPage bookId={decodeURIComponent(ownerMemoryMatch[1])} pageId={decodeURIComponent(ownerMemoryMatch[2])} />
   : eventQrMatch
     ? <EventGuestbookQrPage bookId={decodeURIComponent(eventQrMatch[1])} />
+  : ownerCollectionMatch
+    ? <OwnerCollectionPage bookId={decodeURIComponent(ownerCollectionMatch[1])} />
   : path === '/my-books'
     ? <MyBooksPage />
     : ownerBookMatch

@@ -3,6 +3,7 @@ import { InviteSendDialog } from './InviteSendDialog.tsx';
 import { EventBookSettings } from './EventBookSettings.tsx';
 import { normalizeAppLanguage, SUPPORTED_APP_LANGUAGES, type AppLanguage } from './i18n';
 import { ownerFormat, ownerLocale, ownerText, useOwnerUiLanguage } from './ownerUiI18n';
+import { ownerCollectionText } from './collection/owner-copy';
 
 const API_BASE =
   window.location.hostname === 'localhost' ||
@@ -536,6 +537,7 @@ export function OwnerBookPage({ bookId }: OwnerBookPageProps) {
           </div>
           <div style={styles.eventActions}>
             <a href={`/my-books/${encodeURIComponent(bookId)}/event-qr`} style={styles.eventQrButton}>{t('QR-kód megnyitása')}</a>
+            <a href={`/my-books/${encodeURIComponent(bookId)}/materials`} style={styles.eventSecondaryButton}>{ownerCollectionText(uiLanguage,'materials')}</a>
             <a href={`/book/${encodeURIComponent(bookId)}/view`} style={styles.eventSecondaryButton}>{t('Könyv megnyitása')}</a>
             <a href={`/my-books/${encodeURIComponent(bookId)}/cover`} style={styles.eventSecondaryButton}>{t('Fedőlap szerkesztése')}</a>
           </div>
