@@ -58,8 +58,10 @@ táblák és az alapérték változatlanok. A HTTPS-próba segédeszköze is cé
 Helyi bizonyíték: `test-results/collection-release-20261127/final-tests-33.log`.
 Az új szolgáltatás: `srv-dc4qhtrl550s73abg4v0`,
 [HTTPS alkalmazás](https://memorybook-collection-pilot-20261127.onrender.com).
-A `daf4dcd` futtatott változat `dep-dc4qlcm1egvs739fq1h0` kiadása LIVE állapotú,
-a `/api/health` kívülről HTTP 200-at adott.
+A végleges futtatott változat `6b3990891f0740412fcbd973bbdb91198c4798a5`.
+Render-kiadás: `dep-dc4qojh7lnhs739gvb20`, LIVE 2026-11-27 16:15:27 UTC;
+a `/api/health` kívülről HTTP 200-at adott. A későbbi jegyzőkönyv-commit
+csak ezt a dokumentumot egészíti ki, a futtatott alkalmazást nem módosítja.
 
 Külső HTTPS-próba kizárólag egy fiktív beküldéssel, három ártalmatlan fájllal:
 JPEG, 2 másodperces hang, 2 másodperces videó. Igazolt a darabos feltöltés
@@ -95,6 +97,21 @@ A régi külön operátori munkamenet lejárt, ezért ez önmagában nem teljes 
 régiadat-ellenőrzés. A fenti teljes adatbázis-lenyomat ezt külön kiegészíti.
 A régi adatokat a kiadás nem migrálja. A korábbi pilot és az éles szolgáltatás
 ága, utolsó kiadása és konfigurációjának módosítási időpontja változatlan.
+
+**Valódi internetes újraindítás utáni tartóssági próba: PASS.** Az új deploy
+LIVE állapotának ellenőrzése után ugyanaz az ellenőrző ugyanazzal a beküldéssel
+ismét lefutott. Azonos nyugta/beküldésazonosító, szerkeszthető vászonlenyomat,
+mindhárom eredeti méret és SHA-256; duplikált beküldés: 0. ZIP, lejátszás,
+hozzáférési tiltások és kilépés ismét PASS. A régi 36 public tábla lenyomata
+az újraindítás után is az első telepítési kísérlet előtti értékkel egyezik.
+Bizonyítékok: `https-after-restart.json`, `https-durability-baseline.json`,
+`public-preservation-after-restart.json` ugyanabban az elkülönített bizonyítékmappában.
+Ez az új fiktív beküldés a tulajdonosi próbalinken megtekinthető.
+
+A 390 px-es képek: `guest-mobile-ready.png`, `guest-mobile-receipt.png`,
+`owner-mobile-ready.png`. A kézzel készített szintetikus Fabric-próba vásznán
+egyes elemek az alapértelmezett középpontos origó miatt balra lógnak; a beküldött
+eredetik és adatok változatlanok. Ezt a már véglegesített fiktív próbát nem írtuk át.
 
 Fizikai Samsung/Chrome és iPhone/Safari: **NYITOTT**.
 Az automatizált böngészőpróba és a szimulált kamera nem helyettesíti ezeket.
