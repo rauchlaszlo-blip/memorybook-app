@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck:collection": "tsc -p tsconfig.collection.json",
-    "test:collection": "tsx --test --test-concurrency=1 tests/collection-validation.test.ts tests/collection-backend.test.ts tests/collection-backup.test.ts tests/collection-startup.test.ts tests/collection-isolation.test.ts tests/collection-trial.test.ts tests/collection-previous-pilot.test.ts",
+    "test:collection": "tsx --test --test-concurrency=1 tests/collection-validation.test.ts tests/collection-backend.test.ts tests/collection-backup.test.ts tests/collection-startup.test.ts tests/collection-isolation.test.ts tests/collection-trial.test.ts tests/collection-previous-pilot.test.ts tests/collection-https-helper.test.ts",
     "test:collection:browser": "tsx --test tests/collection-owner-browser.test.ts tests/collection-guest-browser.test.ts tests/collection-flow-browser.test.ts"
   },
   "dependencies": {

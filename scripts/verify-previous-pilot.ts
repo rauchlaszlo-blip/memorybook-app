@@ -18,7 +18,7 @@ const safeCode=/^[A-Z][A-Z0-9_]{1,100}$/;
 type Role='owner'|'operator';
 type Entry={role:Role;path:string;kind:'json'|'binary';status:number;sha256:string|null;bytes:number};
 type BookRefs={id:string;role:Role;submissionIds:string[];mediaIds:string[];snapshotIds:string[];versionIds:string[];exportIds:string[]};
-type Manifest={format:'previous-pilot-preservation-v1';at:string;origin:string;status:'PASS'|'INCOMPLETE'|'CHANGED';authenticationWrites:number;bookWrites:0;resources:Entry[];books:BookRefs[];aggregateHash:string;unavailableRoles:Role[];limitations:string[];counts:Record<string,number>;comparison?:{baselineHash:string;unchanged:boolean};errorCode?:string};
+type Manifest={format:'previous-pilot-preservation-v1';at:string;origin:string;status:'PASS'|'INCOMPLETE'|'CHANGED';authenticationWrites:number;bookWrites:0;resources:Entry[];books:BookRefs[];aggregateHash:string;unavailableRoles:Role[];limitations:string[];counts:Record<string,number>;comparison?:{baselineHash:string;unchanged:boolean;scope:'ALL_CONFIGURED_ACCOUNTS'|'OWNER_ONLY'};errorCode?:string};
 type OldConfig={origin:string;ownerStorageState:string;operatorStorageState:string;accountCredentials?:string;bookId?:string};
 type Detail={book:{id:string};submissions:{id:string;media?:{id:string}[]}[]};
 type Head={versions:{id:string}[];snapshots:{id:string;source_count?:number}[];submissionCount:number};
@@ -108,10 +108,14 @@ async function run(){
     ensure(!manifest.unavailableRoles.includes('operator'),'EXISTING_OPERATOR_SESSION_REQUIRED');
     ensure(manifest.counts.books>0,'EMPTY_BOOK_SCOPE');manifest.status='PASS';
     manifest.aggregateHash=preservationFingerprint(manifest.resources,manifest.books);
-    const comparison=arg('--compare');if(comparison){const before=JSON.parse(await readFile(resolve(comparison),'utf8')) as Manifest;ensure(before.format===manifest.format&&before.origin===origin&&before.status==='PASS','INVALID_BASELINE');ensure(before.aggregateHash===preservationFingerprint(before.resources,before.books),'BASELINE_HASH_MISMATCH');manifest.comparison={baselineHash:before.aggregateHash,unchanged:before.aggregateHash===manifest.aggregateHash};if(!manifest.comparison.unchanged)manifest.status='CHANGED';}
   }catch(error){manifest.status='INCOMPLETE';manifest.errorCode=error instanceof Error&&safeCode.test(error.message)?error.message:'PRESERVATION_CHECK_INCOMPLETE';}
   finally{for(const{context}of contexts)await context.dispose();}
   manifest.aggregateHash=preservationFingerprint(manifest.resources,manifest.books);
+  const comparison=arg('--compare');if(comparison){
+    const before=JSON.parse(await readFile(resolve(comparison),'utf8')) as Manifest;
+    const scoped=process.argv.includes('--allow-owner-only-comparison')&&before.status==='INCOMPLETE'&&manifest.status==='INCOMPLETE'&&before.errorCode==='EXISTING_OPERATOR_SESSION_REQUIRED'&&manifest.errorCode==='EXISTING_OPERATOR_SESSION_REQUIRED'&&before.unavailableRoles.join(',')==='operator'&&manifest.unavailableRoles.join(',')==='operator'&&manifest.books.length>0;
+    ensure(before.format===manifest.format&&before.origin===origin&&(before.status==='PASS'&&manifest.status==='PASS'||scoped),'INVALID_BASELINE');ensure(before.aggregateHash===preservationFingerprint(before.resources,before.books),'BASELINE_HASH_MISMATCH');manifest.comparison={baselineHash:before.aggregateHash,unchanged:before.aggregateHash===manifest.aggregateHash,scope:scoped?'OWNER_ONLY':'ALL_CONFIGURED_ACCOUNTS'};if(!manifest.comparison.unchanged)manifest.status='CHANGED';
+  }
   const destination=manifest.status==='INCOMPLETE'?out.replace(/\.json$/,'.incomplete.json'):out;
   await mkdir(dirname(destination),{recursive:true});await writeFile(destination,JSON.stringify(manifest,null,2));
   console.log(JSON.stringify({status:manifest.status,counts:manifest.counts,resources:manifest.resources.length,aggregateHash:manifest.aggregateHash,authenticationWrites:manifest.authenticationWrites,bookWrites:0,unavailableRoles:manifest.unavailableRoles,errorCode:manifest.errorCode,comparison:manifest.comparison}));

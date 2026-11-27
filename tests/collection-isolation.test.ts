@@ -6,13 +6,32 @@ import {spawn} from 'node:child_process';
 import type {ChildProcess} from 'node:child_process';
 import {createServer} from 'node:net';
 import sharp from 'sharp';
-import {collectionDatabaseConfig,initializeCollectionDatabase,collectionPilotSchema,collectionPilotBook} from '../server/collection/database-isolation';
+import {collectionDatabaseConfig,collectionDatabaseState,collectionPublicSnapshot,initializeCollectionDatabase,collectionPilotSchema,collectionPilotBook} from '../server/collection/database-isolation';
 
 test('dedicated pilot configuration fails closed and leaves ordinary main connection settings unchanged',()=>{
  const token=randomBytes(32).toString('base64url'),env={DATABASE_URL:'postgresql://local:fake@localhost/test?options=-c%20search_path%3Dpublic',COLLECTION_PILOT_ENABLED:'yes',COLLECTION_DATABASE_SCHEMA:collectionPilotSchema,COLLECTION_PILOT_GUEST_TOKEN:token};
  assert.deepEqual(collectionDatabaseConfig({DATABASE_URL:'postgresql://localhost/normal'}),{connectionString:'postgresql://localhost/normal'});
  assert.throws(()=>collectionDatabaseConfig({...env,COLLECTION_DATABASE_SCHEMA:undefined}),/SCHEMA_REQUIRED/);assert.throws(()=>collectionDatabaseConfig({...env,COLLECTION_DATABASE_SCHEMA:'public'}),/SCHEMA_REQUIRED/);assert.throws(()=>collectionDatabaseConfig({...env,COLLECTION_DATABASE_SCHEMA:'a,public'}),/SCHEMA_REQUIRED/);assert.throws(()=>collectionDatabaseConfig({...env,COLLECTION_PILOT_ENABLED:undefined}),/REQUIRES_PILOT/);assert.throws(()=>collectionDatabaseConfig({...env,COLLECTION_PILOT_GUEST_TOKEN:''}),/GUEST_TOKEN_REQUIRED/);
- const config=collectionDatabaseConfig(env);assert.equal(config.max,3);assert.equal(new URL(config.connectionString!).searchParams.get('options'),'-c search_path='+collectionPilotSchema);
+ const config=collectionDatabaseConfig(env);assert.equal(config.max,3);assert.equal(new URL(config.connectionString!).searchParams.get('options'),'-c search_path='+collectionPilotSchema+' -c default_transaction_read_only=off');
+});
+
+test('pilot connection overrides inherited database read-only default without changing old public bytes or other connections',{timeout:30000},async()=>{
+ const connection=process.env.DATABASE_URL||'postgresql://memorybook_test@127.0.0.1:5432/memorybook_wedding_test',url=new URL(connection);
+ if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!url.pathname.endsWith('_test')||process.env.WEDDING_LOCAL_DATABASE_ACK!=='yes')throw new Error('Local acknowledged test database required');
+ const name='memorybook_readonly_'+randomUUID().replaceAll('-','')+'_test',admin=new Pool({connectionString:connection});assert.match(name,/^memorybook_readonly_[a-f0-9]{32}_test$/);
+ await admin.query(`CREATE DATABASE "${name}"`);url.pathname='/'+name;url.searchParams.delete('options');const setup=new Pool({connectionString:url.toString()});let ordinary:Pool|undefined,pilot:Pool|undefined;
+ try{
+  await setup.query('CREATE TABLE public.preserved_originals(id TEXT PRIMARY KEY,original_bytes BYTEA)');await setup.query('INSERT INTO public.preserved_originals VALUES($1,$2)',['fictional-original',Buffer.from('Unchanged original bytes')]);
+  // Only this disposable database receives a synthetic inherited setting. The
+  // application under test never alters database/role defaults.
+  await admin.query(`ALTER DATABASE "${name}" SET default_transaction_read_only=on`);await setup.end();
+  ordinary=new Pool({connectionString:url.toString(),max:1});const inherited=await collectionDatabaseState(ordinary);assert.equal(inherited.defaultReadOnly,'on');assert.equal(inherited.transactionReadOnly,'on');assert.equal(inherited.defaultSource,'database');assert.equal(inherited.inRecovery,false);
+  const env={DATABASE_URL:url.toString(),COLLECTION_PILOT_ENABLED:'yes',COLLECTION_DATABASE_SCHEMA:collectionPilotSchema,COLLECTION_PILOT_GUEST_TOKEN:randomBytes(32).toString('base64url')};pilot=new Pool(collectionDatabaseConfig(env));
+  const before=await collectionPublicSnapshot(pilot,env);await initializeCollectionDatabase(pilot,env);await pilot.query('CREATE TABLE collection_writable_probe(id INTEGER PRIMARY KEY)');await pilot.query('INSERT INTO collection_writable_probe VALUES(1)');assert.equal((await pilot.query('SELECT count(*)::int n FROM collection_writable_probe')).rows[0].n,1);
+  const clients=await Promise.all([pilot.connect(),pilot.connect(),pilot.connect()]);try{for(const client of clients){const state=await collectionDatabaseState(client);assert.equal(state.defaultReadOnly,'off');assert.equal(state.transactionReadOnly,'off');await client.query('BEGIN READ ONLY');assert.equal((await collectionDatabaseState(client)).transactionReadOnly,'on');await assert.rejects(client.query('INSERT INTO collection_writable_probe VALUES(2)'),{code:'25006'});await client.query('ROLLBACK');}}finally{for(const client of clients)client.release();}
+  assert.deepEqual(await collectionPublicSnapshot(pilot,env),before);assert.equal((await collectionDatabaseState(ordinary)).defaultReadOnly,'on');assert.equal((await collectionDatabaseState(ordinary)).transactionReadOnly,'on');await assert.rejects(ordinary.query('CREATE TABLE public.must_not_exist(id INTEGER)'),{code:'25006'});
+  const setting=(await admin.query('SELECT setconfig FROM pg_db_role_setting WHERE setdatabase=(SELECT oid FROM pg_database WHERE datname=$1) AND setrole=0',[name])).rows[0].setconfig;assert.ok(setting.includes('default_transaction_read_only=on'));
+ }finally{if(pilot)await pilot.end();if(ordinary)await ordinary.end();if(!ordinary)await setup.end();await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();}
 });
 
 test('actual isolated startup and auth preserve public sentinel bytes and never overwrite pilot data on restart',{timeout:60000},async()=>{

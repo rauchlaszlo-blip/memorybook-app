@@ -21,9 +21,13 @@ export function collectionDatabaseConfig(env:NodeJS.ProcessEnv=process.env):Pool
   const connection=new URL(env.DATABASE_URL);
   if(!['postgres:','postgresql:'].includes(connection.protocol))throw new Error('COLLECTION_PILOT_DATABASE_REQUIRED');
   // URL options take priority over PGOPTIONS and Pool.options in node-postgres.
-  // Replace them explicitly, retaining existing TLS/connection parameters.
-  connection.searchParams.set('options','-c search_path='+schema);
-  return{connectionString:connection.toString(),max:3,options:'-c search_path='+schema};
+  // Replace them explicitly, retaining existing TLS/connection parameters. The
+  // reused primary has a database-level read-only default: override it only for
+  // this strictly scoped pilot connection, never ALTER DATABASE/ROLE or globals.
+  // Public preservation snapshots still enter explicit READ ONLY transactions.
+  const options='-c search_path='+schema+' -c default_transaction_read_only=off';
+  connection.searchParams.set('options',options);
+  return{connectionString:connection.toString(),max:3,options};
 }
 
 async function assertPath(pool:Pool,schema:string,allowMissing=false){
