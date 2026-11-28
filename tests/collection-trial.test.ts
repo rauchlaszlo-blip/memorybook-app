@@ -57,6 +57,41 @@ test('same-book guest handoff remains scoped; invalid, expired, duplicate and re
   env.COLLECTION_PILOT_TRIAL = validGrant; await pool.query('UPDATE books SET title=$2 WHERE id=$1', [fixture.bookId, 'Fiktív megváltozott cím']); assert.equal((await call(`/api/my/books/${fixture.bookId}/collection`, { cookie })).status, 404); await pool.query('UPDATE books SET title=$2 WHERE id=$1', [fixture.bookId, JSON.parse(validGrant).title]);
   assert.throws(() => parseCollectionTrialGrant(JSON.stringify({ ...JSON.parse(validGrant), extra: true })), /INVALID_COLLECTION_TRIAL_CONFIG/);
 });
+test('expiry-only extension preserves the same owner link and scope; redeem explicitly renews the cookie', async () => {
+  const initial = await call('/api/pilot/collection-trial/redeem', { body: { key } });
+  assert.equal(initial.status, 200);
+  const initialHeader = initial.headers.get('set-cookie') || '', originalCookie = initialHeader.split(';')[0];
+  const originalGrant = JSON.parse(validGrant), expiresAt = new Date(Date.now() + 65 * 86400_000).toISOString();
+  const preservationDeadline = '2027-01-31T22:59:59Z';
+  assert.equal(parseCollectionTrialGrant(JSON.stringify({ ...originalGrant, expiresAt: preservationDeadline }))?.expiresAt, preservationDeadline);
+  const originalRows = (await pool.query('SELECT to_jsonb(b) AS book,to_jsonb(p) AS page FROM books b JOIN pages p ON p.book_id=b.id WHERE p.id=$1', [fixture.pageId])).rows;
+  env.COLLECTION_PILOT_TRIAL = JSON.stringify({ ...originalGrant, expiresAt });
+  try {
+    const session = await call('/api/pilot/collection-trial/session', { cookie: originalCookie });
+    assert.equal(session.status, 200);
+    assert.deepEqual(await session.json(), { trial: { bookId: fixture.bookId, expiresAt } });
+    assert.equal(session.headers.get('set-cookie'), null, 'Reading the new expiry does not renew an already-issued browser cookie');
+    assert.equal((await call(`/api/my/books/${fixture.bookId}/collection`, { cookie: originalCookie })).status, 200);
+    const fallbackBefore = fallbackCalls;
+    for (const path of [`/api/my/books/${other.bookId}/collection`, `/api/my/books/${other.bookId}/collection-settings`, '/api/auth/get-session', '/api/payments/paypal/create-order', '/api/debug']) {
+      assert.equal((await call(path, { cookie: originalCookie, owner: true })).status, 404);
+    }
+    assert.equal(fallbackCalls, fallbackBefore);
+    const renewed = await call('/api/pilot/collection-trial/redeem', { body: { key }, cookie: originalCookie });
+    assert.equal(renewed.status, 200);
+    assert.equal((await renewed.json()).redirectTo, `/my-books/${fixture.bookId}/materials`);
+    const renewedHeader = renewed.headers.get('set-cookie') || '';
+    assert.equal(renewedHeader.split(';')[0], originalCookie, 'The original key remains the exact cookie value');
+    assert.ok(Number(/Max-Age=(\d+)/i.exec(renewedHeader)?.[1]) > 64 * 86400);
+    assert.ok(Number(/Max-Age=(\d+)/i.exec(initialHeader)?.[1]) < 3601);
+    const cookieExpiry = /Expires=([^;]+)/i.exec(renewedHeader)?.[1];
+    assert.ok(cookieExpiry && Math.abs(Date.parse(cookieExpiry) - Date.parse(expiresAt)) < 1000);
+    for (const path of ['/join/trial-guest-book', `/p/${fixture.token}`, `/api/collection/invites/${fixture.token}`]) assert.equal((await call(path, { cookie: originalCookie })).status, 200);
+    assert.equal((await call(`/api/collection/invites/${other.token}`, { cookie: originalCookie })).status, 404);
+    assert.deepEqual((await pool.query('SELECT to_jsonb(b) AS book,to_jsonb(p) AS page FROM books b JOIN pages p ON p.book_id=b.id WHERE p.id=$1', [fixture.pageId])).rows, originalRows);
+  } finally { env.COLLECTION_PILOT_TRIAL = validGrant; }
+});
+
 test('fresh mobile Chrome redeems fragment into actual collection UI, edits settings, hides broader navigation and leaves', { timeout: 45_000 }, async () => {
   const browser = await chromium.launch({ channel: 'chrome', args: ['--host-resolver-rules=MAP collection.localhost 127.0.0.1'] });
   try {

@@ -21,7 +21,8 @@ type Receipt={accepted:boolean;state:string;groupId:string;submissionId:string;r
 type Bootstrap={groupId:string;bookId:string;pageVersion:number;state:string;files:FileView[];receipt?:Receipt;events:{id:string}[];locations:{id:string}[]};
 type Session={groupId:string;state:string;submissionId:string|null;canvasData:unknown;previewUrl:string|null;files:FileView[]};
 type Collection={book:{id:string;title:string};sessions:Session[];settings:unknown;legacy:unknown};
-type Checkpoint={version:1;origin:string;bookId:string;deviceId:string;commitKey:string;fileIds:Record<Kind,string>;fixtureHashes?:Record<Kind,string>;pageToken?:string;pageId?:string;canvasHash?:string;commit?:{key:string;expectedVersion:number;eventIds:string[];locationIds:string[];authorShareApproved:false;previewDataUrl:string};otherSessionsHash?:string;submissionId?:string};
+type OriginalDigest={groupId:string;fileId:string;sha256:string;byteLength:number};
+type Checkpoint={version:1;origin:string;bookId:string;deviceId:string;commitKey:string;fileIds:Record<Kind,string>;fixtureHashes?:Record<Kind,string>;pageToken?:string;pageId?:string;canvasHash?:string;commit?:{key:string;expectedVersion:number;eventIds:string[];locationIds:string[];authorShareApproved:false;previewDataUrl:string};otherSessionsHash?:string;submissionId?:string;runLabel?:string;previousCheckpointSha256?:string;otherOriginals?:OriginalDigest[]};
 type Report={status:'PREPARED'|'RUNNING'|'PASS'|'INCOMPLETE';stage:string;at:string;bookId:string;checks:Record<string,unknown>;physicalPhones:'NOT_TESTED';paidCalls:0;oldPilotRequests:0;errorCode?:string};
 const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)])):value;
@@ -31,7 +32,21 @@ function inside(parent:string,path:string){const child=relative(parent,path);ret
 export function validateCollectionHttpsConfig(value:unknown):Config{
   const c=value as Config;ensure(c&&typeof c==='object'&&Object.keys(c).every(key=>['baseUrl','bookId','guestToken','ownerTrialKey','ownerId','title','expiresAt','ownerTokenHash'].includes(key)),'CONFIG_INVALID');
   ensure(c.baseUrl===collectionPilotOrigin&&opaque.test(c.bookId)&&opaque.test(c.guestToken)&&/^[A-Za-z\d_-]{43}$/.test(c.ownerTrialKey),'EXACT_NEW_PILOT_CONFIG_REQUIRED');
-  ensure(c.ownerTokenHash===undefined||c.ownerTokenHash===sha(c.ownerTrialKey),'OWNER_KEY_HASH_MISMATCH');return c;
+  ensure(c.ownerTokenHash===undefined||c.ownerTokenHash===sha(c.ownerTrialKey),'OWNER_KEY_HASH_MISMATCH');
+  ensure(c.expiresAt===undefined||validExpiry(c.expiresAt),'CONFIG_EXPIRY_INVALID');return c;
+}
+function validExpiry(value:string){return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString()===value.replace('Z','.000Z');}
+/** A labelled run has its own immutable identities; the original Nov27 run is never reset. */
+export function collectionHttpsRun(configPath:string,args:string[]){
+  const labels=args.filter(value=>value.startsWith('--new-fictional-submission=')),expiries=args.filter(value=>value.startsWith('--expected-owner-expiry='));
+  ensure(labels.length<=1&&expiries.length<=1,'DUPLICATE_RUN_OPTION');
+  ensure(args.filter(value=>value.startsWith('--')).every(value=>['--run','--prepare-only'].includes(value)||value.startsWith('--new-fictional-submission=')||value.startsWith('--expected-owner-expiry=')),'UNKNOWN_RUN_OPTION');
+  ensure(!(args.includes('--run')&&args.includes('--prepare-only')),'CONFLICTING_RUN_MODES');
+  const label=labels[0]?.slice('--new-fictional-submission='.length),expectedOwnerExpiry=expiries[0]?.slice('--expected-owner-expiry='.length);
+  ensure(label===undefined||/^[a-z][a-z\d-]{4,63}$/.test(label),'INVALID_FICTIONAL_RUN_LABEL');
+  ensure(expectedOwnerExpiry===undefined||validExpiry(expectedOwnerExpiry),'EXPECTED_OWNER_EXPIRY_INVALID');
+  const configDir=dirname(resolve(configPath)),dir=label?resolve(configDir,'runs',label):configDir;
+  ensure(!label||inside(configDir,dir),'RUN_PATH_ESCAPED');return {dir,label,expectedOwnerExpiry};
 }
 export function parseStoredZip(zip:Buffer):Map<string,Buffer>{
   ensure(zip.length>=22,'ZIP_INVALID');const end=zip.length-22;ensure(zip.readUInt32LE(end)===0x06054b50&&zip.readUInt16LE(end+20)===0,'ZIP_END_INVALID');
@@ -50,6 +65,25 @@ export function parseStoredZip(zip:Buffer):Map<string,Buffer>{
   ensure(cursor===end,'ZIP_CENTRAL_COUNT_INVALID');return files;
 }
 async function optional<T>(path:string):Promise<T|null>{try{return JSON.parse(await readFile(path,'utf8')) as T;}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}}
+export function assertOriginalsPreserved(expected:OriginalDigest[],actual:OriginalDigest[]){
+  const sorted=(values:OriginalDigest[])=>[...values].sort((a,b)=>`${a.groupId}/${a.fileId}`.localeCompare(`${b.groupId}/${b.fileId}`));
+  ensure(new Set(actual.map(item=>`${item.groupId}/${item.fileId}`)).size===actual.length&&fingerprint(sorted(expected))===fingerprint(sorted(actual)),'PREEXISTING_ORIGINALS_CHANGED');
+}
+/** Hash streamed originals without saving personal bytes or URLs in reports. */
+async function originalDigests(context:APIRequestContext,config:Config,collection:Collection,excludeGroup:string):Promise<OriginalDigest[]>{
+  const root=`/api/my/books/${config.bookId}/collection/files/`,hostname=new URL(config.baseUrl).hostname;
+  const cookies=(await context.storageState()).cookies.filter(cookie=>cookie.name==='__Host-memorybook-collection-trial'&&cookie.domain===hostname&&cookie.path==='/'&&cookie.secure);
+  ensure(cookies.length===1,'OWNER_STREAM_COOKIE_REQUIRED');const cookie=cookies[0];ensure(/^[A-Za-z\d_-]{43}$/.test(cookie.value),'OWNER_STREAM_COOKIE_INVALID');
+  const result:OriginalDigest[]=[];
+  for(const session of collection.sessions)if(session.groupId!==excludeGroup)for(const file of session.files){
+    if(!file.originalUrl)continue;ensure(uuid.test(file.id)&&file.originalUrl===`${root}${file.id}/original`&&/^[a-f\d]{64}$/.test(file.sha256)&&Number.isSafeInteger(file.byteLength)&&file.byteLength>0,'PRESERVATION_ORIGINAL_METADATA_INVALID');
+    const response=await fetch(config.baseUrl+file.originalUrl,{headers:{Cookie:`${cookie.name}=${cookie.value}`},redirect:'error',signal:AbortSignal.timeout(90000)});
+    ensure(response.status===200&&response.body,'PRESERVATION_ORIGINAL_STATUS_'+response.status);let byteLength=0;const digest=createHash('sha256');
+    for await(const chunk of response.body){byteLength+=chunk.length;ensure(byteLength<=file.byteLength,'PRESERVATION_ORIGINAL_SIZE_MISMATCH');digest.update(chunk);}
+    const sha256=digest.digest('hex');ensure(byteLength===file.byteLength&&sha256===file.sha256,'PRESERVATION_ORIGINAL_BYTES_MISMATCH');result.push({groupId:session.groupId,fileId:file.id,sha256,byteLength});
+  }
+  return result.sort((a,b)=>`${a.groupId}/${a.fileId}`.localeCompare(`${b.groupId}/${b.fileId}`));
+}
 async function fixtures(dir:string,checkpoint:Checkpoint):Promise<Asset[]>{
   await mkdir(dir,{recursive:true});const definitions=[['photo','fictional-pattern.jpg','image/jpeg'],['audio','fictional-tone.wav','audio/wav'],['video','fictional-pattern.mp4','video/mp4']] as const;
   for(const[kind,name]of definitions){const path=resolve(dir,name);try{await readFile(path);continue;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
@@ -60,9 +94,9 @@ async function fixtures(dir:string,checkpoint:Checkpoint):Promise<Asset[]>{
 }
 async function main(){
   const configArg=process.argv.find(value=>value.endsWith('.local.json'));ensure(configArg,'LOCAL_CONFIG_REQUIRED');const configPath=resolve(configArg);ensure(inside(resolve('test-results'),configPath),'CONFIG_MUST_STAY_IN_TEST_RESULTS');
-  const config=validateCollectionHttpsConfig(JSON.parse(await readFile(configPath,'utf8'))),dir=dirname(configPath),checkpointPath=resolve(dir,'https-checkpoint.local'),reportPath=resolve(dir,'https-verification.json');
-  const checkpoint=await optional<Checkpoint>(checkpointPath)||{version:1,origin:config.baseUrl,bookId:config.bookId,deviceId:'fictional-https-'+randomUUID(),commitKey:randomUUID(),fileIds:{photo:randomUUID(),audio:randomUUID(),video:randomUUID()}};
-  ensure(checkpoint.version===1&&checkpoint.origin===config.baseUrl&&checkpoint.bookId===config.bookId&&Object.values(checkpoint.fileIds).every(id=>uuid.test(id)),'CHECKPOINT_SCOPE_MISMATCH');
+  const config=validateCollectionHttpsConfig(JSON.parse(await readFile(configPath,'utf8'))),run=collectionHttpsRun(configPath,process.argv.slice(2)),dir=run.dir,checkpointPath=resolve(dir,'https-checkpoint.local'),reportPath=resolve(dir,'https-verification.json');
+  const checkpoint=await optional<Checkpoint>(checkpointPath)||{version:1,origin:config.baseUrl,bookId:config.bookId,deviceId:'fictional-https-'+(run.label?run.label+'-':'')+randomUUID(),commitKey:randomUUID(),fileIds:{photo:randomUUID(),audio:randomUUID(),video:randomUUID()},...(run.label?{runLabel:run.label}:{})};
+  ensure(checkpoint.version===1&&checkpoint.origin===config.baseUrl&&checkpoint.bookId===config.bookId&&checkpoint.runLabel===run.label&&Object.values(checkpoint.fileIds).every(id=>uuid.test(id)),'CHECKPOINT_SCOPE_MISMATCH');
   const save=()=>writeFile(checkpointPath,JSON.stringify(checkpoint,null,2));
   const report:Report={status:'PREPARED',stage:'local_fixtures',at:new Date().toISOString(),bookId:config.bookId,checks:{},physicalPhones:'NOT_TESTED',paidCalls:0,oldPilotRequests:0};
   const contexts:APIRequestContext[]=[];let browser:Browser|undefined;
@@ -71,6 +105,13 @@ async function main(){
   const binary=async(res:APIResponse,status=200)=>{try{ensure(res.status()===status,'BINARY_STATUS_'+res.status());return await res.body();}finally{await res.dispose();}};
   const boundedPath=(value:string|null,root:string)=>{ensure(value&&value.startsWith(root+'/')&&!value.includes('..')&&!value.includes('://')&&!value.includes('?'),'RESPONSE_MEDIA_SCOPE_MISMATCH');return value;};
   try{
+    let previous:Checkpoint|undefined;
+    if(run.label){
+      const priorBytes=await readFile(resolve(dirname(configPath),'https-checkpoint.local'));previous=JSON.parse(priorBytes.toString('utf8')) as Checkpoint;
+      ensure(previous.origin===config.baseUrl&&previous.bookId===config.bookId&&previous.submissionId&&previous.pageId&&previous.canvasHash&&previous.fixtureHashes&&!previous.runLabel,'PREVIOUS_COMPLETED_RUN_REQUIRED');
+      ensure(!checkpoint.previousCheckpointSha256||checkpoint.previousCheckpointSha256===sha(priorBytes),'PREVIOUS_CHECKPOINT_CHANGED');checkpoint.previousCheckpointSha256=sha(priorBytes);
+      ensure(run.expectedOwnerExpiry||config.expiresAt,'EXPECTED_OWNER_EXPIRY_REQUIRED');report.checks.fictionalRun={label:run.label,isolatedCheckpoint:true,previousCheckpointSha256:checkpoint.previousCheckpointSha256};
+    }
     const assets=await fixtures(resolve(dir,'fixtures'),checkpoint),fixtureHashes=Object.fromEntries(assets.map(a=>[a.kind,a.sha256])) as Record<Kind,string>;
     ensure(!checkpoint.fixtureHashes||fingerprint(checkpoint.fixtureHashes)===fingerprint(fixtureHashes),'FIXTURE_HASH_CHANGED');checkpoint.fixtureHashes=fixtureHashes;await save();report.checks.fixtures=assets.map(({kind,sha256,bytes})=>({kind,sha256,bytes:bytes.length}));
     const decoded=[];for(const asset of assets){const media=await validateCollectionMedia(asset.bytes,asset.kind,{maxBytes:2*1024*1024,maxDurationSeconds:20,maxPixels:40000000});ensure(sha(asset.bytes)===asset.sha256,'LOCAL_DECODER_CHANGED_ORIGINAL');decoded.push({kind:asset.kind,mimeType:media.mimeType,durationSeconds:media.durationSeconds,width:media.width,height:media.height});}report.checks.localDecoders=decoded;
@@ -79,14 +120,18 @@ async function main(){
     for(let i=0;i<3;i++)contexts.push(await request.newContext({baseURL:config.baseUrl,timeout:90000,extraHTTPHeaders:{Origin:config.baseUrl}}));const[guest,owner,anonymous]=contexts;
     const invite=await json<{bookId:string;title:string;bookType:string;requiredFields:string[]}>(await guest.get('/api/invites/'+config.guestToken,{maxRedirects:0}));ensure(invite.bookId===config.bookId&&invite.bookType==='event'&&/fiktív/i.test(invite.title)&&(!config.title||config.title===invite.title),'FICTIONAL_BOOK_SCOPE_MISMATCH');
     const redeemed=await json<{success:boolean;bookId:string;redirectTo:string}>(await owner.post('/api/pilot/collection-trial/redeem',{data:{key:config.ownerTrialKey},maxRedirects:0}));ensure(redeemed.success&&redeemed.bookId===config.bookId&&redeemed.redirectTo===`/my-books/${config.bookId}/materials`,'TRIAL_SCOPE_MISMATCH');
+    const expectedOwnerExpiry=run.expectedOwnerExpiry||config.expiresAt;
+    if(expectedOwnerExpiry){const trial=await json<{trial:{bookId:string;expiresAt:string}|null}>(await owner.get('/api/pilot/collection-trial/session',{maxRedirects:0}));ensure(trial.trial?.bookId===config.bookId&&Date.parse(trial.trial.expiresAt)===Date.parse(expectedOwnerExpiry),'OWNER_EXPIRY_MISMATCH');report.checks.ownerExpiry={expected:expectedOwnerExpiry,matched:true};}
     const ownerRoot=`/api/my/books/${config.bookId}/collection`,ownerList=()=>owner.get(ownerRoot,{maxRedirects:0}).then(res=>json<Collection>(res));
     stage('guest_session');
     if(!checkpoint.pageToken){
-      const fields:Record<string,string>={name:'Fiktív HTTPS vendég',email:'fictional-https@example.invalid',phone:'+36000000000'};ensure(invite.requiredFields.every(field=>field in fields),'UNKNOWN_REQUIRED_GUEST_FIELD');
+      const fields:Record<string,string>={name:run.label?`Fiktív technikai próba (${run.label})`:'Fiktív HTTPS vendég',email:'fictional-https@example.invalid',phone:'+36000000000'};ensure(invite.requiredFields.every(field=>field in fields),'UNKNOWN_REQUIRED_GUEST_FIELD');
       const session=await json<{inviteToken:string}>(await guest.post(`/api/invites/${config.guestToken}/page-session`,{data:{deviceId:checkpoint.deviceId,guestData:fields},maxRedirects:0}),[200,201]);ensure(opaque.test(session.inviteToken),'INVALID_PAGE_TOKEN');checkpoint.pageToken=session.inviteToken;await save();
     }
     const base=`/api/collection/invites/${checkpoint.pageToken}`;let bootstrap=await json<Bootstrap>(await guest.get(base,{maxRedirects:0}));ensure(bootstrap.bookId===config.bookId&&(!checkpoint.pageId||checkpoint.pageId===bootstrap.groupId),'PAGE_SCOPE_MISMATCH');checkpoint.pageId=bootstrap.groupId;await save();
     const others=(data:Collection)=>fingerprint({...data,sessions:data.sessions.filter(s=>s.groupId!==checkpoint.pageId)}),initial=await ownerList();ensure(initial.book.id===config.bookId,'OWNER_BOOK_MISMATCH');if(!checkpoint.otherSessionsHash){checkpoint.otherSessionsHash=others(initial);await save();}else ensure(checkpoint.otherSessionsHash===others(initial),'PREEXISTING_BOOK_DATA_CHANGED');
+    if(previous){const retained=initial.sessions.find(session=>session.groupId===previous.pageId);ensure(retained&&retained.submissionId===previous.submissionId&&fingerprint(retained.canvasData)===previous.canvasHash&&retained.files.length===3&&retained.files.every(file=>file.sha256===previous.fixtureHashes![file.kind]),'PREVIOUS_SUBMISSION_CHANGED');}
+    if(run.label){stage('existing_originals_baseline');const baseline=await originalDigests(owner,config,initial,checkpoint.pageId!);if(checkpoint.otherOriginals)assertOriginalsPreserved(checkpoint.otherOriginals,baseline);else{checkpoint.otherOriginals=baseline;await save();}report.checks.existingOriginals={count:baseline.length,sha256:fingerprint(baseline),bytes:baseline.reduce((sum,file)=>sum+file.byteLength,0)};}
     const wasCommitted=bootstrap.state==='submitted',observed=new Set<string>();let chunkReplay=false,resumeVerified=false;
     if(bootstrap.state!=='submitted'){
       stage('original_upload_resume');
@@ -113,8 +158,11 @@ async function main(){
       stage('editable_canvas');
       const page=await json<{id:string;bookId:string;version:number;canvasData:{objects?:unknown[]}}>(await guest.get('/api/page-invites/'+checkpoint.pageToken,{maxRedirects:0}));ensure(page.id===checkpoint.pageId&&page.bookId===config.bookId,'CANVAS_PAGE_MISMATCH');
       const photo=assets.find(a=>a.kind==='photo')!,imagePreview=await sharp(photo.bytes).resize(320,210,{fit:'cover'}).jpeg({quality:80}).toBuffer(),imageDataUrl='data:image/jpeg;base64,'+imagePreview.toString('base64');
-      const preview=await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#fffaf2"/><text x="30" y="55" font-family="sans-serif" font-size="28" fill="#263c30">Fiktív HTTPS emlék</text><text x="30" y="89" font-family="sans-serif" font-size="28" fill="#263c30">Árvíztűrő tükörfúrógép</text><path d="M35 125 Q115 190 195 125 Q275 60 355 125" stroke="#2f7d62" stroke-width="6" fill="none"/><image href="${imageDataUrl}" x="45" y="180" width="320" height="210"/></svg>`)).jpeg({quality:85}).toBuffer(),previewDataUrl='data:image/jpeg;base64,'+preview.toString('base64');
+      const marker=run.label?`<text x="30" y="730" font-family="sans-serif" font-size="18" fill="#263c30">Fiktív technikai próba: ${run.label}</text>`:'';
+      const preview=await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#fffaf2"/><text x="30" y="55" font-family="sans-serif" font-size="28" fill="#263c30">Fiktív HTTPS emlék</text><text x="30" y="89" font-family="sans-serif" font-size="28" fill="#263c30">Árvíztűrő tükörfúrógép</text><path d="M35 125 Q115 190 195 125 Q275 60 355 125" stroke="#2f7d62" stroke-width="6" fill="none"/><image href="${imageDataUrl}" x="45" y="180" width="320" height="210"/>${marker}</svg>`)).jpeg({quality:85}).toBuffer(),previewDataUrl='data:image/jpeg;base64,'+preview.toString('base64');
       const canvas={version:'7.4.0',background:'#fffaf2',objects:[{type:'Textbox',version:'7.4.0',left:30,top:30,width:480,fontSize:28,fill:'#263c30',text:'Fiktív HTTPS emlék\nÁrvíztűrő tükörfúrógép'},{type:'Path',version:'7.4.0',left:35,top:95,stroke:'#2f7d62',strokeWidth:6,fill:null,path:[['M',0,0],['Q',80,65,160,0],['Q',240,-65,320,0]]},{type:'Image',version:'7.4.0',left:45,top:180,width:320,height:210,src:imageDataUrl,collectionAssetId:photo.id}]};
+      // The original completed fixture remains immutable. New runs explicitly use top-left Fabric origins.
+      if(run.label){for(const object of canvas.objects)Object.assign(object,{originX:'left',originY:'top'});canvas.objects.push({type:'Textbox',version:'7.4.0',left:30,top:710,width:540,fontSize:18,fill:'#263c30',text:`Fiktív technikai próba: ${run.label}`});Object.assign(canvas.objects.at(-1)!,{originX:'left',originY:'top'});}
       const wanted=fingerprint(canvas);ensure(!checkpoint.canvasHash||checkpoint.canvasHash===wanted,'CANVAS_FIXTURE_CHANGED');
       if(fingerprint(page.canvasData)!==wanted){ensure(!page.canvasData.objects?.length,'EXISTING_CANVAS_MUST_NOT_BE_OVERWRITTEN');const saved=await json<{success:boolean;newVersion:number;previewImageUrl:string}>(await guest.put('/api/page-invites/'+checkpoint.pageToken,{data:{canvasData:canvas,previewDataUrl,expectedVersion:page.version},maxRedirects:0}));ensure(saved.success&&saved.newVersion===page.version+1&&saved.previewImageUrl===base+'/page-preview','PRIVATE_CANVAS_SAVE_FAILED');page.version=saved.newVersion;}
       checkpoint.canvasHash=wanted;checkpoint.commit??={key:checkpoint.commitKey,expectedVersion:page.version,eventIds:bootstrap.events.slice(0,1).map(e=>e.id),locationIds:bootstrap.locations.slice(0,1).map(e=>e.id),authorShareApproved:false,previewDataUrl};await save();
@@ -125,7 +173,7 @@ async function main(){
     await guard(guestBrowser);const guestPage=await guestBrowser.newPage();guestPage.on('pageerror',()=>runtimeErrors++);await guestPage.goto(config.baseUrl+'/p/'+checkpoint.pageToken,{waitUntil:'domcontentloaded'});
     if(bootstrap.state!=='submitted'){await expect(guestPage.getByRole('region',{name:'Csatolt eredeti fájlok',exact:true})).toBeVisible();await expect(guestPage.locator('canvas').first()).toBeVisible();await expect(guestPage.getByText('Eredeti fájl átvéve',{exact:true})).toHaveCount(3);await guestPage.screenshot({path:resolve(dir,'guest-mobile-ready.png'),fullPage:true});}
     stage('explicit_commit');ensure(checkpoint.commit,'COMMIT_CHECKPOINT_REQUIRED');const receipt=await json<Receipt>(await guest.post(base+'/commit',{data:checkpoint.commit,maxRedirects:0}));ensure(receipt.accepted&&receipt.state==='committed'&&receipt.groupId===checkpoint.pageId&&uuid.test(receipt.submissionId),'COMMIT_ACK_INVALID');
-    const replay=await json<Receipt>(await guest.post(base+'/commit',{data:checkpoint.commit,maxRedirects:0}));ensure(replay.replayed&&replay.submissionId===receipt.submissionId,'COMMIT_REPLAY_DUPLICATED');checkpoint.submissionId=receipt.submissionId;await save();
+    const replay=await json<Receipt>(await guest.post(base+'/commit',{data:checkpoint.commit,maxRedirects:0}));ensure(replay.replayed&&replay.submissionId===receipt.submissionId,'COMMIT_REPLAY_DUPLICATED');ensure(!checkpoint.submissionId||checkpoint.submissionId===receipt.submissionId,'COMMITTED_SUBMISSION_ID_CHANGED');checkpoint.submissionId=receipt.submissionId;await save();
     bootstrap=await json<Bootstrap>(await guest.get(base,{maxRedirects:0}));ensure(bootstrap.state==='submitted'&&bootstrap.receipt?.submissionId===receipt.submissionId,'DURABLE_COMMIT_RECOVERY_FAILED');await guestPage.reload();await expect(guestPage.getByText('Az oldalad elküldve. Köszönjük!',{exact:true})).toBeVisible();await guestPage.screenshot({path:resolve(dir,'guest-mobile-receipt.png'),fullPage:true});report.checks.commit={exactlyOne:true,replayed:true,receiptRecoveredAfterReload:true};
     stage('originals_manifest_archive');const collection=await ownerList(),session=collection.sessions.find(s=>s.groupId===checkpoint.pageId);ensure(session?.state==='submitted'&&session.submissionId===receipt.submissionId&&session.files.length===3&&fingerprint(session.canvasData)===checkpoint.canvasHash,'OWNER_FROZEN_SUBMISSION_MISMATCH');
     const fileResults=[];for(const asset of assets){const file=session.files.find(f=>f.id===asset.id);ensure(file&&file.state==='ready','OWNER_FILE_MISSING');const original=boundedPath(file.originalUrl,ownerRoot);ensure(sha(await binary(await owner.get(original,{maxRedirects:0})))===asset.sha256,'ORIGINAL_BYTES_CHANGED');const denied=await anonymous.get(original,{maxRedirects:0});ensure(denied.status()===401,'ANONYMOUS_ORIGINAL_EXPOSED');await denied.dispose();
@@ -145,8 +193,10 @@ async function main(){
     report.checks.playback=playback;stage('owner_mobile_screenshot');ensure(await ownerPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'MOBILE_OVERFLOW');await ownerPage.screenshot({path:resolve(dir,'owner-mobile-ready.png'),fullPage:true});
     stage('owner_leave');await ownerPage.getByRole('button',{name:'Kilépés a próbából',exact:true}).click();await expect(ownerPage).toHaveURL(config.baseUrl+'/collection/try');const afterLeave=await ownerBrowser.request.get(config.baseUrl+ownerRoot);ensure(afterLeave.status()===401,'TRIAL_LEAVE_DID_NOT_REVOKE');await afterLeave.dispose();
     ensure(unexpectedWrites===0&&externalRequests===0&&runtimeErrors===0,'BROWSER_UNEXPECTED_ACTIVITY');report.checks.browser={viewport:'390x844',guestPreview:wasCommitted?'PRIOR_COMMITTED_RUN_RECOVERED':true,guestReceipt:true,ownerTrial:true,fragmentRemoved:true,playback,leave:true,unexpectedWrites,externalRequests,runtimeErrors};
-    stage('preservation_comparison');const final=await ownerList();ensure(others(final)===checkpoint.otherSessionsHash,'OTHER_SUBMISSIONS_CHANGED');ensure(final.sessions.filter(s=>s.groupId===checkpoint.pageId).length===1,'SUBMISSION_DUPLICATED');report.checks.otherDataPreserved=true;report.status='PASS';report.stage='complete';
+    stage('preservation_comparison');const final=await ownerList();ensure(others(final)===checkpoint.otherSessionsHash,'OTHER_SUBMISSIONS_CHANGED');ensure(final.sessions.filter(s=>s.groupId===checkpoint.pageId).length===1,'SUBMISSION_DUPLICATED');
+    if(run.label){assertOriginalsPreserved(checkpoint.otherOriginals!,await originalDigests(owner,config,final,checkpoint.pageId!));ensure(sha(await readFile(resolve(dirname(configPath),'https-checkpoint.local')))===checkpoint.previousCheckpointSha256,'PREVIOUS_CHECKPOINT_CHANGED');report.checks.previousRunPreserved={checkpoint:true,submission:true,canvas:true,originals:true};}
+    report.checks.otherDataPreserved=true;report.status='PASS';report.stage='complete';
   }catch(error){report.status='INCOMPLETE';report.errorCode=error instanceof Error&&/^[A-Z][A-Z0-9_]{1,100}$/.test(error.message)?error.message:'HTTPS_SMOKE_INCOMPLETE';}
-  finally{await browser?.close();for(const ctx of contexts)await ctx.dispose();await mkdir(dir,{recursive:true});await writeFile(reportPath,JSON.stringify(report,null,2));console.log(JSON.stringify(report));if(report.status==='INCOMPLETE')process.exitCode=1;}
+  finally{await browser?.close();for(const ctx of contexts)await ctx.dispose();await mkdir(dir,{recursive:true});const output=JSON.stringify(report,null,2);await writeFile(reportPath,output);if(run.label)await writeFile(resolve(dir,`https-verification-${report.at.replace(/[^\d]/g,'')}.json`),output,{flag:'wx'});console.log(JSON.stringify(report));if(report.status==='INCOMPLETE')process.exitCode=1;}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)await main().catch(error=>{console.error(JSON.stringify({status:'INCOMPLETE',errorCode:error instanceof Error&&/^[A-Z][A-Z0-9_]{1,100}$/.test(error.message)?error.message:'HTTPS_SMOKE_INPUT_ERROR'}));process.exitCode=1;});
