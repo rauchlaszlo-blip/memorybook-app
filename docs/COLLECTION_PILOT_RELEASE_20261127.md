@@ -1,5 +1,11 @@
 # Anyaggyűjtési HTTPS-pilot – 2026. november 27.
 
+> **2026. november 28-i frissítés:** a pilot már a meglévő fizetős példány
+> elkülönített `memorybook_collection_pilot` adatbázisát használja. A tulajdonosi
+> próba 2027. január 31. 23:59:59 magyar időig érvényes, a linkek változatlanok.
+> Az alábbiak a november 27-i kiadás történeti állapotát írják le; az aktuális
+> kapcsolatok, mentések és ellenőrzések: [adatmegőrzési jelentés](PRESERVATION_20261128.md).
+
 A tulajdonos engedélyezte a külön ág commitját, pusholását és külön díjmentes
 HTTPS-pilot telepítését. A `main`, az éles MemoryBook és a korábbi esküvői pilot
 alkalmazása nem változik. Könyvrendezés és fizetős AI nincs ebben a kiadásban.
