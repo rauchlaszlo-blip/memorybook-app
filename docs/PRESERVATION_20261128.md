@@ -63,6 +63,11 @@ Bizonyítékok ugyanitt: `*.manifest.json`, `*.backup.json`, `*.sha256`,
 `*.toc.txt`, `paid-main-local-restore.local-restore.json`,
 `paid-wedding-local-restore.local-restore.json`.
 
+A mentési kör végén készült `paid-main-checkpoint.manifest.json` és
+`paid-wedding-checkpoint.manifest.json` ismételt leltár mindkét adatbázisnál
+teljes tartalom-, szerkezet-, számláló- és konfigurációegyezést igazolt az induló
+mentéssel. A futó szolgáltatások módosítási időpontja és telepítése változatlan.
+
 A hagyományos adatbázisban 64 könyv és 1626 oldal van. A régi esküvői adatbázisban
 10 könyv, 62 beküldés, 53 eredeti média, 30 kiadási médiapillanatkép és 1 kész PDF
 található. A szerkesztési adatok, előnézetek, audit, jogosultságok és feltöltési
